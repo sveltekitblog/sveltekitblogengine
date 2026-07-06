@@ -72,6 +72,13 @@
         <link rel="canonical" href={url} />
     {/if}
 
+    {#if seo?.alternates && seo.alternates.length > 0}
+        {#each seo.alternates as alt}
+            <link rel="alternate" hreflang={alt.lang} href={alt.url} />
+        {/each}
+        <link rel="alternate" hreflang="x-default" href={url} />
+    {/if}
+
     {#if seo?.jsonLd}
         {@html `<script type="application/ld+json">${seo.jsonLd}</script>`}
     {/if}

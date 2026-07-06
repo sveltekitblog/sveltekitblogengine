@@ -183,6 +183,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta charset="utf-8" />
 
+    <!-- 범용 페이지용 전역 Hreflang 자동 생성 (하드코딩 배제, DB 활성화 언어 연동) -->
+    {#if !seo?.alternates && data.languages && data.languages.length > 0}
+        {@const dbDefaultLang = data.dbDefaultLang || 'ko'}
+        {@const nonDefaultLangs = data.languages.map(l => l.code).filter(c => c !== dbDefaultLang)}
+        {@const langRegex = new RegExp(`^\\/(${nonDefaultLangs.join('|')})(\\/|$)`)}
+        {@const currentPath = page.url.pathname}
+        {@const cleanPath = currentPath.replace(langRegex, '$2')}
+        
+        {#each data.languages as l}
+            {@const isDefault = l.code === dbDefaultLang}
+            {@const path = isDefault
+                ? (cleanPath === '/' ? '' : cleanPath)
+                : `/${l.code}${cleanPath === '/' ? '' : cleanPath}`}
+            <link rel="alternate" hreflang={l.code} href="{settings.siteUrl || ''}{path}" />
+        {/each}
+        <link rel="alternate" hreflang="x-default" href="{settings.siteUrl || ''}{cleanPath === '/' ? '' : cleanPath}" />
+    {/if}
+
     <meta property="og:site_name" content={siteTitle} />
     <meta property="og:locale" content={lang === "ko" ? "ko_KR" : lang} />
 
