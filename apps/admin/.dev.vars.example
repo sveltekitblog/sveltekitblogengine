@@ -1,0 +1,8 @@
+ADMIN_PASSWORD=your-secure-admin-password
+GA4_PROPERTY_ID=dummy_ga4_property_id
+GA4_CLIENT_EMAIL=dummy-email@iam.gserviceaccount.com
+GA4_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\ndummy_private_key_string\n-----END PRIVATE KEY-----\n"
+ADSENSE_ACCOUNT_ID=accounts/pub-dummy
+ADSENSE_CLIENT_ID=dummy_adsense_client_id.apps.googleusercontent.com
+ADSENSE_CLIENT_SECRET=dummy_adsense_secret
+ADSENSE_REFRESH_TOKEN=dummy_refresh_token
