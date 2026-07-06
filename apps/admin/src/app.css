@@ -1,0 +1,96 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Premium File Attachment Card Styles */
+.file-attachment-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.85rem 1.25rem;
+    margin: 1.5rem 0;
+    text-decoration: none !important;
+    color: #1e293b !important;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    max-width: 500px;
+}
+
+.file-attachment-card:hover {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06);
+}
+
+.file-attachment-card .file-icon {
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e2e8f0;
+    padding: 0.5rem;
+    border-radius: 8px;
+    color: #64748b;
+    transition: background 0.2s;
+}
+
+.file-attachment-card:hover .file-icon {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.file-attachment-card .file-details {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.file-attachment-card .file-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #1e293b;
+}
+
+.file-attachment-card .file-size {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 0.125rem;
+}
+
+.file-attachment-card .download-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #2563eb;
+    background: #eff6ff;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    border: 1px solid #bfdbfe;
+    transition: all 0.2s;
+    text-transform: uppercase;
+}
+
+.file-attachment-card:hover .download-badge {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+}
+
+@media (max-width: 640px) {
+    .file-attachment-card {
+        padding: 0.75rem 1rem;
+        gap: 0.75rem;
+    }
+    .file-attachment-card .file-name {
+        font-size: 0.875rem;
+    }
+    .file-attachment-card .download-badge {
+        display: none;
+    }
+}

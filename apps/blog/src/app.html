@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!-- Fonts are dynamically injected by +layout.svelte -->
+		<!-- CLS 방어: 첫 렌더링 전 모바일/데스크탑 즉시 판단 -->
+		<script>(function(){function u(){window.innerWidth<=768?document.documentElement.classList.add('is-mobile'):document.documentElement.classList.remove('is-mobile');}u();window.addEventListener('resize',u);})();</script>
+		<style>
+			html.is-mobile .desktop-only-layout{display:none!important;}
+			html:not(.is-mobile) .mobile-only-layout{display:none!important;}
+		</style>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

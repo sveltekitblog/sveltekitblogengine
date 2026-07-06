@@ -1,0 +1,42 @@
+/**
+ * Copyright (C) 2026 kimteamjang
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+declare global {
+    namespace App {
+        interface Platform {
+            env?: {
+                BLOG_DB: D1Database;
+                USER_DB: D1Database;
+                IMAGES: R2Bucket;
+                IMAGES_KV: KVNamespace;
+                CACHE: KVNamespace;
+                ADMIN_PASSWORD?: string;
+                ALLOWED_IP?: string;
+            };
+            context: {
+                waitUntil(promise: Promise<any>): void;
+            };
+            caches: CacheStorage & { default: Cache };
+        }
+        interface Locals {
+            blogDb?: D1Database;
+            userDb?: D1Database;
+        }
+    }
+}
+
+export { };

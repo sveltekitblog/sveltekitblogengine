@@ -1,0 +1,5 @@
+BETTER_AUTH_SECRET=a_very_long_random_secret_string_for_development_only_123456789
+GITHUB_CLIENT_ID=dummy_github_id
+GITHUB_CLIENT_SECRET=dummy_github_secret
+GOOGLE_CLIENT_ID=dummy_google_id
+GOOGLE_CLIENT_SECRET=dummy_google_secret

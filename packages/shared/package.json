@@ -1,0 +1,21 @@
+{
+    "name": "@blog/shared",
+    "version": "1.0.0",
+    "private": true,
+    "license": "AGPL-3.0-only",
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts",
+        "./db": "./src/db/index.ts",
+        "./db/blog-schema": "./src/db/blog-schema.ts",
+        "./db/user-schema": "./src/db/user-schema.ts",
+        "./storage": "./src/storage/index.ts",
+        "./storage/factory": "./src/storage/factory.ts",
+        "./types": "./src/types/index.ts",
+        "./utils": "./src/utils/index.ts",
+        "./i18n": "./src/i18n/index.ts"
+    },
+    "dependencies": {
+        "drizzle-orm": "^0.45.1"
+    }
+}
