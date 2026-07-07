@@ -27,27 +27,31 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const body = (await request.json()) as any;
         
         if (body.action === 'restore') {
-            const { id } = body;
-            const archive = await userDb.prepare(`SELECT * FROM deleted_entries WHERE id = ?`).bind(id).first();
-            if (archive && archive.original_data) {
-                const data = JSON.parse(archive.original_data as string);
-                // Handle both Drizzle camelCase and raw SQL snake_case keys
-                await userDb.prepare(`
-                    INSERT OR REPLACE INTO entries (id, type, target_id, user_id, parent_id, content, is_private, is_deleted, ip_address, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `).bind(
-                    data.id, 
-                    data.type, 
-                    data.targetId ?? data.target_id ?? null, 
-                    data.userId ?? data.user_id, 
-                    data.parentId ?? data.parent_id ?? null, 
-                    data.content, 
-                    (data.isPrivate || data.is_private) ? 1 : 0, 
-                    (data.isDeleted || data.is_deleted) ? 1 : 0, 
-                    data.ipAddress ?? data.ip_address ?? null, 
-                    data.createdAt ?? data.created_at
-                ).run();
-                await userDb.prepare(`DELETE FROM deleted_entries WHERE id = ?`).bind(id).run();
+            const { id, ids } = body;
+            const targetIds = ids && Array.isArray(ids) ? ids : (id ? [id] : []);
+            
+            for (const targetId of targetIds) {
+                const archive = await userDb.prepare(`SELECT * FROM deleted_entries WHERE id = ?`).bind(targetId).first();
+                if (archive && archive.original_data) {
+                    const data = JSON.parse(archive.original_data as string);
+                    // Handle both Drizzle camelCase and raw SQL snake_case keys
+                    await userDb.prepare(`
+                        INSERT OR REPLACE INTO entries (id, type, target_id, user_id, parent_id, content, is_private, is_deleted, ip_address, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    `).bind(
+                        data.id, 
+                        data.type, 
+                        data.targetId ?? data.target_id ?? null, 
+                        data.userId ?? data.user_id, 
+                        data.parentId ?? data.parent_id ?? null, 
+                        data.content, 
+                        (data.isPrivate || data.is_private) ? 1 : 0, 
+                        (data.isDeleted || data.is_deleted) ? 1 : 0, 
+                        data.ipAddress ?? data.ip_address ?? null, 
+                        data.createdAt ?? data.created_at
+                    ).run();
+                    await userDb.prepare(`DELETE FROM deleted_entries WHERE id = ?`).bind(targetId).run();
+                }
             }
             return json({ success: true });
         }
@@ -134,13 +138,18 @@ export const DELETE: RequestHandler = async ({ request, url, locals }) => {
     if (!userDb) return json({ error: 'Database not bound' }, { status: 500 });
 
     try {
-        // DELETE requires ID from query params
+        // DELETE requires ID or IDs from query params
         const id = url.searchParams.get('id');
+        const idsStr = url.searchParams.get('ids');
         const action = url.searchParams.get('action');
-        if (!id) return json({ error: 'Missing ID' }, { status: 400 });
+        if (!id && !idsStr) return json({ error: 'Missing ID or IDs' }, { status: 400 });
+
+        const targetIds = idsStr ? idsStr.split(',') : (id ? [id] : []);
 
         if (action === 'hard_purge') {
-            await userDb.prepare(`DELETE FROM deleted_entries WHERE id = ?`).bind(id).run();
+            for (const targetId of targetIds) {
+                await userDb.prepare(`DELETE FROM deleted_entries WHERE id = ?`).bind(targetId).run();
+            }
             return json({ success: true });
         }
 

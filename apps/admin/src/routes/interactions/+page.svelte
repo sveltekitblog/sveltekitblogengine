@@ -35,6 +35,32 @@
 
     let searchQuery = $state('');
 
+    // Pagination & Selection States
+    let currentPage = $state(1);
+    let itemsPerPage = $state(20);
+    let selectedIds = $state<string[]>([]);
+
+    $effect(() => {
+        const saved = localStorage.getItem('admin_interactions_per_page');
+        if (saved) {
+            const parsed = parseInt(saved, 10);
+            if (!isNaN(parsed) && parsed > 0) itemsPerPage = parsed;
+        }
+    });
+
+    $effect(() => {
+        if (itemsPerPage > 0) {
+            localStorage.setItem('admin_interactions_per_page', itemsPerPage.toString());
+        }
+    });
+
+    // Reset pagination and checkbox list on tab change
+    $effect(() => {
+        const _ = activeTab;
+        currentPage = 1;
+        selectedIds = [];
+    });
+
     // Action State
     let processingId = $state('');
     
@@ -64,6 +90,77 @@
     ) || []);
 
     const activeList = $derived(activeTab === 'comment' ? filteredComments : activeTab === 'guestbook' ? filteredGuestbooks : filteredArchives);
+
+    const totalPages = $derived(Math.ceil(activeList.length / itemsPerPage) || 1);
+    
+    $effect(() => {
+        if (currentPage > totalPages) {
+            currentPage = totalPages;
+        }
+    });
+
+    const paginatedList = $derived(activeList.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage));
+
+    const isAllSelected = $derived(paginatedList.length > 0 && paginatedList.every((item: any) => selectedIds.includes(item.id)));
+    
+    function toggleSelectAll() {
+        if (isAllSelected) {
+            const paginatedItemIds = paginatedList.map((item: any) => item.id);
+            selectedIds = selectedIds.filter(id => !paginatedItemIds.includes(id));
+        } else {
+            const newSelected = [...selectedIds];
+            paginatedList.forEach((item: any) => {
+                if (!newSelected.includes(item.id)) {
+                    newSelected.push(item.id);
+                }
+            });
+            selectedIds = newSelected;
+        }
+    }
+
+    function toggleSelectItem(id: string) {
+        if (selectedIds.includes(id)) {
+            selectedIds = selectedIds.filter(x => x !== id);
+        } else {
+            selectedIds = [...selectedIds, id];
+        }
+    }
+
+    async function restoreSelected() {
+        if (selectedIds.length === 0) return;
+        if (!confirm(t('admin.interactions.confirm_restore_selected', { default: `선택한 ${selectedIds.length}개의 데이터를 복구하시겠습니까?` }))) return;
+        
+        processingId = 'bulk';
+        try {
+            const res = await fetch('/api/interactions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'restore', ids: selectedIds })
+            });
+            if (res.ok) {
+                selectedIds = [];
+                await invalidateAll();
+            } else alert(t('admin.interactions.restore_failed', { default: "복구 실패" }));
+        } catch(e) { alert(t('admin.interactions.error_occurred', { default: "오류 발생" })); }
+        processingId = '';
+    }
+
+    async function purgeSelected() {
+        if (selectedIds.length === 0) return;
+        if (!confirm(t('admin.interactions.confirm_purge_selected', { default: `⚠️ 선택한 ${selectedIds.length}개의 데이터를 휴지통에서 영구 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.` }))) return;
+        
+        processingId = 'bulk';
+        try {
+            const res = await fetch(`/api/interactions?action=hard_purge&ids=${selectedIds.join(',')}`, {
+                method: 'DELETE'
+            });
+            if (res.ok) {
+                selectedIds = [];
+                await invalidateAll();
+            } else alert(t('admin.interactions.delete_failed', { default: "삭제 실패" }));
+        } catch(e) { alert(t('admin.interactions.error_occurred', { default: "오류 발생" })); }
+        processingId = '';
+    }
 
     async function toggleBlind(id: string, currentDeleted: boolean) {
         const confirmMsg = currentDeleted 
@@ -180,8 +277,19 @@
         <h1>{t('admin.interactions.title') || '상호작용 관리'}</h1>
         <p class="subtitle">{t('admin.interactions.subtitle') || '사용자의 댓글과 방명록을 일괄 관리합니다.'}</p>
     </div>
-    <div class="search-box">
-        <input type="text" bind:value={searchQuery} placeholder={t('admin.interactions.search_placeholder') || '이름 또는 내용 검색...'} />
+    <div class="header-actions flex gap-4 items-center" style="display: flex; gap: 1rem; align-items: center;">
+        <div class="items-per-page text-sm text-gray-600 flex items-center gap-2 bg-white px-3 py-2 rounded-md border border-gray-200" style="display: flex; align-items: center; gap: 0.5rem; background: white; padding: 0.5rem 0.75rem; border-radius: 0.375rem; border: 1px solid #e5e7eb; font-size: 0.875rem;">
+            <label for="perPage" class="whitespace-nowrap">{t('admin.posts.main.items_per_page', { default: '페이지당 항목:' })}</label>
+            <select id="perPage" bind:value={itemsPerPage} class="border-none bg-transparent outline-none cursor-pointer font-semibold text-gray-800" style="border: none; background: transparent; outline: none; cursor: pointer; font-weight: 600; color: #1f2937;">
+                <option value={10}>{t('admin.posts.main.items_count', { count: 10, default: '10개' })}</option>
+                <option value={20}>{t('admin.posts.main.items_count', { count: 20, default: '20개' })}</option>
+                <option value={50}>{t('admin.posts.main.items_count', { count: 50, default: '50개' })}</option>
+                <option value={100}>{t('admin.posts.main.items_count', { count: 100, default: '100개' })}</option>
+            </select>
+        </div>
+        <div class="search-box">
+            <input type="text" bind:value={searchQuery} placeholder={t('admin.interactions.search_placeholder') || '이름 또는 내용 검색...'} />
+        </div>
     </div>
 </div>
 
@@ -197,22 +305,42 @@
     </button>
 </div>
 
+{#if activeTab === 'archive' && selectedIds.length > 0}
+    <div class="bulk-action-bar" style="display: flex; align-items: center; justify-content: space-between; background: #eff6ff; border: 1px solid #bfdbfe; padding: 0.75rem 1rem; border-radius: 0.375rem; margin-bottom: 1rem; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
+        <span style="font-size: 0.875rem; color: #1e40af; font-weight: 600;">
+            {selectedIds.length}개 선택됨
+        </span>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="btn-cancel" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; cursor: pointer; border: 1px solid #d1d5db; background: white; border-radius: 4px; color: #374151; font-weight: 600;" onclick={restoreSelected} disabled={processingId !== ''}>선택 복구</button>
+            <button class="btn-save" style="background:#ef4444; color: white; font-size: 0.8rem; padding: 0.4rem 0.8rem; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;" onclick={purgeSelected} disabled={processingId !== ''}>선택 영구 삭제</button>
+        </div>
+    </div>
+{/if}
+
 <div class="table-container">
-    {#if activeList.length === 0}
+    {#if paginatedList.length === 0}
         <div class="empty">{t('admin.interactions.empty') || '조건에 맞는 데이터가 없습니다.'}</div>
     {:else}
         <table class="interactions-table">
             <thead>
                 <tr>
-                    <th style="width: 25%">{t('admin.interactions.col_author') || '작성자 / 일시'}</th>
+                    {#if activeTab === 'archive'}
+                        <th style="width: 5%; text-align: center;"><input type="checkbox" checked={isAllSelected} onchange={toggleSelectAll} style="cursor: pointer;" /></th>
+                        <th style="width: 20%">{t('admin.interactions.col_author') || '작성자 / 일시'}</th>
+                    {:else}
+                        <th style="width: 25%">{t('admin.interactions.col_author') || '작성자 / 일시'}</th>
+                    {/if}
                     <th style="width: 45%;">{t('admin.interactions.col_content') || '내용 / 연결 정보'}</th>
                     <th style="width: 30%">{t('admin.interactions.col_actions') || '관리'}</th>
                 </tr>
             </thead>
             <tbody>
-                {#each activeList as item}
+                {#each paginatedList as item}
                     {#if activeTab === 'archive'}
                         <tr>
+                            <td style="text-align: center; vertical-align: middle;">
+                                <input type="checkbox" checked={selectedIds.includes(item.id)} onchange={() => toggleSelectItem(item.id)} style="cursor: pointer;" />
+                            </td>
                             <td>
                                 <div class="author-info">
                                     <div class="meta">
@@ -300,6 +428,14 @@
         </table>
     {/if}
 </div>
+
+{#if totalPages > 1}
+    <div class="pagination-controls" style="margin-top: 1.5rem; display: flex; justify-content: center; align-items: center; gap: 1rem;">
+        <button class="btn-page" style="padding: 0.5rem 1rem; border: 1px solid #d1d5db; border-radius: 0.375rem; background: white; cursor: pointer; font-weight: 500; color: #374151;" disabled={currentPage === 1} onclick={() => currentPage--}>{t('admin.posts.page_prev', { default: "이전" })}</button>
+        <span class="page-info" style="font-size: 0.875rem; color: #4b5563; font-weight: 600;">{currentPage} / {totalPages}</span>
+        <button class="btn-page" style="padding: 0.5rem 1rem; border: 1px solid #d1d5db; border-radius: 0.375rem; background: white; cursor: pointer; font-weight: 500; color: #374151;" disabled={currentPage === totalPages} onclick={() => currentPage++}>{t('admin.posts.page_next', { default: "다음" })}</button>
+    </div>
+{/if}
 
 <!-- Edit Modal -->
 {#if showEditModal}
