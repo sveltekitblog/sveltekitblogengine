@@ -305,8 +305,8 @@
                                 linkTargetBlank = linkMark.attrs.target === "_blank";
                             } else {
                                 // 부모 노드 깊이의 앵커 마크 검색
-                                const $pos = editor.state.doc.resolve(pos);
-                                const parentLinkMark = $pos.marks().find(m => m.type.name === "link");
+                                const resolvedPos = editor.state.doc.resolve(pos);
+                                const parentLinkMark = resolvedPos.marks().find(m => m.type.name === "link");
                                 if (parentLinkMark) {
                                     linkUrl = parentLinkMark.attrs.href || "";
                                     linkTargetBlank = parentLinkMark.attrs.target === "_blank";
