@@ -22,6 +22,7 @@
     import MarkdownEditor from "$lib/components/editor/MarkdownEditor.svelte";
     import type { SubmitFunction } from "./$types";
     import { t } from "$lib/i18n.svelte";
+    import { processContentHtml } from "$lib/utils/contentProcessor";
 
     let { data } = $props();
 
@@ -341,7 +342,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
 
                 {#if mode === "preview"}
                     <div class="preview-mode prose max-w-none p-4 board">
-                        {@html translationsData[activeLang].content}
+                        {@html processContentHtml(translationsData[activeLang].content)}
                     </div>
                 {/if}
             {/if}
@@ -409,6 +410,10 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
     .preview-mode { min-height: 400px; padding: 1rem; background: white; border-radius: 0 0 0.5rem 0.5rem; }
     .board { background-color: #fff; }
     :global(.preview-mode img) { max-width: 100%; height: auto; }
+    :global(.preview-mode figure) { margin: 1.5rem 0; display: flex; flex-direction: column; align-items: center; }
+    :global(.preview-mode figure[data-align="left"]) { align-items: flex-start; }
+    :global(.preview-mode figure[data-align="right"]) { align-items: flex-end; }
+    :global(.preview-mode figcaption) { margin-top: 0.5rem; font-size: 0.875rem; color: #6b7280; text-align: center; }
     .form-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding: 1.5rem; background: white; border: 1px solid #e5e7eb; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     .status-selector { display: flex; gap: 1.5rem; }
     .status-selector label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0; }

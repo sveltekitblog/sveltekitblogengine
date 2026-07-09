@@ -23,6 +23,7 @@
     import MarkdownEditor from "$lib/components/editor/MarkdownEditor.svelte";
     import type { SubmitFunction } from "./$types";
     import { t } from "$lib/i18n.svelte";
+    import { processContentHtml } from "$lib/utils/contentProcessor";
 
     let { data } = $props();
 
@@ -372,7 +373,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                 <!-- Preview Mode -->
                 {#if mode === "preview"}
                     <div class="preview-mode prose max-w-none p-4 board">
-                        {@html translationsData[activeLang].content}
+                        {@html processContentHtml(translationsData[activeLang].content)}
                     </div>
                 {/if}
             {/if}
@@ -536,6 +537,24 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
     :global(.preview-mode img) {
         max-width: 100%;
         height: auto;
+    }
+    :global(.preview-mode figure) {
+        margin: 1.5rem 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    :global(.preview-mode figure[data-align="left"]) {
+        align-items: flex-start;
+    }
+    :global(.preview-mode figure[data-align="right"]) {
+        align-items: flex-end;
+    }
+    :global(.preview-mode figcaption) {
+        margin-top: 0.5rem;
+        font-size: 0.875rem;
+        color: #6b7280;
+        text-align: center;
     }
 
     /* Form Actions */
