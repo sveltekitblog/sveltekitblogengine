@@ -403,19 +403,37 @@
         imagesData: Array<{ url: string; originalUrl?: string | null; alt?: string }>,
         caption: string,
         alignment: string,
+        linkConfig?: { url: string; targetBlank: boolean } | null
     ) {
         if (editor) {
-            let chain = editor.chain().focus();
-            imagesData.forEach((img) => {
-                chain = chain.setImage({
-                    src: img.url,
-                    alt: img.alt || "",
-                    "data-original": img.originalUrl || null,
-                    "data-align": alignment || "center",
-                    "data-caption": caption || null,
-                } as any).enter();
-            });
-            chain.run();
+            if (linkConfig && linkConfig.url) {
+                // 이미지 링크 설정이 활성화된 경우
+                imagesData.forEach((img) => {
+                    const alignAttr = alignment ? ` data-align="${alignment}"` : '';
+                    const captionAttr = caption ? ` data-caption="${caption}"` : '';
+                    const origAttr = img.originalUrl ? ` data-original="${img.originalUrl}"` : '';
+                    const targetAttr = linkConfig.targetBlank ? ' target="_blank" rel="noopener noreferrer"' : '';
+
+                    const imgHtml = `<img src="${img.url}" alt="${img.alt || ''}"${origAttr}${alignAttr}${captionAttr} />`;
+                    const linkHtml = `<a href="${linkConfig.url}"${targetAttr}>${imgHtml}</a>`;
+
+                    editor.chain().focus().insertContent(linkHtml).run();
+                });
+                editor.chain().focus().enter().run();
+            } else {
+                // 이미지 링크 설정이 활성화되지 않은 기존 단독 이미지 삽입 로직
+                let chain = editor.chain().focus();
+                imagesData.forEach((img) => {
+                    chain = chain.setImage({
+                        src: img.url,
+                        alt: img.alt || "",
+                        "data-original": img.originalUrl || null,
+                        "data-align": alignment || "center",
+                        "data-caption": caption || null,
+                    } as any).enter();
+                });
+                chain.run();
+            }
         }
     }
 
@@ -879,10 +897,11 @@
 
     <ImageUploadModal
         bind:isOpen={showImageModal}
-        {category}
-        {slug}
+        category={category || "general"}
+        slug={slug || "new-post"}
         {lang}
-        {imageCounter}
+        imageCounter={imageCounter}
+        defaultTargetBlank={true}
         onClose={() => (showImageModal = false)}
         onInsert={handleImageInsert}
     />

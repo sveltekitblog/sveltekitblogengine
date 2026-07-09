@@ -292,7 +292,8 @@ thumbnailFit: "${thumbnailFit || 'cover'}"
     function handleImageInsert(
         imagesData: Array<{ url: string; originalUrl?: string | null; alt?: string }>,
         caption: string,
-        alignment: string
+        alignment: string,
+        linkConfig?: { url: string; targetBlank: boolean } | null
     ) {
         let textToInsert = "";
         imagesData.forEach((img) => {
@@ -301,12 +302,29 @@ thumbnailFit: "${thumbnailFit || 'cover'}"
             const captionAttr = caption ? ` data-caption="${caption}"` : '';
             const origAttr = img.originalUrl ? ` data-original="${img.originalUrl}"` : '';
 
-            // If caption or alignment is customized, we generate an HTML block to preserve Tiptap compatibility
-            if (caption || alignment !== "center" || img.originalUrl) {
-                textToInsert += `<img src="${img.url}" alt="${img.alt || ''}"${origAttr}${alignAttr}${captionAttr} />\n`;
+            const isHtmlImg = !!(caption || alignment !== "center" || img.originalUrl);
+            const imgBlock = isHtmlImg
+                ? `<img src="${img.url}" alt="${img.alt || ''}"${origAttr}${alignAttr}${captionAttr} />`
+                : `![${img.alt || ''}](${img.url})`;
+
+            if (linkConfig && linkConfig.url) {
+                if (linkConfig.targetBlank) {
+                    // 새 창 옵션이 켜진 경우, 표준 HTML <a> 래핑 수행
+                    const innerHtml = isHtmlImg
+                        ? imgBlock
+                        : `<img src="${img.url}" alt="${img.alt || ''}" />`;
+                    textToInsert += `<a href="${linkConfig.url}" target="_blank" rel="noopener noreferrer">${innerHtml}</a>\n`;
+                } else {
+                    // 새 창 옵션이 꺼진 경우
+                    if (isHtmlImg) {
+                        textToInsert += `<a href="${linkConfig.url}">${imgBlock}</a>\n`;
+                    } else {
+                        // 순수 이미지 마크다운 구조는 마크다운 링크 래핑으로 삽입: [![alt](img)](link)
+                        textToInsert += `[${imgBlock}](${linkConfig.url})\n`;
+                    }
+                }
             } else {
-                // Otherwise, output pure clean Markdown image
-                textToInsert += `![${img.alt || ''}](${img.url})\n`;
+                textToInsert += imgBlock + "\n";
             }
         });
         insertAtCursor(textToInsert);
@@ -451,6 +469,7 @@ thumbnailFit: "${thumbnailFit || 'cover'}"
     slug={slug || 'new-post'}
     {lang}
     imageCounter={imageCounter}
+    defaultTargetBlank={false}
     onClose={() => (showImageModal = false)}
     onInsert={handleImageInsert}
 />
