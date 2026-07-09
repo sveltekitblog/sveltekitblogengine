@@ -259,6 +259,28 @@
                             };
                         },
                     },
+                    "data-link-url": {
+                        default: null,
+                        parseHTML: (element) =>
+                            element.getAttribute("data-link-url"),
+                        renderHTML: (attributes) => {
+                            if (!attributes["data-link-url"]) return {};
+                            return {
+                                "data-link-url": attributes["data-link-url"],
+                            };
+                        },
+                    },
+                    "data-link-target": {
+                        default: null,
+                        parseHTML: (element) =>
+                            element.getAttribute("data-link-target"),
+                        renderHTML: (attributes) => {
+                            if (!attributes["data-link-target"]) return {};
+                            return {
+                                "data-link-target": attributes["data-link-target"],
+                            };
+                        },
+                    },
                 };
             },
             addNodeView() {
@@ -299,19 +321,8 @@
 
                         const innerNode = editor?.state.doc.nodeAt(pos);
                         if (innerNode) {
-                            const linkMark = innerNode.marks.find(m => m.type.name === "link");
-                            if (linkMark) {
-                                linkUrl = linkMark.attrs.href || "";
-                                linkTargetBlank = linkMark.attrs.target === "_blank";
-                            } else {
-                                // 부모 노드 깊이의 앵커 마크 검색
-                                const resolvedPos = editor.state.doc.resolve(pos);
-                                const parentLinkMark = resolvedPos.marks().find(m => m.type.name === "link");
-                                if (parentLinkMark) {
-                                    linkUrl = parentLinkMark.attrs.href || "";
-                                    linkTargetBlank = parentLinkMark.attrs.target === "_blank";
-                                }
-                            }
+                            linkUrl = innerNode.attrs["data-link-url"] || "";
+                            linkTargetBlank = innerNode.attrs["data-link-target"] === "_blank";
                         }
 
                         openImageEditModal({
@@ -361,27 +372,33 @@
                 Color,
                 Highlight.configure({ multicolor: true }),
             ],
-            content,
+            content: preprocessHtmlForEditor(content),
             editorProps: {
                 attributes: {
                     class: "prose max-w-none focus:outline-none min-h-[400px] p-4",
                 },
             },
             onUpdate: ({ editor }: { editor: any }) => {
-                content = editor.getHTML();
+                content = postprocessHtmlFromEditor(editor.getHTML());
             },
         });
 
         // Sync content if it was set before editor initialized
-        if (content && editor && editor.getHTML() !== content) {
-            editor.commands.setContent(content);
+        if (content && editor) {
+            const cleanContent = preprocessHtmlForEditor(content);
+            if (editor.getHTML() !== cleanContent) {
+                editor.commands.setContent(cleanContent);
+            }
         }
     });
 
     // 외부 content Prop의 반응형 변화(비동기 데이터 로딩 및 탭 전환)를 감지하여 에디터에 반영
     $effect(() => {
-        if (editor && content !== undefined && editor.getHTML() !== content) {
-            editor.commands.setContent(content);
+        if (editor && content !== undefined) {
+            const cleanContent = preprocessHtmlForEditor(content);
+            if (editor.getHTML() !== cleanContent) {
+                editor.commands.setContent(cleanContent);
+            }
         }
     });
 
@@ -432,34 +449,19 @@
         linkConfig?: { url: string; targetBlank: boolean } | null
     ) {
         if (editor) {
-            if (linkConfig && linkConfig.url) {
-                // 이미지 링크 설정이 활성화된 경우
-                imagesData.forEach((img) => {
-                    const alignAttr = alignment ? ` data-align="${alignment}"` : '';
-                    const captionAttr = caption ? ` data-caption="${caption}"` : '';
-                    const origAttr = img.originalUrl ? ` data-original="${img.originalUrl}"` : '';
-                    const targetAttr = linkConfig.targetBlank ? ' target="_blank" rel="noopener noreferrer"' : '';
-
-                    const imgHtml = `<img src="${img.url}" alt="${img.alt || ''}"${origAttr}${alignAttr}${captionAttr} />`;
-                    const linkHtml = `<a href="${linkConfig.url}"${targetAttr}>${imgHtml}</a>`;
-
-                    editor.chain().focus().insertContent(linkHtml).run();
-                });
-                editor.chain().focus().enter().run();
-            } else {
-                // 이미지 링크 설정이 활성화되지 않은 기존 단독 이미지 삽입 로직
-                let chain = editor.chain().focus();
-                imagesData.forEach((img) => {
-                    chain = chain.setImage({
-                        src: img.url,
-                        alt: img.alt || "",
-                        "data-original": img.originalUrl || null,
-                        "data-align": alignment || "center",
-                        "data-caption": caption || null,
-                    } as any).enter();
-                });
-                chain.run();
-            }
+            let chain = editor.chain().focus();
+            imagesData.forEach((img) => {
+                chain = chain.setImage({
+                    src: img.url,
+                    alt: img.alt || "",
+                    "data-original": img.originalUrl || null,
+                    "data-align": alignment || "center",
+                    "data-caption": caption || null,
+                    "data-link-url": linkConfig && linkConfig.url ? linkConfig.url : null,
+                    "data-link-target": linkConfig && linkConfig.url && linkConfig.targetBlank ? "_blank" : null,
+                } as any).enter();
+            });
+            chain.run();
         }
     }
 
@@ -512,7 +514,7 @@
         const node = editor.state.doc.nodeAt(pos);
         if (!node) return;
 
-        // 1. 이미지 노드 마크업(캡션, 정렬) 수정
+        // 이미지 노드 속성(캡션, 정렬 및 링크 정보)을 원자적으로 일괄 업데이트
         editor
             .chain()
             .focus()
@@ -521,30 +523,12 @@
                     ...node.attrs,
                     "data-caption": caption || null,
                     "data-align": alignment,
+                    "data-link-url": linkConfig && linkConfig.url ? linkConfig.url : null,
+                    "data-link-target": linkConfig && linkConfig.url && linkConfig.targetBlank ? "_blank" : null,
                 });
                 return true;
             })
             .run();
-
-        // 2. 링크(Mark) 수정 혹은 삭제
-        if (linkConfig && linkConfig.url) {
-            editor
-                .chain()
-                .focus()
-                .setNodeSelection(pos)
-                .setMark("link", {
-                    href: linkConfig.url,
-                    target: linkConfig.targetBlank ? "_blank" : null,
-                })
-                .run();
-        } else {
-            editor
-                .chain()
-                .focus()
-                .setNodeSelection(pos)
-                .unsetMark("link")
-                .run();
-        }
 
         showImageEditModal = false;
     }
@@ -622,6 +606,53 @@
         if (url && editor) {
             editor.chain().focus().setYoutubeVideo({ src: url }).run();
         }
+    }
+
+    // Tiptap 내부용: <a><img /></a> 구조를 <img data-link-url=".." /> 형태로 변환
+    function preprocessHtmlForEditor(html: string): string {
+        if (!html) return "";
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+
+        const imageLinks = doc.querySelectorAll("a[href] img");
+        imageLinks.forEach((img) => {
+            const anchor = img.closest("a");
+            if (anchor) {
+                img.setAttribute("data-link-url", anchor.getAttribute("href") || "");
+                const target = anchor.getAttribute("target");
+                if (target) {
+                    img.setAttribute("data-link-target", target);
+                } else {
+                    img.removeAttribute("data-link-target");
+                }
+                anchor.replaceWith(img);
+            }
+        });
+        return doc.body.innerHTML;
+    }
+
+    // DB 저장용: <img data-link-url=".." /> 구조를 <a><img /></a> 형태로 래핑
+    function postprocessHtmlFromEditor(html: string): string {
+        if (!html) return "";
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+
+        const images = doc.querySelectorAll("img[data-link-url]");
+        images.forEach((img) => {
+            const linkUrl = img.getAttribute("data-link-url");
+            if (linkUrl) {
+                const anchor = doc.createElement("a");
+                anchor.setAttribute("href", linkUrl);
+                const target = img.getAttribute("data-link-target");
+                if (target) {
+                    anchor.setAttribute("target", target);
+                    anchor.setAttribute("rel", "noopener noreferrer");
+                }
+                img.replaceWith(anchor);
+                anchor.appendChild(img);
+            }
+        });
+        return doc.body.innerHTML;
     }
 </script>
 
