@@ -244,6 +244,55 @@
         replyContent = "";
     }
 
+    // 방명록 수정 관련 상태변수
+    let editingId = $state<string | null>(null);
+    let editContent = $state("");
+    let isEditingSubmitting = $state(false);
+
+    function startEdit(id: string, currentContent: string) {
+        editingId = id;
+        editContent = currentContent;
+    }
+
+    function cancelEdit() {
+        editingId = null;
+        editContent = "";
+    }
+
+    async function handleEditGuestbook(id: string) {
+        if (!editContent.trim() || isEditingSubmitting) return;
+        isEditingSubmitting = true;
+        try {
+            const res = await fetch("/api/entries", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id, content: editContent.trim() }),
+            });
+
+            if (res.ok) {
+                const updated = await res.json();
+                entries = entries.map((e: any) =>
+                    e.id === id
+                        ? {
+                              ...e,
+                              content: updated.content,
+                          }
+                        : e,
+                );
+                editingId = null;
+                editContent = "";
+            } else {
+                const err = await res.json();
+                alert($t("blog.guestbook.fail") + (err.error ? ` (${err.error})` : ""));
+            }
+        } catch (e) {
+            console.error(e);
+            alert($t("blog.guestbook.error"));
+        } finally {
+            isEditingSubmitting = false;
+        }
+    }
+
     onMount(() => {
         fetchEntries();
     });
@@ -367,6 +416,15 @@
                                 <Reply size={14} />
                             </button>
                         {/if}
+                        {#if !entry.isDeleted && currentUser && entry.user?.id === currentUser.id && editingId !== entry.id}
+                            <button
+                                class="edit-btn"
+                                onclick={() => startEdit(entry.id, entry.content)}
+                                title={$t("blog.common.edit", { default: "수정" })}
+                            >
+                                <span>{$t("blog.common.edit", { default: "수정" })}</span>
+                            </button>
+                        {/if}
                         {#if !entry.isDeleted && currentUser && (entry.user?.id === currentUser.id || (currentUser as any).role === "admin")}
                             <button
                                 class="delete-btn"
@@ -376,9 +434,33 @@
                             </button>
                         {/if}
                     </div>
-                    <div class="entry-content" class:deleted={entry.isDeleted}>
-                        {entry.isDeleted ? $t("blog.guestbook.deleted") : entry.content}
-                    </div>
+                    {#if editingId === entry.id}
+                        <div class="edit-form-wrapper">
+                            <textarea
+                                bind:value={editContent}
+                                rows="2"
+                                disabled={isEditingSubmitting}
+                            ></textarea>
+                            <div class="edit-actions">
+                                <button class="cancel-btn" onclick={cancelEdit} disabled={isEditingSubmitting}
+                                    >{$t("blog.common.cancel", { default: "취소" })}</button
+                                >
+                                <button
+                                    class="submit-btn small"
+                                    onclick={() => handleEditGuestbook(entry.id)}
+                                    disabled={!editContent.trim() || isEditingSubmitting}
+                                >
+                                    {isEditingSubmitting 
+                                        ? $t("blog.common.saving", { default: "저장 중..." }) 
+                                        : $t("blog.common.save", { default: "저장" })}
+                                </button>
+                            </div>
+                        </div>
+                    {:else}
+                        <div class="entry-content" class:deleted={entry.isDeleted}>
+                            {entry.isDeleted ? $t("blog.guestbook.deleted") : entry.content}
+                        </div>
+                    {/if}
 
                     <!-- Reply Form -->
                     {#if replyingTo === entry.id}
@@ -452,22 +534,59 @@
                                                     class="private-icon"
                                                 />
                                             {/if}
+                                            {#if !reply.isDeleted && currentUser && reply.user?.id === currentUser.id && editingId !== reply.id}
+                                                <button
+                                                    class="edit-btn small"
+                                                    onclick={() => startEdit(reply.id, reply.content)}
+                                                    title={$t("blog.common.edit", { default: "수정" })}
+                                                    style="background: none; border: none; padding: 0; color: #64748b; cursor: pointer; display: inline-flex; align-items: center; font-size: 0.75rem;"
+                                                >
+                                                    {$t("blog.common.edit", { default: "수정" })}
+                                                </button>
+                                            {/if}
                                             {#if currentUser && (reply.user?.id === currentUser.id || (currentUser as any).role === "admin")}
                                                 <button
                                                     class="delete-btn small"
                                                     onclick={() =>
-                                                        handleDelete(reply.id)}
+                                                         handleDelete(reply.id)}
                                                 >
                                                     <Trash2 size={12} />
                                                 </button>
                                             {/if}
                                         </div>
-                                        <div
-                                            class="reply-text"
-                                            class:deleted={reply.isDeleted}
-                                        >
-                                            {reply.isDeleted ? $t("blog.guestbook.deleted") : reply.content}
-                                        </div>
+                                        {#if editingId === reply.id}
+                                            <div class="edit-form-wrapper" style="margin-top: 0.5rem;">
+                                                <textarea
+                                                    bind:value={editContent}
+                                                    rows="2"
+                                                    disabled={isEditingSubmitting}
+                                                    style="width: 100%; padding: 0.5rem; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.9rem; resize: vertical; font-family: inherit;"
+                                                ></textarea>
+                                                <div class="edit-actions" style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.25rem;">
+                                                    <button class="cancel-btn" onclick={cancelEdit} disabled={isEditingSubmitting}
+                                                        style="background: #e2e8f0; color: #64748b; border: none; padding: 0.3rem 0.6rem; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.8rem;"
+                                                        >{$t("blog.common.cancel", { default: "취소" })}</button
+                                                    >
+                                                    <button
+                                                        class="submit-btn small"
+                                                        onclick={() => handleEditGuestbook(reply.id)}
+                                                        disabled={!editContent.trim() || isEditingSubmitting}
+                                                        style="background: var(--primary-color); color: white; border: none; padding: 0.3rem 0.6rem; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.8rem;"
+                                                    >
+                                                        {isEditingSubmitting 
+                                                            ? $t("blog.common.saving", { default: "저장 중..." }) 
+                                                            : $t("blog.common.save", { default: "저장" })}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        {:else}
+                                            <div
+                                                class="reply-text"
+                                                class:deleted={reply.isDeleted}
+                                            >
+                                                {reply.isDeleted ? $t("blog.guestbook.deleted") : reply.content}
+                                            </div>
+                                        {/if}
                                     </div>
                                 </div>
                             {/each}
@@ -516,6 +635,63 @@
         max-width: 800px;
         margin: 0 auto;
         padding: 2rem 1rem;
+    }
+
+    /* 방명록 수정 폼 스타일 */
+    .edit-form-wrapper {
+        margin-top: 0.75rem;
+    }
+    .edit-form-wrapper textarea {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        resize: vertical;
+        font-family: inherit;
+    }
+    .edit-form-wrapper textarea:focus {
+        outline: none;
+        border-color: var(--primary-color);
+    }
+    .edit-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-top: 0.35rem;
+    }
+    .edit-actions .submit-btn {
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    .edit-actions .cancel-btn {
+        background: #e2e8f0;
+        color: #64748b;
+        border: none;
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    .edit-btn {
+        background: none;
+        border: none;
+        padding: 0;
+        color: #64748b;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        margin-left: auto; /* 우측 정렬 */
+    }
+    .edit-btn:hover {
+        color: var(--primary-color);
     }
 
     .page-header {

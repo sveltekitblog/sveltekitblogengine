@@ -22,22 +22,32 @@
     import { t } from "$lib/i18n";
     import { page } from "$app/stores";
 
-    let { comment, currentUser, onDelete, onReply, isReply = false } = $props();
+    let { comment, currentUser, onDelete, onEdit, onReply, isReply = false } = $props();
 
-    let isDeleting = $state(false);
-    let showDeleteModal = $state(false);
-    let hoverCancel = $state(false);
-    let hoverConfirm = $state(false);
+    let isEditing = $state(false);
+    let editContent = $state(comment.content);
+    let isEditingSubmitting = $state(false);
 
     function handleDelete() {
-        showDeleteModal = true;
+        onDelete(comment.id);
     }
 
-    async function executeDelete() {
-        showDeleteModal = false;
-        isDeleting = true;
-        await onDelete(comment.id);
-        isDeleting = false;
+    function startEdit() {
+        editContent = comment.content;
+        isEditing = true;
+    }
+
+    function cancelEdit() {
+        isEditing = false;
+        editContent = comment.content;
+    }
+
+    async function handleEditSave() {
+        if (!editContent.trim() || isEditingSubmitting) return;
+        isEditingSubmitting = true;
+        await onEdit(comment.id, editContent.trim());
+        isEditing = false;
+        isEditingSubmitting = false;
     }
 
     let isOwner = $derived(currentUser && comment.user?.id === currentUser.id);
@@ -75,11 +85,19 @@
                         <span>{$t("blog.comments.reply_btn", { default: "답글" })}</span>
                     </button>
                 {/if}
-                {#if !comment.isDeleted && canDelete}
+                {#if !comment.isDeleted && canDelete && !isEditing}
+                    {#if isOwner}
+                        <button
+                            class="action-btn edit-btn"
+                            onclick={startEdit}
+                            aria-label={$t("blog.common.edit", { default: "수정" })}
+                        >
+                            <span>{$t("blog.common.edit", { default: "수정" })}</span>
+                        </button>
+                    {/if}
                     <button
                         class="action-btn delete-btn"
                         onclick={handleDelete}
-                        disabled={isDeleting}
                         aria-label={$t("blog.guestbook.delete_btn", { default: "삭제" })}
                     >
                         <Trash2 size={14} />
@@ -87,43 +105,35 @@
                 {/if}
             </div>
         </div>
-        <div class="body" class:deleted={comment.isDeleted}>
-            {comment.content}
-        </div>
+        {#if isEditing}
+            <div class="edit-form">
+                <textarea
+                    bind:value={editContent}
+                    rows="2"
+                    disabled={isEditingSubmitting}
+                ></textarea>
+                <div class="edit-actions">
+                    <button class="cancel-btn" onclick={cancelEdit} disabled={isEditingSubmitting}
+                        >{$t("blog.common.cancel", { default: "취소" })}</button
+                    >
+                    <button
+                        class="submit-btn small"
+                        onclick={handleEditSave}
+                        disabled={!editContent.trim() || isEditingSubmitting}
+                    >
+                        {isEditingSubmitting
+                            ? $t("blog.common.saving", { default: "저장 중..." })
+                            : $t("blog.common.save", { default: "저장" })}
+                    </button>
+                </div>
+            </div>
+        {:else}
+            <div class="body" class:deleted={comment.isDeleted}>
+                {comment.content}
+            </div>
+        {/if}
     </div>
 </div>
-
-{#if showDeleteModal}
-    <div class="custom-modal-backdrop">
-        <div class="custom-modal-card">
-            <div class="modal-warning-icon">
-                <Trash2 size={28} />
-            </div>
-            <h3>{$t("blog.guestbook.delete_confirm")}</h3>
-            <p class="modal-description">{$t("blog.comments.delete_confirm_desc", { default: "정말 이 댓글을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다." })}</p>
-            <div class="modal-actions">
-                <button 
-                    class="modal-btn modal-cancel" 
-                    onclick={() => showDeleteModal = false}
-                    onmouseenter={() => hoverCancel = true}
-                    onmouseleave={() => hoverCancel = false}
-                    style={hoverCancel ? "background-color: #f1f5f9; color: #0f172a;" : ""}
-                >
-                    {$t("blog.common.cancel")}
-                </button>
-                <button 
-                    class="modal-btn modal-confirm" 
-                    onclick={executeDelete}
-                    onmouseenter={() => hoverConfirm = true}
-                    onmouseleave={() => hoverConfirm = false}
-                    style={hoverConfirm ? "background-color: #dc2626; color: #ffffff;" : ""}
-                >
-                    {$t("blog.guestbook.delete_btn", { default: "삭제" })}
-                </button>
-            </div>
-        </div>
-    </div>
-{/if}
 
 <style>
     .comment-item {
@@ -250,94 +260,57 @@
         font-style: italic;
     }
 
-    /* Premium Custom Modal */
-    .custom-modal-backdrop {
-        position: fixed;
-        top: 0;
-        left: 0;
+    /* 수정 에디터 폼 스타일 */
+    .edit-form {
+        margin-top: 0.5rem;
+    }
+    .edit-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-top: 0.25rem;
+    }
+    .edit-form textarea {
         width: 100%;
-        height: 100%;
-        background-color: rgba(15, 23, 42, 0.6);
-        backdrop-filter: blur(4px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 9999;
-    }
-
-    .custom-modal-card {
-        background-color: #ffffff;
-        border-radius: 16px;
-        padding: 2rem;
-        width: 90%;
-        max-width: 400px;
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-        border: 1px solid #f1f5f9;
-        text-align: center;
-        animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .modal-warning-icon {
-        width: 56px;
-        height: 56px;
-        background-color: #fef2f2;
-        color: #ef4444;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 1rem auto;
-    }
-
-    .custom-modal-card h3 {
-        font-size: 1.15rem;
-        font-weight: 700;
-        color: #0f172a;
-        margin: 0 0 0.5rem 0;
-    }
-
-    .modal-description {
-        font-size: 0.9rem;
-        color: #64748b;
-        margin: 0 0 1.5rem 0;
-        line-height: 1.5;
-    }
-
-    .modal-actions {
-        display: flex;
-        gap: 0.75rem;
-    }
-
-    .modal-btn {
-        flex: 1;
-        padding: 0.75rem;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 0.95rem;
-        cursor: pointer;
-        transition: all 0.2s ease-in-out;
-        border: none;
-    }
-
-    .modal-cancel {
-        background-color: #f8fafc;
-        color: #475569;
+        padding: 0.5rem;
         border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        resize: vertical;
+        font-family: inherit;
     }
-
-    .modal-confirm {
-        background-color: #ef4444;
-        color: #ffffff;
+    .edit-form textarea:focus {
+        outline: none;
+        border-color: var(--primary-color);
     }
-
-    @keyframes modalFadeIn {
-        from {
-            opacity: 0;
-            transform: scale(0.95);
-        }
-        to {
-            opacity: 1;
-            transform: scale(1);
-        }
+    .edit-actions .submit-btn {
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        padding: 0.3rem 0.6rem;
+        border-radius: 4px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    .edit-actions .cancel-btn {
+        background: #e2e8f0;
+        color: #64748b;
+        border: none;
+        padding: 0.3rem 0.6rem;
+        border-radius: 4px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    .action-btn.edit-btn {
+        font-size: 0.75rem;
+        color: #64748b;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+    }
+    .action-btn.edit-btn:hover {
+        color: var(--primary-color);
     }
 </style>

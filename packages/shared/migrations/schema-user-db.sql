@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS entries (
     is_private INTEGER DEFAULT 0,
     is_deleted INTEGER DEFAULT 0,
     ip_address TEXT,
-    created_at TEXT DEFAULT (datetime('now', '+9 hours'))
+    created_at TEXT DEFAULT (datetime('now', '+9 hours')),
+    client_timezone TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_entries_type_target ON entries(type, target_id);
 CREATE INDEX IF NOT EXISTS idx_entries_user ON entries(user_id);

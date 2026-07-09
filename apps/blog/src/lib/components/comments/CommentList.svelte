@@ -19,7 +19,7 @@
     import { onMount } from "svelte";
     import CommentItem from "./CommentItem.svelte";
     import CommentForm from "./CommentForm.svelte";
-    import { MessageSquare } from "lucide-svelte";
+    import { MessageSquare, Trash2 } from "lucide-svelte";
     import { t } from "$lib/i18n";
 
     let { postId, currentUser } = $props();
@@ -147,18 +147,43 @@
         }
     }
 
-    async function handleDeleteComment(commentId: string) {
+    // 다이얼로그 요소 바인딩용 변수
+    let deleteDialogEl = $state<HTMLDialogElement | null>(null);
+    let deleteTargetId = $state<string | null>(null);
+    let hoverConfirm = $state(false);
+    let hoverCancel = $state(false);
+    let isDeleting = $state(false);
+
+    // 댓글 삭제 모달 활성화 트리거 (dialog 열기)
+    function triggerDeleteComment(commentId: string) {
+        deleteTargetId = commentId;
+        if (deleteDialogEl) {
+            deleteDialogEl.showModal(); // 브라우저 최상위 레이어(Top Layer)에 강제 노출
+        }
+    }
+
+    // 다이얼로그 닫기 공통 처리
+    function closeDeleteDialog() {
+        if (deleteDialogEl) {
+            deleteDialogEl.close();
+        }
+        deleteTargetId = null;
+    }
+
+    // 실제 삭제 API 통신 수행
+    async function executeDeleteComment() {
+        if (!deleteTargetId || isDeleting) return;
+        isDeleting = true;
         try {
             const res = await fetch("/api/entries", {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: commentId }),
+                body: JSON.stringify({ id: deleteTargetId }),
             });
 
             if (res.ok) {
-                // Soft delete locally to trigger derived store update
                 comments = comments.map((c: any) =>
-                    c.id === commentId
+                    c.id === deleteTargetId
                         ? {
                               ...c,
                               isDeleted: true,
@@ -166,9 +191,41 @@
                           }
                         : c,
                 );
+                closeDeleteDialog();
             } else {
                 const err = await res.json();
                 alert($t("blog.guestbook.delete_fail", { default: "삭제 실패" }) + (err.error ? ` (${err.error})` : ""));
+            }
+        } catch (e) {
+            console.error(e);
+            alert($t("blog.profile.network_error", { default: "통신 중 오류가 발생했습니다." }));
+        } finally {
+            isDeleting = false;
+        }
+    }
+
+    // 댓글 수정 API 통신 수행
+    async function handleEditComment(commentId: string, newContent: string) {
+        try {
+            const res = await fetch("/api/entries", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: commentId, content: newContent }),
+            });
+
+            if (res.ok) {
+                const updated = await res.json();
+                comments = comments.map((c: any) =>
+                    c.id === commentId
+                        ? {
+                              ...c,
+                              content: updated.content,
+                          }
+                        : c,
+                );
+            } else {
+                const err = await res.json();
+                alert($t("blog.comments.add_comment_failed", { default: "댓글 수정에 실패했습니다." }) + (err.error ? ` (${err.error})` : ""));
             }
         } catch (e) {
             console.error(e);
@@ -210,7 +267,8 @@
                     <CommentItem
                         {comment}
                         {currentUser}
-                        onDelete={handleDeleteComment}
+                        onDelete={triggerDeleteComment}
+                        onEdit={handleEditComment}
                         onReply={startReply}
                     />
 
@@ -249,7 +307,8 @@
                                 <CommentItem
                                     comment={reply}
                                     {currentUser}
-                                    onDelete={handleDeleteComment}
+                                    onDelete={triggerDeleteComment}
+                                    onEdit={handleEditComment}
                                     onReply={startReply}
                                     isReply={true}
                                 />
@@ -264,6 +323,43 @@
             {$t("blog.comments.empty", { default: "아직 댓글이 없습니다. 첫 댓글을 남겨보세요!" })}
         </div>
     {/if}
+
+    <!-- 공동 삭제 컨펌 모달 (HTML5 표준 dialog) -->
+    <dialog 
+        bind:this={deleteDialogEl} 
+        class="custom-modal-backdrop"
+        onclose={() => { deleteTargetId = null; }}
+    >
+        <div class="custom-modal-card">
+            <div class="modal-warning-icon">
+                <Trash2 size={28} />
+            </div>
+            <h3>{$t("blog.guestbook.delete_confirm")}</h3>
+            <p class="modal-description">{$t("blog.comments.delete_confirm_desc", { default: "정말 이 댓글을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다." })}</p>
+            <div class="modal-actions">
+                <button 
+                    class="modal-btn modal-cancel" 
+                    onclick={closeDeleteDialog}
+                    onmouseenter={() => hoverCancel = true}
+                    onmouseleave={() => hoverCancel = false}
+                    style={hoverCancel ? "background-color: #f1f5f9; color: #0f172a;" : ""}
+                    disabled={isDeleting}
+                >
+                    {$t("blog.common.cancel")}
+                </button>
+                <button 
+                    class="modal-btn modal-confirm" 
+                    onclick={executeDeleteComment}
+                    onmouseenter={() => hoverConfirm = true}
+                    onmouseleave={() => hoverConfirm = false}
+                    style={hoverConfirm ? "background-color: #dc2626; color: #ffffff;" : ""}
+                    disabled={isDeleting}
+                >
+                    {isDeleting ? $t("blog.common.saving", { default: "삭제 중..." }) : $t("blog.guestbook.delete_btn", { default: "삭제" })}
+                </button>
+            </div>
+        </div>
+    </dialog>
 </div>
 
 <style>
@@ -367,5 +463,110 @@
         text-align: center;
         padding: 2rem;
         color: #94a3b8;
+    }
+
+    /* HTML5 표준 dialog 스타일 초기화 및 커스텀 배치 */
+    dialog.custom-modal-backdrop {
+        display: none; /* 기본 상태는 숨김 보장 */
+        border: none;
+        background: transparent;
+        padding: 0;
+        max-width: none;
+        max-height: none;
+        width: 100vw;
+        height: 100vh;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        top: 0;
+        left: 0;
+        margin: 0;
+        outline: none;
+    }
+
+    /* 다이얼로그가 열려 있을 때만 flex 레이아웃 활성화 */
+    dialog.custom-modal-backdrop[open] {
+        display: flex;
+    }
+
+    dialog.custom-modal-backdrop::backdrop {
+        background-color: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(4px);
+    }
+
+    .custom-modal-card {
+        background-color: #ffffff;
+        border-radius: 16px;
+        padding: 2rem;
+        width: 90%;
+        max-width: 400px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        border: 1px solid #f1f5f9;
+        text-align: center;
+        animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .modal-warning-icon {
+        width: 56px;
+        height: 56px;
+        background-color: #fef2f2;
+        color: #ef4444;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1rem auto;
+    }
+
+    .custom-modal-card h3 {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 0 0 0.5rem 0;
+    }
+
+    .modal-description {
+        font-size: 0.9rem;
+        color: #64748b;
+        margin: 0 0 1.5rem 0;
+        line-height: 1.5;
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .modal-btn {
+        flex: 1;
+        padding: 0.75rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+        border: none;
+    }
+
+    .modal-cancel {
+        background-color: #f8fafc;
+        color: #475569;
+        border: 1px solid #e2e8f0;
+    }
+
+    .modal-confirm {
+        background-color: #ef4444;
+        color: #ffffff;
+    }
+
+    @keyframes modalFadeIn {
+        from {
+            opacity: 0;
+            transform: scale(0.95);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
     }
 </style>

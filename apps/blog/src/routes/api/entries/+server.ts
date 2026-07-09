@@ -318,3 +318,55 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
         return json({ error: e.message }, { status: 500 });
     }
 };
+
+// PATCH /api/entries (댓글/방명록 수정 API)
+export const PATCH: RequestHandler = async ({ request, locals }) => {
+    const currentUser = locals.user;
+    if (!currentUser) {
+        return json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const db = locals.userDb;
+    if (!db) {
+        return json({ error: 'Database not available' }, { status: 500 });
+    }
+
+    try {
+        const { id, content } = await request.json() as { id: string; content: string };
+        if (!id || !content || !content.trim()) {
+            return json({ error: 'Missing entry id or content' }, { status: 400 });
+        }
+
+        // 대상 엔트리 존재 여부 확인
+        const entry = await db.select().from(entries).where(eq(entries.id, id)).get();
+        if (!entry) {
+            return json({ error: 'Entry not found' }, { status: 404 });
+        }
+
+        if (entry.isDeleted) {
+            return json({ error: 'Cannot edit deleted entry' }, { status: 400 });
+        }
+
+        // 작성자 소유권 및 어드민 권한 체크
+        const isOwner = entry.userId === currentUser.id;
+        const isAdmin = (currentUser as any).role === 'admin';
+
+        if (!isOwner && !isAdmin) {
+            return json({ error: 'Forbidden' }, { status: 403 });
+        }
+
+        // HTML 정화(sanitize) 후 DB 업데이트
+        const updatedEntry = await db.update(entries)
+            .set({ 
+                content: sanitizeHtml(content.trim()) 
+            })
+            .where(eq(entries.id, id))
+            .returning()
+            .get();
+
+        return json(updatedEntry);
+    } catch (e: any) {
+        console.error('Failed to update entry:', e);
+        return json({ error: e.message }, { status: 500 });
+    }
+};

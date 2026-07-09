@@ -791,6 +791,8 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "blog.post.share_link": { "ko": "링크 복사", "en": "Copy Link", "ja": "リンクをコピー" },
     "blog.post.copy_success": { "ko": "클립보드에 링크가 복사되었습니다!", "en": "Link copied to clipboard!", "ja": "クリップボードにリンクがコピーされました！" },
     "blog.post.login_required_like": { "ko": "좋아요를 누르려면 로그인이 필요합니다.", "en": "Login is required to like.", "ja": "いいねをするにはログインが必要です。" },
+    "blog.common.edit": { "ko": "수정", "en": "Edit", "ja": "編集" },
+    "blog.common.save": { "ko": "저장", "en": "Save", "ja": "保存" },
     "blog.common.saving": { "ko": "저장 중...", "en": "Saving...", "ja": "保存中..." },
     "blog.common.save_success": { "ko": "저장되었습니다.", "en": "Saved successfully.", "ja": "保存されました。" },
     "blog.common.withdraw_success": { "ko": "탈퇴 처리가 완료되었습니다.", "en": "Account deleted successfully.", "ja": "退会処理が完了しました。" },
