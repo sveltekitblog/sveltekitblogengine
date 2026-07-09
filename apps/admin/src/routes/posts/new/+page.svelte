@@ -35,6 +35,24 @@
     let groupDataJson = $state("[]");
     let defaultLang = $derived(data.languages?.find((l: any) => l.is_default)?.code || data.languages?.[0]?.code || 'ko');
 
+    // 실시간 모드별 글자 수 계산 유도 상태 ($derived)
+    let charCount = $derived(() => {
+        const rawContent = translationsData[activeLang]?.content || "";
+        if (mode === "markdown") {
+            const cleanMarkdown = rawContent
+                .replace(/[#*`_~-]/g, "") // 마크다운 서식 제거
+                .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // 링크 [텍스트](url) -> 텍스트
+                .replace(/!\[([^\]]*)\]\([^)]+\)/g, "") // 이미지 ![설명](url) -> 제거
+                .trim();
+            return cleanMarkdown.length;
+        }
+        const cleanHtml = rawContent
+            .replace(/<[^>]*>/g, "") // HTML 태그 제거
+            .replace(/&nbsp;/g, " ") // 공백 기호 복원
+            .trim();
+        return cleanHtml.length;
+    });
+
     // Initialize blank data for each language
     $effect(() => {
         if (data.languages && Object.keys(translationsData).length === 0) {
@@ -346,6 +364,10 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                     </div>
                 {/if}
             {/if}
+            <!-- 실시간 글자수 카운터 UI 추가 (다국어화 적용) -->
+            <div class="char-counter">
+                ({t('admin.editor.char_count')}: {charCount()})
+            </div>
         </div>
 
         <div class="form-actions">
@@ -414,6 +436,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
     :global(.preview-mode figure[data-align="left"]) { align-items: flex-start; }
     :global(.preview-mode figure[data-align="right"]) { align-items: flex-end; }
     :global(.preview-mode figcaption) { margin-top: 0.5rem; font-size: 0.875rem; color: #6b7280; text-align: center; }
+    .char-counter { text-align: right; padding: 0.5rem 1rem; font-size: 0.875rem; color: #6b7280; background: #fafafa; border-top: 1px solid #e5e7eb; border-radius: 0 0 0.5rem 0.5rem; }
     .form-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding: 1.5rem; background: white; border: 1px solid #e5e7eb; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     .status-selector { display: flex; gap: 1.5rem; }
     .status-selector label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0; }

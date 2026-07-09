@@ -18,8 +18,8 @@
         "setup": "node scripts/setup.js",
         "setup:select": "node scripts/setup.js --select",
         "restore": "node scripts/setup.js --restore",
-        "deploy:blog": "node scripts/sync-secrets.js apps/blog sveltekitblogblog && npm run build:blog && cd apps/blog && npx wrangler pages deploy .svelte-kit/cloudflare --project-name sveltekitblogblog",
-        "deploy:admin": "node scripts/sync-secrets.js apps/admin sveltekitblogadmin && npm run build:admin && cd apps/admin && npx wrangler pages deploy .svelte-kit/cloudflare --project-name sveltekitblogadmin"
+        "deploy:blog": "node scripts/sync-secrets.js apps/blog svelteblog && npm run build:blog && cd apps/blog && npx wrangler pages deploy .svelte-kit/cloudflare --project-name svelteblog",
+        "deploy:admin": "node scripts/sync-secrets.js apps/admin svelteadmin && npm run build:admin && cd apps/admin && npx wrangler pages deploy .svelte-kit/cloudflare --project-name svelteadmin"
     },
     "devDependencies": {
         "wrangler": "^4.54.0"
