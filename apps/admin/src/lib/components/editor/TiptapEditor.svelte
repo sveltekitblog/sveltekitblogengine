@@ -98,7 +98,9 @@
         src: string;
         caption: string;
         alignment: string;
-    }>({ pos: 0, src: "", caption: "", alignment: "center" });
+        linkUrl?: string;
+        linkTargetBlank?: boolean;
+    }>({ pos: 0, src: "", caption: "", alignment: "center", linkUrl: "", linkTargetBlank: false });
 
     let activeColorPalette = $state<
         "text" | "highlight" | "heading" | "fontSize" | null
@@ -290,11 +292,35 @@
                     wrapper.addEventListener("click", (e) => {
                         e.preventDefault();
                         e.stopPropagation();
+
+                        const pos = getPos();
+                        let linkUrl = "";
+                        let linkTargetBlank = false;
+
+                        const innerNode = editor?.state.doc.nodeAt(pos);
+                        if (innerNode) {
+                            const linkMark = innerNode.marks.find(m => m.type.name === "link");
+                            if (linkMark) {
+                                linkUrl = linkMark.attrs.href || "";
+                                linkTargetBlank = linkMark.attrs.target === "_blank";
+                            } else {
+                                // 부모 노드 깊이의 앵커 마크 검색
+                                const $pos = editor.state.doc.resolve(pos);
+                                const parentLinkMark = $pos.marks().find(m => m.type.name === "link");
+                                if (parentLinkMark) {
+                                    linkUrl = parentLinkMark.attrs.href || "";
+                                    linkTargetBlank = parentLinkMark.attrs.target === "_blank";
+                                }
+                            }
+                        }
+
                         openImageEditModal({
-                            pos: getPos(),
+                            pos: pos,
                             src: node.attrs.src || "",
                             caption: node.attrs["data-caption"] || "",
                             alignment: node.attrs["data-align"] || "center",
+                            linkUrl,
+                            linkTargetBlank,
                         });
                     });
 
@@ -469,17 +495,24 @@
         src: string;
         caption: string;
         alignment: string;
+        linkUrl?: string;
+        linkTargetBlank?: boolean;
     }) {
         editingImage = info;
         showImageEditModal = true;
     }
 
-    function handleImageEditSave(caption: string, alignment: string) {
+    function handleImageEditSave(
+        caption: string,
+        alignment: string,
+        linkConfig?: { url: string; targetBlank: boolean } | null,
+    ) {
         if (!editor) return;
         const pos = editingImage.pos;
         const node = editor.state.doc.nodeAt(pos);
         if (!node) return;
 
+        // 1. 이미지 노드 마크업(캡션, 정렬) 수정
         editor
             .chain()
             .focus()
@@ -492,6 +525,27 @@
                 return true;
             })
             .run();
+
+        // 2. 링크(Mark) 수정 혹은 삭제
+        if (linkConfig && linkConfig.url) {
+            editor
+                .chain()
+                .focus()
+                .setNodeSelection(pos)
+                .setMark("link", {
+                    href: linkConfig.url,
+                    target: linkConfig.targetBlank ? "_blank" : null,
+                })
+                .run();
+        } else {
+            editor
+                .chain()
+                .focus()
+                .setNodeSelection(pos)
+                .unsetMark("link")
+                .run();
+        }
+
         showImageEditModal = false;
     }
 
@@ -918,6 +972,8 @@
         currentSrc={editingImage.src}
         currentCaption={editingImage.caption}
         currentAlignment={editingImage.alignment}
+        currentLinkUrl={editingImage.linkUrl}
+        currentLinkTargetBlank={editingImage.linkTargetBlank}
         onSave={handleImageEditSave}
         onDelete={handleImageDelete}
         onClose={() => (showImageEditModal = false)}

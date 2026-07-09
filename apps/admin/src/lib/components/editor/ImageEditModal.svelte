@@ -22,7 +22,13 @@
         currentSrc?: string;
         currentCaption?: string;
         currentAlignment?: string;
-        onSave: (caption: string, alignment: string) => void;
+        currentLinkUrl?: string;
+        currentLinkTargetBlank?: boolean;
+        onSave: (
+            caption: string,
+            alignment: string,
+            linkConfig?: { url: string; targetBlank: boolean } | null,
+        ) => void;
         onDelete: () => void;
         onClose: () => void;
     }
@@ -32,6 +38,8 @@
         currentSrc = "",
         currentCaption = "",
         currentAlignment = "center",
+        currentLinkUrl = "",
+        currentLinkTargetBlank = false,
         onSave,
         onDelete,
         onClose,
@@ -40,18 +48,30 @@
     let editCaption = $state("");
     let editAlignment = $state("center");
     let isDeleting = $state(false);
+    let useLink = $state(false);
+    let editLinkUrl = $state("");
+    let editLinkTargetBlank = $state(false);
 
     // Sync props to local state when modal opens
     $effect(() => {
         if (isOpen) {
             editCaption = currentCaption || "";
             editAlignment = currentAlignment || "center";
+            useLink = !!currentLinkUrl;
+            editLinkUrl = currentLinkUrl || "";
+            editLinkTargetBlank = currentLinkTargetBlank || false;
             isDeleting = false;
         }
     });
 
     function handleSave() {
-        onSave(editCaption, editAlignment);
+        onSave(
+            editCaption,
+            editAlignment,
+            useLink && editLinkUrl.trim()
+                ? { url: editLinkUrl.trim(), targetBlank: editLinkTargetBlank }
+                : null
+        );
     }
 
     function handleDelete() {
@@ -118,6 +138,50 @@
                         </label>
                     </div>
                 </div>
+
+                <!-- 이미지 링크 설정 UI 영역 -->
+                <div class="form-group checkbox-group mt-3 border-t pt-3">
+                    <input
+                        type="checkbox"
+                        id="useLink"
+                        bind:checked={useLink}
+                    />
+                    <label for="useLink" class="font-semibold text-slate-700"
+                        >{t("admin.editor.use_link", {
+                            default: "이미지에 링크 걸기",
+                        })}</label
+                    >
+                </div>
+
+                {#if useLink}
+                    <div class="form-group">
+                        <label class="block-label" for="linkUrl"
+                            >{t("admin.editor.link_url_label", {
+                                default: "링크 URL",
+                            })}</label
+                        >
+                        <input
+                            id="linkUrl"
+                            type="text"
+                            bind:value={editLinkUrl}
+                            class="text-input"
+                            placeholder="https://example.com"
+                        />
+                    </div>
+
+                    <div class="form-group checkbox-group">
+                        <input
+                            type="checkbox"
+                            id="linkTargetBlank"
+                            bind:checked={editLinkTargetBlank}
+                        />
+                        <label for="linkTargetBlank"
+                            >{t("admin.editor.link_target_blank", {
+                                default: "새 창으로 열기",
+                            })}</label
+                        >
+                    </div>
+                {/if}
             </div>
 
             <div class="modal-footer">
