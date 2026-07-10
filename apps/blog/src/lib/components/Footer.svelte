@@ -278,7 +278,12 @@
     }
 
     .blog-footer {
-        padding: 0 0 1rem 0;
+        max-width: var(--max-width, 1200px);
+        width: calc(100% - 2 * var(--safe-side-margin, 0px)) !important;
+        margin: 0 auto var(--safe-top-margin, 0px) !important;
+        padding: 0;
+        box-sizing: border-box;
+        border-radius: var(--footer-radius);
     }
     .footer-inner {
         max-width: var(--max-width, 1200px);
@@ -291,6 +296,13 @@
         border-radius: var(--footer-radius);
         box-shadow: var(--footer-shadow);
         transition: all 0.3s ease;
+    }
+
+    @media (max-width: 768px) {
+        .blog-footer {
+            width: calc(100% - 2 * var(--safe-side-margin-mobile, 0px)) !important;
+            margin: 0 auto var(--safe-top-margin-mobile, 0px) !important;
+        }
     }
 
     p {
