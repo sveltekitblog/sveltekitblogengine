@@ -1350,7 +1350,7 @@
             availableWidgets = [
                 ...availableWidgets,
                 {
-                    id: data.id,
+                    id: `master-${data.id}`,
                     name: newWidgetName,
                     type: newWidgetType,
                     config: config,
