@@ -1064,11 +1064,23 @@
             typeof widget.id === "string"
                 ? parseInt(widget.id.replace("master-", ""))
                 : widget.id;
+
+        const rawConfig = widget.config;
+        let parsedConfig: any = {};
+        if (rawConfig) {
+            if (typeof rawConfig === "string") {
+                try { parsedConfig = JSON.parse(rawConfig); } catch { parsedConfig = {}; }
+            } else {
+                parsedConfig = { ...rawConfig };
+            }
+        }
+
         const newInstance = {
             id: Date.now() + Math.random(),
             widget_id: widgetId,
             name: widget.name,
             type: widget.type,
+            config: parsedConfig,
             custom_title: ensureTranslationObj("", ""),
             column_index: colIndex,
             sort_order: mobileColumnWidgets[colIndex].length,
@@ -1508,7 +1520,14 @@
         editWidgetName = widget.name;
         editWidgetType = widget.type;
         try {
-            const config = JSON.parse(widget.config || "{}");
+            let config: any = {};
+            if (widget.config) {
+                if (typeof widget.config === "string") {
+                    config = JSON.parse(widget.config);
+                } else {
+                    config = { ...widget.config };
+                }
+            }
             // [버그 A 연계] 전체 config를 보관해두어 handleUpdateWidget에서 merge 기반으로 활용
             currentEditingWidgetFullConfig = config;
             if (widget.type === "category_link") {
