@@ -78,16 +78,19 @@ export const load: LayoutServerLoad = async ({ locals, request }) => {
             };
         }
 
-        const getLimitFor = (type: string): number | undefined => {
-            const widget = allWidgets.find((w: any) => w.type === type);
-            return widget?.config?.limit ? parseInt(widget.config.limit, 10) : undefined;
+        const getMaxLimitFor = (type: string): number | undefined => {
+            const limits = allWidgets
+                .filter((w: any) => w.type === type)
+                .map((w: any) => parseInt(w.config?.limit, 10))
+                .filter((n: number) => !isNaN(n) && n > 0);
+            return limits.length > 0 ? Math.max(...limits) : undefined;
         };
 
         const [recentPosts, popularPosts, tags, recentEntries] = await Promise.all([
-            db.getRecentPosts(getLimitFor("RecentPosts"), undefined, 1, undefined, locals.lang || locals.dbDefaultLang, locals.dbDefaultLang),
-            db.getPopularPosts(getLimitFor("PopularPosts"), locals.lang || locals.dbDefaultLang, locals.dbDefaultLang),
+            db.getRecentPosts(getMaxLimitFor("RecentPosts"), undefined, 1, undefined, locals.lang || locals.dbDefaultLang, locals.dbDefaultLang),
+            db.getPopularPosts(getMaxLimitFor("PopularPosts"), locals.lang || locals.dbDefaultLang, locals.dbDefaultLang),
             db.getAllTags(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang),
-            db.getRecentEntries(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang, getLimitFor("RecentComments"), getLimitFor("RecentGuestbooks")).catch((e: any) => {
+            db.getRecentEntries(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang, getMaxLimitFor("RecentComments"), getMaxLimitFor("RecentGuestbooks")).catch((e: any) => {
                 console.error('getRecentEntries failed:', e);
                 return { comments: [], guestbooks: [] };
             })
