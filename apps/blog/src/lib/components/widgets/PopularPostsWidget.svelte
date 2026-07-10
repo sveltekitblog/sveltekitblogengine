@@ -53,7 +53,7 @@
     }
     li {
         border-bottom: 1px solid #f0f0f0;
-        padding-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
     }
     li:last-child {
         border-bottom: none;

@@ -48,7 +48,19 @@
         margin: 0;
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: 0;
+    }
+    li {
+        border-bottom: 1px solid #f0f0f0;
+        padding-bottom: 0.5rem;
+        padding-top: 0.5rem;
+    }
+    li:first-child {
+        padding-top: 0;
+    }
+    li:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
     }
     a {
         text-decoration: none;
