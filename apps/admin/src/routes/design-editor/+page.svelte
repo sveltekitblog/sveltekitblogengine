@@ -911,11 +911,27 @@
             typeof widget.id === "string"
                 ? parseInt(widget.id.replace("master-", ""))
                 : widget.id;
+
+        const rawConfig = widget.config;
+        let parsedConfig: any = {};
+        if (rawConfig) {
+            if (typeof rawConfig === "string") {
+                try {
+                    parsedConfig = JSON.parse(rawConfig);
+                } catch {
+                    parsedConfig = {};
+                }
+            } else {
+                parsedConfig = { ...rawConfig };
+            }
+        }
+
         const newInstance = {
             id: Date.now(), // temp id
             widget_id: widgetId,
             name: widget.name,
             type: widget.type,
+            config: parsedConfig,
             custom_title: ensureTranslationObj("", ""),
             column_index: colIndex,
             sort_order: columnWidgets[colIndex].length,
@@ -1325,7 +1341,8 @@
                 "RecentGuestbooks",
             ].includes(newWidgetType)
         ) {
-            configObj.limit = newWidgetLimit;
+            const parsedLimit = parseInt(String(newWidgetLimit), 10);
+            configObj.limit = isNaN(parsedLimit) || parsedLimit < 1 ? 5 : parsedLimit;
         }
 
         // Add shadow config
@@ -1393,7 +1410,8 @@
                 "RecentGuestbooks",
             ].includes(editWidgetType)
         ) {
-            configObj.limit = editWidgetLimit;
+            const parsedLimit = parseInt(String(editWidgetLimit), 10);
+            configObj.limit = isNaN(parsedLimit) || parsedLimit < 1 ? 5 : parsedLimit;
         } else {
             delete configObj.limit;
         }
