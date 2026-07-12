@@ -27,7 +27,7 @@
 
     let { data, children }: { data: any; children: any } = $props();
 
-    let isMobile = $state(untrack(() => data.isMobile ?? false));
+    let isMobile = $state(untrack(() => data.isMobile ?? true));
 
     onMount(() => {
         const media = window.matchMedia("(max-width: 768px)");

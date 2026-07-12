@@ -71,7 +71,16 @@
 
     onMount(() => {
         // 정적 컴포넌트 임포트 적용 완료로 인한 동적 로더 로직 제거
+        const media = window.matchMedia("(max-width: 768px)");
+        isMobile = media.matches;
+        const listener = (e: MediaQueryListEvent) => {
+            isMobile = e.matches;
+        };
+        media.addEventListener("change", listener);
+        return () => media.removeEventListener("change", listener);
     });
+
+    let isMobile = $state(true); // SSR 기본값은 모바일(true)
 
     // ─── 데이터 처리 ──────────────────────────────────────────────────
     const dbDefaultLang = $derived($page.data.dbDefaultLang || "ko");
@@ -226,11 +235,12 @@
 </script>
 
 <div class="layout-wrapper" style="--d-grid: {desktopGridTemplate}; {getGlobalWidgetStyles()}">
-    <!-- Desktop Layout (Hidden on Mobile via CSS) -->
-    <div class="desktop-only-layout">
-        {#each dCols as widgets, colIdx}
-            <div class="layout-column">
-                {#each widgets as w}
+    {#if isMobile}
+        <!-- Mobile Layout (SSR Default / Client Mobile) -->
+        <div class="mobile-only-layout">
+            {#if mWidgets && mWidgets.length > 0}
+                <!-- Use explicit mobile widgets if configured -->
+                {#each mWidgets as w}
                     {#if w.type === 'post_content' || w.type === 'PostContent'}
                         <div class="main-content-block widget-item" style={getWidgetShadowStyle(w)}>
                             {@render children()}
@@ -253,7 +263,7 @@
                                 {:else if w.type === "TagCloud" && widgetComponents["TagCloud"]}
                                     {@const rawCfg = w.config && typeof w.config === "string" ? JSON.parse(w.config) : w.config || {}}
                                     {@const Component = widgetComponents["TagCloud"]}
-                                    <Component {tags} config={rawCfg.desktop || rawCfg} cardFontSize={desktopCardFontSize} />
+                                    <Component {tags} config={rawCfg.mobile || rawCfg} cardFontSize={mobileCardFontSize} />
                                 {:else if w.type === "RecentComments" && widgetComponents["RecentComments"]}
                                     {@const Component = widgetComponents["RecentComments"]}
                                     <Component comments={recentComments.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
@@ -269,107 +279,109 @@
                         </div>
                     {/if}
                 {/each}
-
-                {#if !hasPostContentWidget && colIdx === defaultMainColIdx}
+                
+                <!-- Mobile Fallback for PostContent if not in mWidgets -->
+                {#if !mWidgets.some(w => w.type === 'post_content' || w.type === 'PostContent')}
                     <div class="main-content-block widget-item">
                         {@render children()}
                     </div>
                 {/if}
-            </div>
-        {/each}
-    </div>
-
-    <!-- Mobile Layout (Hidden on Desktop via CSS) -->
-    <div class="mobile-only-layout">
-        {#if mWidgets && mWidgets.length > 0}
-            <!-- Use explicit mobile widgets if configured -->
-            {#each mWidgets as w}
-                {#if w.type === 'post_content' || w.type === 'PostContent'}
-                    <div class="main-content-block widget-item" style={getWidgetShadowStyle(w)}>
-                        {@render children()}
-                    </div>
-                {:else}
-                    <div class="widget-item" style={getWidgetShadowStyle(w)}>
-                        {#if (w.customTitle || w.name)}
-                            <h3 class="widget-title">{getWidgetTitle(w)}</h3>
-                        {/if}
-                        <div class="widget-body">
-                            {#if w.type === "RecentPosts" && widgetComponents["RecentPosts"]}
-                                {@const Component = widgetComponents["RecentPosts"]}
-                                <Component posts={recentPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
-                            {:else if (w.type === "CategoryList" || w.type === "CategoryMenu" || w.type === "category_link") && widgetComponents["CategoryList"]}
-                                {@const Component = widgetComponents["CategoryList"]}
-                                <Component {categories} />
-                            {:else if w.type === "PopularPosts" && widgetComponents["PopularPosts"]}
-                                {@const Component = widgetComponents["PopularPosts"]}
-                                <Component posts={popularPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
-                            {:else if w.type === "TagCloud" && widgetComponents["TagCloud"]}
-                                {@const rawCfg = w.config && typeof w.config === "string" ? JSON.parse(w.config) : w.config || {}}
-                                {@const Component = widgetComponents["TagCloud"]}
-                                <Component {tags} config={rawCfg.mobile || rawCfg} cardFontSize={mobileCardFontSize} />
-                            {:else if w.type === "RecentComments" && widgetComponents["RecentComments"]}
-                                {@const Component = widgetComponents["RecentComments"]}
-                                <Component comments={recentComments.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
-                            {:else if w.type === "RecentGuestbooks" && widgetComponents["RecentGuestbooks"]}
-                                {@const Component = widgetComponents["RecentGuestbooks"]}
-                                <Component guestbooks={recentGuestbooks.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
-                            {:else if w.type === "HtmlWidget" && widgetComponents["HtmlWidget"]}
-                                {@const Component = widgetComponents["HtmlWidget"]}
-                                <Component html={w.config?.html || ""} />
-                            {/if}
+            {:else}
+                <!-- Fallback: Render dWidgets but flattened (Old behavior but cleaner) -->
+                {#each dWidgets as w}
+                     {#if w.type === 'post_content' || w.type === 'PostContent'}
+                        <div class="main-content-block widget-item" style={getWidgetShadowStyle(w)}>
+                            {@render children()}
                         </div>
-                    </div>
-                {/if}
-            {/each}
-            
-            <!-- Mobile Fallback for PostContent if not in mWidgets -->
-            {#if !mWidgets.some(w => w.type === 'post_content' || w.type === 'PostContent')}
-                <div class="main-content-block widget-item">
-                    {@render children()}
-                </div>
+                     {:else}
+                        <div class="widget-item" style={getWidgetShadowStyle(w)}>
+                            {#if (w.customTitle || w.name)}
+                                <h3 class="widget-title">{getWidgetTitle(w)}</h3>
+                            {/if}
+                            <div class="widget-body">
+                                {#if w.type === "RecentPosts" && widgetComponents["RecentPosts"]}
+                                    {@const Component = widgetComponents["RecentPosts"]}
+                                    <Component posts={recentPosts} />
+                                {:else if (w.type === "CategoryList" || w.type === "CategoryMenu" || w.type === "category_link") && widgetComponents["CategoryList"]}
+                                    {@const Component = widgetComponents["CategoryList"]}
+                                    <Component {categories} />
+                                {:else if w.type === "PopularPosts" && widgetComponents["PopularPosts"]}
+                                    {@const Component = widgetComponents["PopularPosts"]}
+                                    <Component posts={popularPosts} />
+                                {:else if w.type === "TagCloud" && widgetComponents["TagCloud"]}
+                                    {@const rawCfg = w.config && typeof w.config === "string" ? JSON.parse(w.config) : w.config || {}}
+                                    {@const Component = widgetComponents["TagCloud"]}
+                                    <Component {tags} config={rawCfg.mobile || rawCfg} cardFontSize={mobileCardFontSize} />
+                                {:else if w.type === "RecentComments" && widgetComponents["RecentComments"]}
+                                    {@const Component = widgetComponents["RecentComments"]}
+                                    <Component comments={recentComments} />
+                                {:else if w.type === "RecentGuestbooks" && widgetComponents["RecentGuestbooks"]}
+                                    {@const Component = widgetComponents["RecentGuestbooks"]}
+                                    <Component guestbooks={recentGuestbooks} />
+                                {:else if w.type === "HtmlWidget" && widgetComponents["HtmlWidget"]}
+                                    {@const Component = widgetComponents["HtmlWidget"]}
+                                    <Component html={w.config?.html || ""} />
+                                {/if}
+                            </div>
+                        </div>
+                     {/if}
+                {/each}
             {/if}
-        {:else}
-            <!-- Fallback: Render dWidgets but flattened (Old behavior but cleaner) -->
-            {#each dWidgets as w}
-                 {#if w.type === 'post_content' || w.type === 'PostContent'}
-                    <div class="main-content-block widget-item" style={getWidgetShadowStyle(w)}>
-                        {@render children()}
-                    </div>
-                 {:else}
-                    <div class="widget-item" style={getWidgetShadowStyle(w)}>
-                        {#if (w.customTitle || w.name)}
-                            <h3 class="widget-title">{getWidgetTitle(w)}</h3>
+        </div>
+    {:else}
+        <!-- Desktop Layout (Client Desktop Only) -->
+        <div class="desktop-only-layout">
+            {#each dCols as widgets, colIdx}
+                <div class="layout-column">
+                    {#each widgets as w}
+                        {#if w.type === 'post_content' || w.type === 'PostContent'}
+                            <div class="main-content-block widget-item" style={getWidgetShadowStyle(w)}>
+                                {@render children()}
+                            </div>
+                        {:else}
+                            <div class="widget-item" style={getWidgetShadowStyle(w)}>
+                                {#if (w.customTitle || w.name)}
+                                    <h3 class="widget-title">{getWidgetTitle(w)}</h3>
+                                {/if}
+                                <div class="widget-body">
+                                    {#if w.type === "RecentPosts" && widgetComponents["RecentPosts"]}
+                                        {@const Component = widgetComponents["RecentPosts"]}
+                                        <Component posts={recentPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
+                                    {:else if (w.type === "CategoryList" || w.type === "CategoryMenu" || w.type === "category_link") && widgetComponents["CategoryList"]}
+                                        {@const Component = widgetComponents["CategoryList"]}
+                                        <Component {categories} />
+                                    {:else if w.type === "PopularPosts" && widgetComponents["PopularPosts"]}
+                                        {@const Component = widgetComponents["PopularPosts"]}
+                                        <Component posts={popularPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
+                                    {:else if w.type === "TagCloud" && widgetComponents["TagCloud"]}
+                                        {@const rawCfg = w.config && typeof w.config === "string" ? JSON.parse(w.config) : w.config || {}}
+                                        {@const Component = widgetComponents["TagCloud"]}
+                                        <Component {tags} config={rawCfg.desktop || rawCfg} cardFontSize={desktopCardFontSize} />
+                                    {:else if w.type === "RecentComments" && widgetComponents["RecentComments"]}
+                                        {@const Component = widgetComponents["RecentComments"]}
+                                        <Component comments={recentComments.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
+                                    {:else if w.type === "RecentGuestbooks" && widgetComponents["RecentGuestbooks"]}
+                                        {@const Component = widgetComponents["RecentGuestbooks"]}
+                                        <Component guestbooks={recentGuestbooks.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
+                                    {:else if w.type === "HtmlWidget" && widgetComponents["HtmlWidget"]}
+                                        {@const Component = widgetComponents["HtmlWidget"]}
+                                        {@const cfg = typeof w.config === 'string' ? JSON.parse(w.config || '{}') : (w.config || {})}
+                                        <Component html={cfg.html || ""} useShadowDom={cfg.useShadowDom ?? true} />
+                                    {/if}
+                                </div>
+                            </div>
                         {/if}
-                        <div class="widget-body">
-                            {#if w.type === "RecentPosts" && widgetComponents["RecentPosts"]}
-                                {@const Component = widgetComponents["RecentPosts"]}
-                                <Component posts={recentPosts} />
-                            {:else if (w.type === "CategoryList" || w.type === "CategoryMenu" || w.type === "category_link") && widgetComponents["CategoryList"]}
-                                {@const Component = widgetComponents["CategoryList"]}
-                                <Component {categories} />
-                            {:else if w.type === "PopularPosts" && widgetComponents["PopularPosts"]}
-                                {@const Component = widgetComponents["PopularPosts"]}
-                                <Component posts={popularPosts} />
-                            {:else if w.type === "TagCloud" && widgetComponents["TagCloud"]}
-                                {@const rawCfg = w.config && typeof w.config === "string" ? JSON.parse(w.config) : w.config || {}}
-                                {@const Component = widgetComponents["TagCloud"]}
-                                <Component {tags} config={rawCfg.mobile || rawCfg} cardFontSize={mobileCardFontSize} />
-                            {:else if w.type === "RecentComments" && widgetComponents["RecentComments"]}
-                                {@const Component = widgetComponents["RecentComments"]}
-                                <Component comments={recentComments} />
-                            {:else if w.type === "RecentGuestbooks" && widgetComponents["RecentGuestbooks"]}
-                                {@const Component = widgetComponents["RecentGuestbooks"]}
-                                <Component guestbooks={recentGuestbooks} />
-                            {:else if w.type === "HtmlWidget" && widgetComponents["HtmlWidget"]}
-                                {@const Component = widgetComponents["HtmlWidget"]}
-                                <Component html={w.config?.html || ""} />
-                            {/if}
+                    {/each}
+
+                    {#if !hasPostContentWidget && colIdx === defaultMainColIdx}
+                        <div class="main-content-block widget-item">
+                            {@render children()}
                         </div>
-                    </div>
-                 {/if}
+                    {/if}
+                </div>
             {/each}
-        {/if}
-    </div>
+        </div>
+    {/if}
 </div>
 
 <style>
