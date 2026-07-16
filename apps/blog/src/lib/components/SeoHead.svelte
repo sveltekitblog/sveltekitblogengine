@@ -76,7 +76,7 @@
         {#each seo.alternates as alt}
             <link rel="alternate" hreflang={alt.lang} href={alt.url} />
         {/each}
-        <link rel="alternate" hreflang="x-default" href={url} />
+        <link rel="alternate" hreflang="x-default" href={seo?.xDefaultUrl || url} />
     {/if}
 
     {#if seo?.jsonLd}

@@ -298,6 +298,7 @@
     });
 </script>
 
+<SeoHead {seo} settings={data.settings} />
 
 <div class="guestbook-page">
     <div class="page-header">

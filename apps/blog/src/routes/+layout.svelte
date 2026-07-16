@@ -186,8 +186,8 @@
     <!-- 범용 페이지용 전역 Hreflang 자동 생성 (하드코딩 배제, DB 활성화 언어 연동) -->
     {#if !seo?.alternates && data.languages && data.languages.length > 0}
         {@const dbDefaultLang = data.dbDefaultLang || 'ko'}
-        {@const nonDefaultLangs = data.languages.map(l => l.code).filter(c => c !== dbDefaultLang)}
-        {@const langRegex = new RegExp(`^\\/(${nonDefaultLangs.join('|')})(\\/|$)`)}
+        {@const allLangs = data.languages.map(l => l.code)}
+        {@const langRegex = new RegExp(`^\\/(${allLangs.join('|')})(\\/|$)`)}
         {@const currentPath = page.url.pathname}
         {@const cleanPath = currentPath.replace(langRegex, '$2')}
         
