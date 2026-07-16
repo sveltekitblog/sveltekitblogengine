@@ -17,7 +17,7 @@
 
 <script lang="ts">
     import { processImage } from "$lib/utils/clientImageProcessor";
-    import { onMount, tick } from "svelte";
+    import { onMount, tick, untrack } from "svelte";
     import { t } from "$lib/i18n.svelte";
 
     let {
@@ -59,7 +59,7 @@
     let isProcessing = $state(false);
     let useLink = $state(false);
     let linkUrl = $state("");
-    let linkTargetBlank = $state(defaultTargetBlank);
+    let linkTargetBlank = $state(untrack(() => defaultTargetBlank));
 
     let fileInput: HTMLInputElement | undefined = $state();
 

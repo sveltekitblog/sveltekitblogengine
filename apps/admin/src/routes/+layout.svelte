@@ -43,7 +43,7 @@
             </div>
             <ul>
                 <li>
-                    <a href="/" class:active={$page.url.pathname === "/"}
+                    <a href="/dashboard" class:active={$page.url.pathname === "/dashboard"}
                         >{t('admin.left.menu.dashboard')}</a
                     >
                 </li>
