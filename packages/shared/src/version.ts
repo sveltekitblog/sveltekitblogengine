@@ -16,3 +16,5 @@
  */
 
 export const APP_VERSION = 'v1.0.0.6';
+export const ENGINE_NAME = 'SKBE';
+export const FULL_VERSION = `${ENGINE_NAME} ${APP_VERSION}`;
