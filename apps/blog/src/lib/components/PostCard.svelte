@@ -170,7 +170,7 @@
                         <div class="lang-badges">
                             {#each otherTranslations as tr}
                                 <span class="lang-badge" title={$t(`common.lang.${tr.lang}`, { default: tr.lang })}>
-                                    {$t(`common.lang_short.${tr.lang}`, { default: tr.lang.toUpperCase() })}
+                                    {$t(`common.lang.short_${tr.lang}`, { default: tr.lang.toUpperCase() })}
                                 </span>
                             {/each}
                         </div>
