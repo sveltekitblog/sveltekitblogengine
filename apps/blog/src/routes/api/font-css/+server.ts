@@ -51,7 +51,7 @@ export const GET: RequestHandler = async ({ url }) => {
         return new Response(cssText, {
             headers: {
                 'Content-Type': 'text/css; charset=utf-8',
-                'Cache-Control': 'public, max-age=86400, stale-while-revalidate=86400',
+                'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800',
                 'Access-Control-Allow-Origin': '*'
             }
         });

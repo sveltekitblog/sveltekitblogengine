@@ -45,7 +45,18 @@
     const title = $derived(seo?.title || siteTitle);
     const description = $derived(seo?.description || siteDescription);
     const url = $derived(seo?.url || "");
-    const image = $derived(seo?.image || settings?.logo || "");
+    const rawImage = $derived(seo?.image || settings?.logo || "");
+
+    const absoluteImage = $derived.by(() => {
+        if (!rawImage) return "";
+        if (rawImage.startsWith("http://") || rawImage.startsWith("https://")) {
+            return rawImage;
+        }
+        const siteUrl = settings?.siteUrl || page.url.origin;
+        const cleanBase = siteUrl.endsWith('/') ? siteUrl.slice(0, -1) : siteUrl;
+        const cleanPath = rawImage.startsWith('/') ? rawImage : '/' + rawImage;
+        return `${cleanBase}${cleanPath}`;
+    });
 </script>
 
 <svelte:head>
@@ -56,9 +67,11 @@
     <meta property="og:url" content={url} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content={image} />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    {#if absoluteImage}
+        <meta property="og:image" content={absoluteImage} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+    {/if}
     <meta property="og:site_name" content={siteTitle} />
     <meta property="og:locale" content={lang === "ko" ? "ko_KR" : lang} />
 
@@ -66,7 +79,11 @@
     <meta name="twitter:url" content={url} />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={image} />
+    {#if absoluteImage}
+        <meta name="twitter:image" content={absoluteImage} />
+    {/if}
+
+    <link rel="alternate" type="application/rss+xml" title="RSS Feed" href="/rss.xml" />
 
     {#if url}
         <link rel="canonical" href={url} />

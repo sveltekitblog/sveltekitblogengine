@@ -63,16 +63,15 @@ export const load: PageServerLoad = async ({ params, locals, setHeaders }) => {
     const settings = await locals.db.getSettings(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang);
 
     const enableCdnCache = settings?.enable_cdn_cache === 'true' || settings?.enable_cdn_cache === true;
-    const cdnCacheTtl = Number(settings?.cdn_cache_ttl) || 86400;
+    const cdnCacheTtl = Number(settings?.cdn_cache_ttl) || 120;
 
     if (locals.user) {
         setHeaders({
             'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
         });
     } else if (enableCdnCache) {
-        // 브라우저 로컬 캐싱은 완전히 금지하여 로그인 꼬임 방지, 오직 Cloudflare 에지만 캐싱 지시
         setHeaders({
-            'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+            'Cache-Control': `public, max-age=60, s-maxage=${cdnCacheTtl}, stale-while-revalidate=60`,
             'Cloudflare-CDN-Cache-Control': `public, max-age=${cdnCacheTtl}`,
             'Vary': 'Cookie'
         });
@@ -116,28 +115,54 @@ export const load: PageServerLoad = async ({ params, locals, setHeaders }) => {
     // OG Image
     const ogImage = post.featured_image || settings?.logo || '';
 
-    // Prepare JSON-LD (Safe stringify)
-    const jsonLd = {
-        "@context": "https://schema.org",
-        "@type": "BlogPosting",
-        "headline": postTitle,
-        "description": excerpt,
-        "image": ogImage,
-        "datePublished": post.publishedAt || post.createdAt,
-        "dateModified": post.updatedAt || post.createdAt,
-        "author": {
-            "@type": "Person",
-            "name": settings?.authorName || "Blog Author"
-        },
-        "publisher": {
-            "@type": "Organization",
-            "name": siteTitle,
-            "logo": {
-                "@type": "ImageObject",
-                "url": settings?.logo || ogImage
+    // Prepare JSON-LD (Safe stringify with BlogPosting & BreadcrumbList)
+    const jsonLd = [
+        {
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
+            "headline": postTitle,
+            "description": excerpt,
+            "image": ogImage,
+            "datePublished": post.publishedAt || post.createdAt,
+            "dateModified": post.updatedAt || post.createdAt,
+            "author": {
+                "@type": "Person",
+                "name": settings?.authorName || "Blog Author"
+            },
+            "publisher": {
+                "@type": "Organization",
+                "name": siteTitle,
+                "logo": {
+                    "@type": "ImageObject",
+                    "url": settings?.logo || ogImage
+                }
             }
+        },
+        {
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+                {
+                    "@type": "ListItem",
+                    "position": 1,
+                    "name": "Home",
+                    "item": `${siteUrl}/`
+                },
+                {
+                    "@type": "ListItem",
+                    "position": 2,
+                    "name": post.categorySlug || "Category",
+                    "item": `${siteUrl}/${post.categorySlug}`
+                },
+                {
+                    "@type": "ListItem",
+                    "position": 3,
+                    "name": postTitle,
+                    "item": fullUrl
+                }
+            ]
         }
-    };
+    ];
 
     let lcpImage = "";
     const rawImg = post.featuredImage || post.featured_image;

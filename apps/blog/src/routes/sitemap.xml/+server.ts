@@ -44,10 +44,17 @@ export const GET: RequestHandler = async ({ platform, url, locals }) => {
             .prepare('SELECT slug, lang FROM categories')
             .all();
 
+        // Fetch all active languages configured in admin DB
+        const { results: dbLanguages } = await db
+            .prepare('SELECT code FROM languages ORDER BY sort_order ASC')
+            .all();
+        const activeLangs = (dbLanguages && dbLanguages.length > 0) ? dbLanguages.map((l: any) => l.code) : [dbDefaultLang];
+
         const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
     <url>
         <loc>${siteUrl}/</loc>
+${activeLangs.map((code: string) => `        <xhtml:link rel="alternate" hreflang="${code}" href="${siteUrl}${code === dbDefaultLang ? '' : `/${code}`}/" />`).join('\n')}
         <changefreq>daily</changefreq>
         <priority>1.0</priority>
     </url>
@@ -72,7 +79,7 @@ ${posts.map((post: any) => `    <url>
         return new Response(sitemap, {
             headers: {
                 'Content-Type': 'application/xml; charset=utf-8',
-                'Cache-Control': 'max-age=3600' // Cache for 1 hour
+                'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400'
             }
         });
     } catch (error) {

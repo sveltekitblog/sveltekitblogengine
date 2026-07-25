@@ -24,7 +24,7 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
     const { layoutWidgets, settings, categories, isMobile } = parentData;
 
     const enableCdnCache = settings?.enable_cdn_cache === 'true' || settings?.enable_cdn_cache === true;
-    const cdnCacheTtl = Number(settings?.cdn_cache_ttl) || 600;
+    const cdnCacheTtl = Number(settings?.cdn_cache_ttl) || 120;
 
     if (locals.user) {
         setHeaders({
@@ -32,7 +32,9 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
         });
     } else if (enableCdnCache) {
         setHeaders({
-            'Cache-Control': `public, max-age=10, s-maxage=${cdnCacheTtl}`
+            'Cache-Control': `public, max-age=60, s-maxage=${cdnCacheTtl}, stale-while-revalidate=60`,
+            'Cloudflare-CDN-Cache-Control': `public, max-age=${cdnCacheTtl}`,
+            'Vary': 'Cookie'
         });
     } else {
         setHeaders({
@@ -116,11 +118,34 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
     const posts = rawPosts.slice(0, limit);
 
     const siteTitle = getTrans(settings?.site_title) || 'Blog';
+    const siteUrl = settings?.siteUrl || url.origin;
+    const cleanUrl = `${url.origin}${url.pathname}`;
+
+    const jsonLd = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": `${siteUrl}/`
+            },
+            {
+                "@type": "ListItem",
+                "position": 2,
+                "name": category,
+                "item": cleanUrl
+            }
+        ]
+    };
+
     let seo = {
         title: `${category} - ${siteTitle}`,
         description: `${category} 카테고리의 포스트 목록입니다. ${getTrans(settings?.description)}`,
-        url: url.href,
-        image: settings?.logo || ''
+        url: cleanUrl,
+        image: settings?.logo || '',
+        jsonLd: JSON.stringify(jsonLd)
     };
 
     return {

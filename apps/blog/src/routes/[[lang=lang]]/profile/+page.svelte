@@ -29,6 +29,7 @@
     $effect(() => {
         newName = user?.name || '';
     });
+
     let isUpdating = $state(false);
     let isSigningOut = $state(false);
 
@@ -107,6 +108,10 @@
         }
     }
 </script>
+
+<svelte:head>
+    <meta name="robots" content="noindex, nofollow" />
+</svelte:head>
 
 <div class="profile-container">
     <div class="profile-card">

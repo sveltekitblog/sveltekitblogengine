@@ -16,7 +16,7 @@ INSERT OR IGNORE INTO blog_settings (key, value, updated_at) VALUES
 ('auth_providers', '[]', datetime('now', '+9 hours')),
 ('widget_shadow_global', '{"enabled":false,"normal":"none","hover":"none","hoverTranslateY":0}', datetime('now', '+9 hours')),
 ('enable_cdn_cache', 'false', datetime('now', '+9 hours')),
-('cdn_cache_ttl', '86400', datetime('now', '+9 hours'));
+('cdn_cache_ttl', '120', datetime('now', '+9 hours'));
 
 -- 3. Layouts (1-Column Minimal)
 INSERT OR IGNORE INTO layouts (id, name, column_count, column_widths, mobile_column_count, mobile_column_widths, is_active) VALUES

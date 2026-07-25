@@ -34,7 +34,7 @@ export const GET: RequestHandler = async ({ url }) => {
 
         const response = await fetch(targetUrl.toString(), {
             cf: {
-                cacheTtl: 86400,
+                cacheTtl: 31536000,
                 cacheEverything: true
             }
         });
@@ -46,7 +46,7 @@ export const GET: RequestHandler = async ({ url }) => {
         return new Response(response.body, {
             headers: {
                 'Content-Type': response.headers.get('Content-Type') || 'font/woff2',
-                'Cache-Control': 'public, max-age=86400, stale-while-revalidate=86400',
+                'Cache-Control': 'public, max-age=31536000, s-maxage=31536000, immutable',
                 'Access-Control-Allow-Origin': '*'
             }
         });

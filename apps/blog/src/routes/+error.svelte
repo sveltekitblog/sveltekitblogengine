@@ -44,6 +44,10 @@
     });
 </script>
 
+<svelte:head>
+    <meta name="robots" content="noindex, nofollow" />
+</svelte:head>
+
 {#if status >= 500}
     <!-- Legitimate system/server failure (500) -->
     <div class="server-error-container">

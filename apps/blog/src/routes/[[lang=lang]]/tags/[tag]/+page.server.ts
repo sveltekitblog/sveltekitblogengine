@@ -46,6 +46,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
         };
 
         const siteTitle = getTrans(settings?.site_title) || 'Blog';
+        const cleanUrl = `${url.origin}${url.pathname}`;
         
         return {
             tag,
@@ -53,7 +54,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
             seo: {
                 title: `#${tag} - ${siteTitle}`,
                 description: `#${tag} 태그와 관련된 포스트 목록입니다.`,
-                url: url.href,
+                url: cleanUrl,
                 image: settings?.logo || ''
             },
             settings

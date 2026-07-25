@@ -127,6 +127,7 @@
                         alt={post.title}
                         loading={isLcpTarget ? "eager" : "lazy"}
                         fetchpriority={isLcpTarget ? "high" : "auto"}
+                        decoding="async"
                         width={optimalWidth}
                         height={optimalHeight}
                         onerror={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/no_image_placeholder.webp"; }}
@@ -137,6 +138,7 @@
                         alt="이미지 없음"
                         loading={isLcpTarget ? "eager" : "lazy"}
                         fetchpriority={isLcpTarget ? "high" : "auto"}
+                        decoding="async"
                         width={optimalWidth}
                         height={optimalHeight}
                     />

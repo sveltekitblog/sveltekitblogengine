@@ -21,17 +21,16 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
     const { layoutWidgets, settings, isMobile } = await parent();
 
     const enableCdnCache = settings?.enable_cdn_cache === 'true' || settings?.enable_cdn_cache === true;
-    const cdnCacheTtl = Number(settings?.cdn_cache_ttl) || 86400;
+    const cdnCacheTtl = Number(settings?.cdn_cache_ttl) || 120;
 
     if (locals.user) {
         setHeaders({
             'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
         });
     } else if (enableCdnCache) {
-        // 브라우저 로컬 캐싱은 완전히 금지하여 로그인 꼬임 방지, 오직 Cloudflare 에지만 3분 캐싱 지시
         setHeaders({
-            'Cache-Control': 'private, no-cache, no-store, must-revalidate',
-            'Cloudflare-CDN-Cache-Control': 'public, max-age=180, stale-while-revalidate=180',
+            'Cache-Control': `public, max-age=60, s-maxage=${cdnCacheTtl}, stale-while-revalidate=60`,
+            'Cloudflare-CDN-Cache-Control': `public, max-age=${cdnCacheTtl}`,
             'Vary': 'Cookie'
         });
     } else {
@@ -76,6 +75,10 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
     const siteTitle = getTrans(settings?.header?.logoText) || getTrans(settings?.site_title) || 'Blog';
     const siteDescription = getTrans(settings?.description) || 'Welcome to my blog';
 
+    const cleanUrl = `${url.origin}${url.pathname}`;
+    const siteUrl = settings?.siteUrl || url.origin;
+    const cleanBase = siteUrl.endsWith('/') ? siteUrl.slice(0, -1) : siteUrl;
+
     let lcpImage = "";
     if (posts && posts.length > 0) {
         if (posts[0].featuredImage) {
@@ -83,14 +86,14 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
             const desktopUrl = rawImg.replace("maxresdefault.jpg", "hqdefault.jpg")
                                      .replace("/mobile/", "/desktop/")
                                      .replace("/thumbnail/", "/desktop/");
-            lcpImage = desktopUrl.replace("/desktop/", "/mobile/");
+            const relPath = desktopUrl.replace("/desktop/", "/mobile/");
+            lcpImage = relPath.startsWith("http://") || relPath.startsWith("https://")
+                ? relPath
+                : `${cleanBase}${relPath.startsWith('/') ? relPath : '/' + relPath}`;
         } else {
-            lcpImage = "/images/no_image_placeholder.webp";
+            lcpImage = `${cleanBase}/images/no_image_placeholder.webp`;
         }
     }
-
-    const cleanUrl = `${url.origin}${url.pathname}`;
-    const siteUrl = settings?.siteUrl || url.origin;
 
     const jsonLd = {
         "@context": "https://schema.org",

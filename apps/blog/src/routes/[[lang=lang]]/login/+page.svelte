@@ -116,6 +116,9 @@
     }
 </script>
 
+<svelte:head>
+    <meta name="robots" content="noindex, nofollow" />
+</svelte:head>
 
 <div class="login-container">
     <h1>{showEmailForm ? (mode === 'login' ? $t('blog.nav.login') : $t('blog.auth.signup')) : $t('blog.nav.login')}</h1>
