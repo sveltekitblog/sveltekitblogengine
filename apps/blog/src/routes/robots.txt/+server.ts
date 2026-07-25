@@ -19,8 +19,10 @@ export const prerender = false; // 동적 서빙 명시
 import { text } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ locals }) => {
-    const defaultRobotsTxt = "User-agent: *\nAllow: /\n";
+export const GET: RequestHandler = async ({ locals, url }) => {
+    const siteUrl = url.origin;
+    const sitemapDirective = `\nSitemap: ${siteUrl}/sitemap.xml\n`;
+    const defaultRobotsTxt = "User-agent: *\nAllow: /\n" + sitemapDirective;
     const db = locals.db;
     if (!db) {
         return text(defaultRobotsTxt, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
@@ -28,7 +30,10 @@ export const GET: RequestHandler = async ({ locals }) => {
 
     try {
         const settings = await db.getSettings();
-        const content = settings.robots_txt ? settings.robots_txt : defaultRobotsTxt;
+        let content = settings.robots_txt ? settings.robots_txt : "User-agent: *\nAllow: /\n";
+        if (!content.includes('Sitemap:')) {
+            content += sitemapDirective;
+        }
 
         return text(content, {
             headers: {

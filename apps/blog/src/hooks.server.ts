@@ -129,7 +129,9 @@ export const handle: Handle = async ({ event, resolve }) => {
         event.locals.enabledProviders = [];
     }
 
-    const response = await resolve(event);
+    const response = await resolve(event, {
+        transformPageChunk: ({ html }) => html.replace('<html lang="en">', `<html lang="${event.locals.lang || 'ko'}">`)
+    });
 
     // ---- Security Hardening: Global Security Headers ----
     // We restrict framing, prevent MIME sniffing, and set a robust CSP.

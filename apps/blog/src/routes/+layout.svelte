@@ -178,8 +178,6 @@
             fetchpriority="high"
         />
     {/if}
-    <title>{displayTitle}</title>
-    <meta name="description" content={displayDescription} />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta charset="utf-8" />
 

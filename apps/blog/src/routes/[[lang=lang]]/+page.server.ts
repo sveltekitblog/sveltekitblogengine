@@ -89,11 +89,31 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
         }
     }
 
+    const cleanUrl = `${url.origin}${url.pathname}`;
+    const siteUrl = settings?.siteUrl || url.origin;
+
+    const jsonLd = {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": siteTitle,
+        "url": siteUrl,
+        "description": siteDescription,
+        "publisher": {
+            "@type": "Organization",
+            "name": siteTitle,
+            "logo": {
+                "@type": "ImageObject",
+                "url": settings?.logo || ''
+            }
+        }
+    };
+
     const seo = {
         title: siteTitle,
         description: siteDescription,
-        url: url.href,
-        image: settings?.logo || ''
+        url: cleanUrl,
+        image: settings?.logo || '',
+        jsonLd: JSON.stringify(jsonLd)
     };
 
     return {
