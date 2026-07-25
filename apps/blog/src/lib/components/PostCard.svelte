@@ -169,8 +169,8 @@
                     {#if otherTranslations.length > 0}
                         <div class="lang-badges">
                             {#each otherTranslations as tr}
-                                <span class="lang-badge">
-                                    {$t(`common.lang.${tr.lang}`, { default: tr.lang.toUpperCase() })}
+                                <span class="lang-badge" title={$t(`common.lang.${tr.lang}`, { default: tr.lang })}>
+                                    {$t(`common.lang_short.${tr.lang}`, { default: tr.lang.toUpperCase() })}
                                 </span>
                             {/each}
                         </div>
@@ -372,6 +372,8 @@
     }
     .post-date {
         font-weight: 500;
+        font-size: 0.78rem;
+        letter-spacing: -0.01em;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -380,6 +382,23 @@
     }
     .post-date.with-opacity {
         opacity: 0.8;
+    }
+
+    .lang-badges {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    .lang-badge {
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 0.12rem 0.4rem;
+        border-radius: 5px;
+        background: #e2e8f0;
+        color: #334155;
+        white-space: nowrap;
+        display: inline-block;
+        line-height: 1.2;
     }
 
     .stats.with-opacity {

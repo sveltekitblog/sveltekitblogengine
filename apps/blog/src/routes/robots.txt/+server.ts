@@ -22,7 +22,7 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ locals, url }) => {
     const siteUrl = url.origin;
     const sitemapDirective = `\nSitemap: ${siteUrl}/sitemap.xml\n`;
-    const defaultRobotsTxt = "User-agent: *\nAllow: /\n" + sitemapDirective;
+    const defaultRobotsTxt = "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /login\nDisallow: /profile\n" + sitemapDirective;
     const db = locals.db;
     if (!db) {
         return text(defaultRobotsTxt, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
@@ -30,7 +30,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
     try {
         const settings = await db.getSettings();
-        let content = settings.robots_txt ? settings.robots_txt : "User-agent: *\nAllow: /\n";
+        let content = settings.robots_txt ? settings.robots_txt : "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /login\nDisallow: /profile\n";
         if (!content.includes('Sitemap:')) {
             content += sitemapDirective;
         }
@@ -38,7 +38,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
         return text(content, {
             headers: {
                 'Content-Type': 'text/plain; charset=utf-8',
-                'Cache-Control': 'public, max-age=600' // 10분 캐싱
+                'Cache-Control': 'public, max-age=86400, stale-while-revalidate=86400'
             }
         });
     } catch (err) {

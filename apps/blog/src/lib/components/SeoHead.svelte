@@ -62,6 +62,7 @@
 <svelte:head>
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="robots" content={seo?.noindex ? "noindex, nofollow" : "index, follow"} />
 
     <meta property="og:type" content="website" />
     <meta property="og:url" content={url} />
