@@ -44,11 +44,6 @@ export const GET: RequestHandler = async ({ platform, url, locals }) => {
             .prepare('SELECT slug, lang FROM categories')
             .all();
 
-        // Fetch all tags
-        const { results: tags } = await db
-            .prepare('SELECT name FROM tags')
-            .all();
-
         const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
     <url>
@@ -66,11 +61,6 @@ ${categories.map((cat: any) => `    <url>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>`).join('\n')}
-${tags ? tags.map((t: any) => `    <url>
-        <loc>${siteUrl}/tags/${encodeURIComponent(t.name)}</loc>
-        <changefreq>weekly</changefreq>
-        <priority>0.5</priority>
-    </url>`).join('\n') : ''}
 ${posts.map((post: any) => `    <url>
         <loc>${siteUrl}${post.lang !== dbDefaultLang ? `/${post.lang}` : ''}/${post.category_slug}/${post.slug}</loc>
         <lastmod>${new Date(post.updated_at).toISOString()}</lastmod>
