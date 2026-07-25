@@ -28,7 +28,7 @@ wrangler.backup.json
 
 # AI Rules
 GEMINI*.md
-DOCS_GUIDE.md
+CS_GUIDE.md
 
 # Output
 .output
