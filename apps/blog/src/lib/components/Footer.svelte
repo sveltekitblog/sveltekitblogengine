@@ -22,6 +22,7 @@
     import { normalizeBackground, getBgValue } from "$lib/utils/background";
     import { onMount } from "svelte";
     import { t } from "$lib/i18n";
+    import { APP_VERSION } from "@blog/shared";
 
     let { settings }: { settings: any } = $props();
     let isMobile = $state(false);
@@ -214,6 +215,9 @@
             >
                 <Rss size={15} /> RSS
             </a>
+            <span class="engine-version-tag" style="opacity: 0.65; font-size: 0.78rem; font-family: monospace; display: inline-flex; align-items: center; padding: 2px 6px; background: rgba(0, 0, 0, 0.05); border-radius: 4px;" title="Engine Version">
+                {APP_VERSION}
+            </span>
             {#if footer.shareDesign}
                 <a
                     href="/api/share-design"

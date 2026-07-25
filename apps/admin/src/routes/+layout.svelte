@@ -18,6 +18,7 @@
 <script lang="ts">
     import { page, navigating } from "$app/stores";
     import { t, adminLang } from "$lib/i18n.svelte";
+    import { APP_VERSION } from "@blog/shared";
     import "../app.css";
     
     let { children } = $props();
@@ -104,6 +105,9 @@
                     >
                 </li>
             </ul>
+            <div class="sidebar-footer" style="padding: 0.75rem 1rem; font-size: 0.75rem; color: #94a3b8; border-top: 1px solid #1e293b; margin-top: auto; font-family: monospace;">
+                <span>SKBE {APP_VERSION}</span>
+            </div>
             <div class="user">
                 <!-- User info here -->
             </div>

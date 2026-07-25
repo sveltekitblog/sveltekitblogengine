@@ -15,9 +15,4 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// @blog/shared - Main entry point
-export * from './types/index';
-export * from './utils/index';
-export * from './social-providers';
-export * from './version';
-
+export const APP_VERSION = 'v1.0.0.6';
