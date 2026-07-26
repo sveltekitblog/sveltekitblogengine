@@ -112,6 +112,23 @@ export const load: PageServerLoad = async ({ params, locals, setHeaders }) => {
     // Full URL
     const fullUrl = `${siteUrl}${locals.lang !== locals.dbDefaultLang ? `/${locals.lang}` : ''}/${post.categorySlug}/${post.slug}`;
     
+    // Generate hreflang alternates for translated posts
+    const alternates: { lang: string; url: string }[] = [];
+    if (post.translations && post.translations.length > 0) {
+        for (const tr of post.translations) {
+            const trUrl = `${siteUrl}${tr.lang !== locals.dbDefaultLang ? `/${tr.lang}` : ''}/${post.categorySlug}/${tr.slug}`;
+            alternates.push({ lang: tr.lang, url: trUrl });
+        }
+    } else {
+        alternates.push({ lang: post.lang, url: fullUrl });
+    }
+
+    // Find x-default URL (default language URL or fallback)
+    const defaultTr = post.translations?.find((t: any) => t.lang === locals.dbDefaultLang);
+    const xDefaultUrl = defaultTr 
+        ? `${siteUrl}/${post.categorySlug}/${defaultTr.slug}`
+        : (post.lang === locals.dbDefaultLang ? fullUrl : `${siteUrl}/${post.categorySlug}/${post.slug}`);
+
     // OG Image
     const ogImage = post.featured_image || settings?.logo || '';
 
@@ -183,10 +200,13 @@ export const load: PageServerLoad = async ({ params, locals, setHeaders }) => {
         seo: {
             title: `${postTitle} - ${siteTitle}`,
             description: excerpt,
-            url: fullUrl,
+            url: post.isFallback ? xDefaultUrl : fullUrl,
             image: ogImage,
             siteTitle,
-            jsonLd: JSON.stringify(jsonLd)
+            jsonLd: JSON.stringify(jsonLd),
+            alternates: post.isFallback ? [] : alternates,
+            xDefaultUrl: post.isFallback ? "" : xDefaultUrl,
+            noindex: post.isFallback ? true : false
         }
     };
 };

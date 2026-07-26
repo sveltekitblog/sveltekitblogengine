@@ -32,9 +32,9 @@ export const GET: RequestHandler = async ({ platform, url, locals }) => {
         // Fetch all published posts
         const { results: posts } = await db
             .prepare(`
-                SELECT slug, category_slug, updated_at, lang 
+                SELECT slug, category_slug, updated_at, lang, translation_group_id 
                 FROM posts 
-                WHERE status = 'published' 
+                WHERE status = 'published' AND type = 'post'
                 ORDER BY updated_at DESC
             `)
             .all();
@@ -49,6 +49,16 @@ export const GET: RequestHandler = async ({ platform, url, locals }) => {
             .prepare('SELECT code FROM languages ORDER BY sort_order ASC')
             .all();
         const activeLangs = (dbLanguages && dbLanguages.length > 0) ? dbLanguages.map((l: any) => l.code) : [dbDefaultLang];
+
+        // Group posts by translation_group_id for alternates
+        const groupMap = new Map<string, Array<{ lang: string; slug: string; category_slug: string }>>();
+        (posts || []).forEach((p: any) => {
+            if (p.translation_group_id) {
+                const list = groupMap.get(p.translation_group_id) || [];
+                list.push({ lang: p.lang, slug: p.slug, category_slug: p.category_slug });
+                groupMap.set(p.translation_group_id, list);
+            }
+        });
 
         const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
@@ -68,12 +78,18 @@ ${categories.map((cat: any) => `    <url>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>`).join('\n')}
-${posts.map((post: any) => `    <url>
+${(posts || []).map((post: any) => {
+    const translations = post.translation_group_id ? (groupMap.get(post.translation_group_id) || []) : [];
+    const alternateLinks = translations.map((tr: any) => 
+        `        <xhtml:link rel="alternate" hreflang="${tr.lang}" href="${siteUrl}${tr.lang !== dbDefaultLang ? `/${tr.lang}` : ''}/${tr.category_slug}/${tr.slug}" />`
+    ).join('\n');
+    return `    <url>
         <loc>${siteUrl}${post.lang !== dbDefaultLang ? `/${post.lang}` : ''}/${post.category_slug}/${post.slug}</loc>
-        <lastmod>${new Date(post.updated_at).toISOString()}</lastmod>
+${alternateLinks ? alternateLinks + '\n' : ''}        <lastmod>${new Date(post.updated_at).toISOString()}</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.8</priority>
-    </url>`).join('\n')}
+    </url>`;
+}).join('\n')}
 </urlset>`;
 
         return new Response(sitemap, {

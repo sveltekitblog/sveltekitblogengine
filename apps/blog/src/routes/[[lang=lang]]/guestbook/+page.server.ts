@@ -17,7 +17,8 @@
 
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, setHeaders }) => {
+export const load: PageServerLoad = async ({ locals, parent, setHeaders }) => {
+    const { languages, dbDefaultLang } = await parent();
     const settings = await locals.db.getSettings(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang);
     
     const getTrans = (val: any) => {
@@ -56,12 +57,25 @@ export const load: PageServerLoad = async ({ locals, setHeaders }) => {
         });
     }
 
+    const activeLangs = (languages && languages.length > 0)
+        ? languages.map((l: any) => l.code)
+        : [locals.dbDefaultLang || 'ko'];
+
+    const siteUrl = settings?.siteUrl || '';
+    const alternates = activeLangs.map((code: string) => ({
+        lang: code,
+        url: `${siteUrl}${code === (dbDefaultLang || 'ko') ? '' : `/${code}`}/guestbook`
+    }));
+    const xDefaultUrl = `${siteUrl}/guestbook`;
+
     return {
         user: locals.user,
         seo: {
             title: `${guestbookTitle} - ${siteTitle}`,
             description: guestbookTitle,
-            url: `${settings?.siteUrl || ''}${locals.lang !== locals.dbDefaultLang ? `/${locals.lang}` : ''}/guestbook`
+            url: `${siteUrl}${locals.lang !== locals.dbDefaultLang ? `/${locals.lang}` : ''}/guestbook`,
+            alternates,
+            xDefaultUrl
         }
     };
 };

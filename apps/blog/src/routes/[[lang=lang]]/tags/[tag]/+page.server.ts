@@ -18,7 +18,8 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, locals, url }) => {
+export const load: PageServerLoad = async ({ params, locals, url, parent }) => {
+    const { languages, dbDefaultLang } = await parent();
     const { tag } = params;
     const db = locals.db;
 
@@ -47,7 +48,19 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 
         const siteTitle = getTrans(settings?.site_title) || 'Blog';
         const cleanUrl = `${url.origin}${url.pathname}`;
-        
+        const siteUrl = settings?.siteUrl || url.origin;
+        const cleanBase = siteUrl.endsWith('/') ? siteUrl.slice(0, -1) : siteUrl;
+
+        const activeLangs = (languages && languages.length > 0)
+            ? languages.map((l: any) => l.code)
+            : [locals.dbDefaultLang || 'ko'];
+
+        const alternates = activeLangs.map((code: string) => ({
+            lang: code,
+            url: `${cleanBase}${code === (dbDefaultLang || 'ko') ? '' : `/${code}`}/tags/${encodeURIComponent(tag)}`
+        }));
+        const xDefaultUrl = `${cleanBase}/tags/${encodeURIComponent(tag)}`;
+
         return {
             tag,
             posts,
@@ -55,7 +68,9 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
                 title: `#${tag} - ${siteTitle}`,
                 description: `#${tag} 태그와 관련된 포스트 목록입니다.`,
                 url: cleanUrl,
-                image: settings?.logo || ''
+                image: settings?.logo || '',
+                alternates,
+                xDefaultUrl
             },
             settings
         };

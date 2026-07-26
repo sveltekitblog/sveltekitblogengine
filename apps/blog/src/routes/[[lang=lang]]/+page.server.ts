@@ -18,7 +18,7 @@
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) => {
-    const { layoutWidgets, settings, isMobile } = await parent();
+    const { layoutWidgets, settings, isMobile, languages, dbDefaultLang } = await parent();
 
     const enableCdnCache = settings?.enable_cdn_cache === 'true' || settings?.enable_cdn_cache === true;
     const cdnCacheTtl = Number(settings?.cdn_cache_ttl) || 120;
@@ -111,12 +111,25 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
         }
     };
 
+    const activeLangs = (languages && languages.length > 0)
+        ? languages.map((l: any) => l.code)
+        : [locals.dbDefaultLang || 'ko'];
+
+    const alternates = activeLangs.map((code: string) => ({
+        lang: code,
+        url: `${cleanBase}${code === (dbDefaultLang || 'ko') ? '' : `/${code}`}/`
+    }));
+
+    const xDefaultUrl = `${cleanBase}/`;
+
     const seo = {
         title: siteTitle,
         description: siteDescription,
         url: cleanUrl,
         image: settings?.logo || '',
-        jsonLd: JSON.stringify(jsonLd)
+        jsonLd: JSON.stringify(jsonLd),
+        alternates,
+        xDefaultUrl
     };
 
     return {

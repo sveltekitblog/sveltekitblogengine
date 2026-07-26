@@ -21,7 +21,7 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ params, locals, url, parent, setHeaders }) => {
     const { category } = params;
     const parentData = await parent();
-    const { layoutWidgets, settings, categories, isMobile } = parentData;
+    const { layoutWidgets, settings, categories, isMobile, languages, dbDefaultLang } = parentData;
 
     const enableCdnCache = settings?.enable_cdn_cache === 'true' || settings?.enable_cdn_cache === true;
     const cdnCacheTtl = Number(settings?.cdn_cache_ttl) || 120;
@@ -140,12 +140,25 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
         ]
     };
 
+    const activeLangs = (languages && languages.length > 0)
+        ? languages.map((l: any) => l.code)
+        : [locals.dbDefaultLang || 'ko'];
+
+    const alternates = activeLangs.map((code: string) => ({
+        lang: code,
+        url: `${siteUrl}${code === (dbDefaultLang || 'ko') ? '' : `/${code}`}/${category}`
+    }));
+
+    const xDefaultUrl = `${siteUrl}/${category}`;
+
     let seo = {
         title: `${category} - ${siteTitle}`,
         description: `${category} 카테고리의 포스트 목록입니다. ${getTrans(settings?.description)}`,
         url: cleanUrl,
         image: settings?.logo || '',
-        jsonLd: JSON.stringify(jsonLd)
+        jsonLd: JSON.stringify(jsonLd),
+        alternates,
+        xDefaultUrl
     };
 
     return {
