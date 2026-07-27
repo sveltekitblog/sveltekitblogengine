@@ -111,8 +111,11 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
         }
     };
 
+    // 실제 포스트가 존재하는 언어만 hreflang alternate 생성 (중복 콘텐츠 방지)
+    const langsWithPosts = locals.db ? await locals.db.getLangsWithPosts() : [locals.dbDefaultLang || 'ko'];
     const activeLangs = (languages && languages.length > 0)
-        ? languages.map((l: any) => l.code)
+        ? languages.map((l: any) => l.code).filter((code: string) =>
+            code === (dbDefaultLang || 'ko') || langsWithPosts.includes(code))
         : [locals.dbDefaultLang || 'ko'];
 
     const alternates = activeLangs.map((code: string) => ({

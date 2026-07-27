@@ -260,6 +260,53 @@ export class BlogDB {
             }));
     }
 
+    /**
+     * SEO hreflang 조건부 생성용: 실제 published 포스트가 존재하는 언어 코드 목록을 반환합니다.
+     * categorySlug가 주어지면 해당 카테고리 내 포스트만 대상으로 합니다.
+     */
+    async getLangsWithPosts(categorySlug?: string): Promise<string[]> {
+        const whereClauses = [
+            eq(schema.posts.status, 'published'),
+            eq(schema.posts.type, 'post')
+        ];
+        if (categorySlug && categorySlug !== 'all') {
+            whereClauses.push(eq(schema.posts.categorySlug, categorySlug));
+        }
+
+        const results = await this.db
+            .selectDistinct({ lang: schema.posts.lang })
+            .from(schema.posts)
+            .where(and(...whereClauses));
+
+        return results.map(r => r.lang);
+    }
+
+    /**
+     * SEO hreflang 조건부 생성용: 특정 태그를 가진 published 포스트가 존재하는 언어 코드 목록을 반환합니다.
+     * 태그는 JSON 배열로 저장되므로, 기존 getPostsByTag와 동일하게 JS 필터링을 사용합니다.
+     */
+    async getLangsWithPostsByTag(tag: string): Promise<string[]> {
+        const results = await this.db.select({
+            lang: schema.posts.lang,
+            tags: schema.posts.tags
+        })
+            .from(schema.posts)
+            .where(and(
+                eq(schema.posts.status, 'published'),
+                eq(schema.posts.type, 'post')
+            ));
+
+        const langsSet = new Set<string>();
+        results.forEach(r => {
+            const parsedTags = this.safeParseTags(r.tags);
+            if (parsedTags.includes(tag)) {
+                langsSet.add(r.lang);
+            }
+        });
+
+        return Array.from(langsSet);
+    }
+
     async getPages(lang: string = 'ko', dbDefaultLang: string = 'ko') {
         const results = await this.db.select({
             id: schema.posts.id,

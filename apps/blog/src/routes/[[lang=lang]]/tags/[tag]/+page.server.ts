@@ -51,8 +51,11 @@ export const load: PageServerLoad = async ({ params, locals, url, parent }) => {
         const siteUrl = settings?.siteUrl || url.origin;
         const cleanBase = siteUrl.endsWith('/') ? siteUrl.slice(0, -1) : siteUrl;
 
+        // 해당 태그의 포스트가 존재하는 언어만 hreflang alternate 생성 (중복 콘텐츠 방지)
+        const langsWithTagPosts = locals.db ? await locals.db.getLangsWithPostsByTag(tag) : [locals.dbDefaultLang || 'ko'];
         const activeLangs = (languages && languages.length > 0)
-            ? languages.map((l: any) => l.code)
+            ? languages.map((l: any) => l.code).filter((code: string) =>
+                code === (dbDefaultLang || 'ko') || langsWithTagPosts.includes(code))
             : [locals.dbDefaultLang || 'ko'];
 
         const alternates = activeLangs.map((code: string) => ({
