@@ -158,8 +158,8 @@
         class="footer-inner"
         style="color: {footer.text?.color ||
             theme.secondary ||
-            '#666'}; font-size: {footer.text?.fontSize || '0.9rem'};
-            --footer-nav-color: {footer.navColor || '#475569'};
+            '#334155'}; font-size: {footer.text?.fontSize || '0.9rem'};
+            --footer-nav-color: {footer.navColor || '#334155'};
             --footer-nav-hover-color: {footer.navHoverColor ||
             'var(--primary-color)'};
             --footer-nav-font-size: {footer.navFontSize || '0.85rem'};
@@ -326,7 +326,7 @@
     }
     .footer-nav a {
         text-decoration: none;
-        color: var(--footer-nav-color, #888);
+        color: var(--footer-nav-color, #475569);
         font-size: var(--footer-nav-font-size, 0.85rem);
         font-weight: 500;
         transition: color 0.2s ease;
@@ -351,14 +351,15 @@
         color: #000000;
     }
     .engine-version-tag {
-        opacity: 0.65;
+        opacity: 0.95;
         font-size: 0.75rem;
         font-family: monospace;
         display: inline-flex;
         align-items: center;
         padding: 2px 6px;
-        background: rgba(0, 0, 0, 0.05);
+        background: rgba(0, 0, 0, 0.06);
         border-radius: 4px;
-        color: inherit;
+        color: var(--footer-nav-color, inherit);
+        font-weight: 700;
     }
 </style>

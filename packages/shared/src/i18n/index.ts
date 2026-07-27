@@ -1195,7 +1195,7 @@ authorId: "admin"
     "admin.users.delete_cascade_desc": { "ko": "유저 계정뿐만 아니라 해당 회원이 작성했던 모든 댓글, 방명록 및 좋아요 내역을 데이터베이스에서 즉각 영구 파기합니다. (복구 불가능)", "en": "Instantly and permanently purges all comments, guestbook entries, and likes created by the user from the database. (Irreversible)", "ja": "ユーザーアカウントだけでなく、該当会員が作成したすべてのコメント、ゲストブック、いいね履歴をデータベースから即時永久破棄します。（復旧不可能）" },
 
     // 블로그 및 상세/푸터 관련 번역 키 (blog.post, blog.footer)
-    "blog.footer.share_design": { "ko": "디자인 설정파일 공유", "en": "Share Design Config", "ja": "デザイン設定ファイルの共有" },
+    "blog.footer.share_design": { "ko": "디자인 공유", "en": "Share Design", "ja": "デザイン共有" },
     "blog.post.likes_tooltip_cancel": { "ko": "좋아요 취소", "en": "Unlike", "ja": "いいねの取り消し" },
     "blog.post.share_linkedin": { "ko": "LinkedIn으로 공유", "en": "Share on LinkedIn", "ja": "LinkedInで共有" },
     "blog.post.share_whatsapp": { "ko": "WhatsApp으로 공유", "en": "Share on WhatsApp", "ja": "WhatsAppで共有" },
