@@ -256,7 +256,8 @@
                                     <Component posts={recentPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
                                 {:else if (w.type === "CategoryList" || w.type === "CategoryMenu" || w.type === "category_link") && widgetComponents["CategoryList"]}
                                     {@const Component = widgetComponents["CategoryList"]}
-                                    <Component {categories} />
+                                    {@const cfg = typeof w.config === "string" ? JSON.parse(w.config || "{}") : (w.config || {})}
+                                    <Component {categories} config={cfg} />
                                 {:else if w.type === "PopularPosts" && widgetComponents["PopularPosts"]}
                                     {@const Component = widgetComponents["PopularPosts"]}
                                     <Component posts={popularPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
@@ -304,7 +305,8 @@
                                     <Component posts={recentPosts} />
                                 {:else if (w.type === "CategoryList" || w.type === "CategoryMenu" || w.type === "category_link") && widgetComponents["CategoryList"]}
                                     {@const Component = widgetComponents["CategoryList"]}
-                                    <Component {categories} />
+                                    {@const cfg = typeof w.config === "string" ? JSON.parse(w.config || "{}") : (w.config || {})}
+                                    <Component {categories} config={cfg} />
                                 {:else if w.type === "PopularPosts" && widgetComponents["PopularPosts"]}
                                     {@const Component = widgetComponents["PopularPosts"]}
                                     <Component posts={popularPosts} />
@@ -349,7 +351,8 @@
                                         <Component posts={recentPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
                                     {:else if (w.type === "CategoryList" || w.type === "CategoryMenu" || w.type === "category_link") && widgetComponents["CategoryList"]}
                                         {@const Component = widgetComponents["CategoryList"]}
-                                        <Component {categories} />
+                                        {@const cfg = typeof w.config === "string" ? JSON.parse(w.config || "{}") : (w.config || {})}
+                                        <Component {categories} config={cfg} />
                                     {:else if w.type === "PopularPosts" && widgetComponents["PopularPosts"]}
                                         {@const Component = widgetComponents["PopularPosts"]}
                                         <Component posts={popularPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />

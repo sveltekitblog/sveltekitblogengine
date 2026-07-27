@@ -1138,6 +1138,8 @@
         hoverTranslateY: -2,
     });
     let editWidgetUseShadowDom = $state(false);
+    let newWidgetShowPostCount = $state(true);
+    let editWidgetShowPostCount = $state(true);
     let newWidgetLimit = $state<number>(DEFAULT_WIDGET_LIMIT);
     let editWidgetLimit = $state<number>(DEFAULT_WIDGET_LIMIT);
 
@@ -1340,7 +1342,9 @@
         formData.append("type", newWidgetType);
 
         let configObj: any = {};
-        if (newWidgetType === "category_link") {
+        if (newWidgetType === "CategoryMenu" || newWidgetType === "CategoryList") {
+            configObj.showPostCount = newWidgetShowPostCount;
+        } else if (newWidgetType === "category_link") {
             configObj.category_slug = widgetCreateMemory.category_link;
         } else if (newWidgetType === "HtmlWidget") {
             configObj.html = widgetCreateMemory.HtmlWidget;
@@ -1387,6 +1391,7 @@
             ];
             newWidgetName = "";
             newWidgetSlug = "";
+            newWidgetShowPostCount = true;
             widgetCreateMemory.category_link = "";
             widgetCreateMemory.HtmlWidget = "";
             newWidgetLimit = DEFAULT_WIDGET_LIMIT;
@@ -1408,7 +1413,9 @@
 
         // [버그 A 수정] 기존 config를 spread하여 시작 → 다른 설정값 소실 방지
         let configObj: any = { ...currentEditingWidgetFullConfig };
-        if (editWidgetType === "category_link") {
+        if (editWidgetType === "CategoryMenu" || editWidgetType === "CategoryList") {
+            configObj.showPostCount = editWidgetShowPostCount;
+        } else if (editWidgetType === "category_link") {
             configObj.category_slug = widgetEditMemory.category_link;
         } else if (editWidgetType === "HtmlWidget") {
             configObj.html = widgetEditMemory.HtmlWidget;
@@ -1530,7 +1537,9 @@
             }
             // [버그 A 연계] 전체 config를 보관해두어 handleUpdateWidget에서 merge 기반으로 활용
             currentEditingWidgetFullConfig = config;
-            if (widget.type === "category_link") {
+            if (widget.type === "CategoryMenu" || widget.type === "CategoryList") {
+                editWidgetShowPostCount = config.showPostCount !== false;
+            } else if (widget.type === "category_link") {
                 editWidgetSlug = config.category_slug || "";
                 widgetEditMemory.category_link = config.category_slug || "";
             } else if (widget.type === "HtmlWidget") {
@@ -6425,32 +6434,17 @@ header.blog-header.scrolled .header-inner {
                                                             "admin.theme.widget_type_html",
                                                         )}</option
                                                     >
-                                                    <option
-                                                        value="category_link"
-                                                        >{t(
-                                                            "admin.theme.widget_type_catlink",
-                                                        )}</option
-                                                    >
                                                 </select>
                                             </div>
-                                            {#if editWidgetType === "category_link"}
+                                            {#if editWidgetType === "CategoryMenu" || editWidgetType === "CategoryList"}
                                                 <div class="form-group-mini">
-                                                    <label class="depth-3-label"
-                                                        >{t(
-                                                            "admin.theme.widget_slug_label",
-                                                        )}</label
-                                                    >
-                                                    <input
-                                                        type="text"
-                                                        bind:value={
-                                                            widgetEditMemory.category_link
-                                                        }
-                                                        placeholder={t(
-                                                            "admin.theme.widget_slug_placeholder",
-                                                        )}
-                                                    />
+                                                    <label class="depth-3-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
+                                                        <input type="checkbox" bind:checked={editWidgetShowPostCount} />
+                                                        <span>{t("admin.theme.widget_show_post_count", { default: "포스트 수 함께 표기" })}</span>
+                                                    </label>
                                                 </div>
-                                            {:else if editWidgetType === "HtmlWidget"}
+                                            {/if}
+                                            {#if editWidgetType === "HtmlWidget"}
                                                 <div class="form-group-mini">
                                                     <label
                                                         >{t(
@@ -6627,11 +6621,6 @@ header.blog-header.scrolled .header-inner {
                                                     "admin.theme.widget_type_display",
                                                     { type: widget.type },
                                                 )}
-                                                {#if widget.type === "category_link" && getCategorySlug(widget.config)}
-                                                    ({getCategorySlug(
-                                                        widget.config,
-                                                    )})
-                                                {/if}
                                             </span>
                                         </div>
                                         <div class="widget-actions">

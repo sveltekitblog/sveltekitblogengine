@@ -1295,39 +1295,20 @@
                                                 </button>
                                             </div>
                                         </div>
-                                    {:else if widget.type === "CategoryMenu"}
-                                        <p
-                                            style="color: var(--secondary-color)"
-                                        >
-                                            {t(
-                                                "admin.theme.preview_categories_placeholder",
-                                                {
-                                                    default:
-                                                        "전체 카테고리 목록이 표시됩니다.",
-                                                },
-                                            )}
-                                        </p>
-                                    {:else if widget.type === "category_link"}
-                                        <p
-                                            style="color: var(--secondary-color)"
-                                        >
-                                            {t(
-                                                "admin.theme.preview_category_selected",
-                                                {
-                                                    category_slug:
-                                                        widget.config
-                                                            ?.category_slug ||
-                                                        t(
-                                                            "admin.theme.preview_not_selected",
-                                                            {
-                                                                default:
-                                                                    "선택안됨",
-                                                            },
-                                                        ),
-                                                },
-                                            )}
-                                        </p>
-                                    {:else if widget.type === "HtmlWidget"}
+                                    {:else if widget.type === "CategoryMenu" || widget.type === "CategoryList" || widget.type === "category_link"}
+                                         {@const cfg = typeof widget.config === "string" ? JSON.parse(widget.config || "{}") : (widget.config || {})}
+                                         {@const showCount = cfg.showPostCount ?? true}
+                                         <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.35rem; font-size: var(--widget-item-font-size, 0.95rem); color: var(--widget-item-color, inherit);">
+                                             <li style="display: flex; justify-content: space-between;">
+                                                 <span>기술 / Tech</span>
+                                                 {#if showCount}<span style="opacity: 0.7;">(12)</span>{/if}
+                                             </li>
+                                             <li style="display: flex; justify-content: space-between;">
+                                                 <span>일상 / Life</span>
+                                                 {#if showCount}<span style="opacity: 0.7;">(5)</span>{/if}
+                                             </li>
+                                         </ul>
+                                     {:else if widget.type === "HtmlWidget"}
                                         {@const configObj =
                                             typeof widget.config === "string"
                                                 ? JSON.parse(widget.config)

@@ -518,6 +518,7 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.theme.widget_type_postcontent": { "ko": "포스트 본문", "en": "Post Content", "ja": "投稿本文" },
     "admin.theme.widget_type_html": { "ko": "HTML 커스텀", "en": "Custom HTML", "ja": "カスタムHTML" },
     "admin.theme.widget_type_catlink": { "ko": "카테고리 링크 (Legacy)", "en": "Category Link (Legacy)", "ja": "カテゴリリンク (Legacy)" },
+    "admin.theme.widget_show_post_count": { "ko": "포스트 수 함께 표기", "en": "Show Post Count", "ja": "投稿数を表示" },
     "admin.theme.widget_cat_slug": { "ko": "카테고리 슬러그", "en": "Category Slug", "ja": "カテゴリスラッグ" },
     "admin.theme.widget_html_code": { "ko": "HTML 코드", "en": "HTML Code", "ja": "HTMLコード" },
     "admin.theme.widget_type_display": { "ko": "타입: {type}", "en": "Type: {type}", "ja": "タイプ: {type}" },

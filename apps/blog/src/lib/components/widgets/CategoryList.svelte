@@ -17,7 +17,9 @@
 
 <script lang="ts">
     import { page } from "$app/stores";
-    let { categories }: { categories: any[] } = $props();
+    let { categories, config }: { categories: any[]; config?: any } = $props();
+
+    const showPostCount = $derived(config?.showPostCount ?? true);
 
     function getLocalizedUrl(path: string) {
         const lang = $page.params.lang;
@@ -29,7 +31,10 @@
     {#each categories as category}
         <li>
             <a href={getLocalizedUrl(`/${category.slug}`)}>
-                {category.name}
+                <span class="category-name">{category.name}</span>
+                {#if showPostCount && (category.count !== undefined || category.postCount !== undefined)}
+                    <span class="category-count">({category.count ?? category.postCount ?? 0})</span>
+                {/if}
             </a>
         </li>
     {/each}
