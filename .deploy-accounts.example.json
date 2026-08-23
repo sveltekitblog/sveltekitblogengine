@@ -1,0 +1,42 @@
+{
+  "main": {
+    "name": "Main Blog Account",
+    "token": "YOUR_CLOUDFLARE_API_TOKEN_HERE",
+    "accountId": "YOUR_CLOUDFLARE_ACCOUNT_ID_HERE",
+    "blogProject": "my-main-blog",
+    "adminProject": "my-main-admin",
+    "d1": {
+      "BLOG_DB": {
+        "name": "my-blog-db",
+        "id": "YOUR_D1_BLOG_DB_ID_HERE"
+      },
+      "USER_DB": {
+        "name": "my-user-db",
+        "id": "YOUR_D1_USER_DB_ID_HERE"
+      }
+    },
+    "kv": {
+      "IMAGES_KV": "YOUR_IMAGES_KV_ID_HERE"
+    }
+  },
+  "second": {
+    "name": "Second Sub Blog Account",
+    "token": "YOUR_CLOUDFLARE_API_TOKEN_HERE",
+    "accountId": "YOUR_CLOUDFLARE_ACCOUNT_ID_HERE",
+    "blogProject": "second-blog-web",
+    "adminProject": "second-blog-admin",
+    "d1": {
+      "BLOG_DB": {
+        "name": "second-blog-db",
+        "id": "YOUR_D1_BLOG_DB_ID_HERE"
+      },
+      "USER_DB": {
+        "name": "second-user-db",
+        "id": "YOUR_D1_USER_DB_ID_HERE"
+      }
+    },
+    "kv": {
+      "IMAGES_KV": "YOUR_IMAGES_KV_ID_HERE"
+    }
+  }
+}

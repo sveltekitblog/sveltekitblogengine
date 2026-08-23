@@ -60,7 +60,7 @@
             let initialLang = 'ko';
             const basePost = data.posts?.find((p: any) => p.lang === defaultLang) || data.posts?.[0];
 
-            data.languages.forEach((lang: any) => {
+                        data.languages.forEach((lang: any) => {
                 const existingPost = data.posts?.find((p: any) => p.lang === lang.code);
                 
                 if (existingPost?.id === $page.params.id) {
@@ -108,7 +108,8 @@
                     tags: parsedTags,
                     contentType: existingPost?.content_type || "html",
                     contentMarkdown: existingPost?.content_markdown || "",
-                    thumbnailFit: existingPost?.thumbnail_fit || "cover"
+                    thumbnailFit: existingPost?.thumbnail_fit || "cover",
+                    submitToBoard: Boolean(existingPost?.is_syndicated)
                 };
             });
             
@@ -116,7 +117,6 @@
         }
     });
 
-    // Sync groupDataJson for submission whenever translationsData changes
     $effect(() => {
         groupDataJson = JSON.stringify(Object.values(translationsData));
     });
@@ -268,6 +268,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                 bind:excerpt={translationsData[activeLang].excerpt}
                 bind:tags={translationsData[activeLang].tags}
                 bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
+                bind:submitToBoard={translationsData[activeLang].submitToBoard}
                 categories={data.categories}
                 lang={activeLang}
                 {defaultLang}
@@ -308,6 +309,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                             bind:excerpt={translationsData[activeLang].excerpt}
                             bind:tags={translationsData[activeLang].tags}
                             bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
+                            bind:submitToBoard={translationsData[activeLang].submitToBoard}
                             categories={data.categories}
                             lang={activeLang}
                             {defaultLang}

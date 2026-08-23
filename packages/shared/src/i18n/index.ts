@@ -20,6 +20,21 @@
  * Both frontend (i18n.ts) and backend (+page.server.ts) import this file.
  */
 export const fallbackDictionary: Record<string, Record<string, string>> = {
+    "admin.settings.hub_title": {"ko":"스벨트킷블로그 허브(Hub) 연동 설정","en":"SvelteKit Blog Hub Integration Settings","ja":"SvelteKitブログハブ(Hub)連携設定"},
+    "admin.settings.hub_url_label": {"ko":"허브 플랫폼 URL","en":"Hub Platform URL","ja":"ハブプラットフォームURL"},
+    "admin.settings.hub_url_hint": {"ko":"포스트 카드 메타데이터가 전송될 허브 주소입니다. (기본: https://hub.sveltekitblog.com)","en":"The Hub URL where post card metadata will be syndicated. (Default: https://hub.sveltekitblog.com)","ja":"投稿カードのメタデータが転送されるハブのアドレスです。(デフォルト: https://hub.sveltekitblog.com)"},
+    "admin.settings.hub_api_key_label": {"ko":"허브 발급 API Key","en":"Hub Issued API Key","ja":"ハブ発行API Key"},
+    "admin.settings.hub_api_key_hint": {"ko":"허브 플랫폼에서 발급받은 사이트 고유 API Key를 입력하세요. 비워둘 경우 허브 전송이 비활성화됩니다.","en":"Enter the unique Site API Key issued by the Hub platform. If left blank, hub syndication is disabled.","ja":"ハブプラットフォームから発行されたサイト固有のAPI Keyを入力してください。空欄の場合、ハブ転送は無効になります。"},
+    "admin.posts.form.submit_to_hub": {"ko":"스벨트킷블로그 허브(hub.sveltekitblog.com)에 자동 제출","en":"Automatically submit to SvelteKit Blog Hub (hub.sveltekitblog.com)","ja":"SvelteKitブログハブ(hub.sveltekitblog.com)に自動送信"},
+    "admin.posts.form.submit_to_hub_help": {"ko":"체크 시 글이 발행될 때 허브 피드로 요약 카드가 자동 전송됩니다. 체크를 해제하면 허브 피드에서 \"숨김\" 처리되어 추천(좋아요) 통계가 안전하게 보존되며, 허브에서 완전히 삭제하려면 블로그에서 포스트를 삭제해야 합니다.","en":"When checked, a summary card is automatically syndicated to the Hub feed upon publishing. When unchecked, it is set to \"Hidden\" on the Hub to safely preserve like statistics; to delete completely from the Hub, you must delete the post on your blog.","ja":"チェックすると、投稿が公開された際にハブフィードに要約カードが自動転送されます。チェックを外すとハブフィード上で「非公開」扱いとなり推薦(いいね)統計が安全に保持されます。ハブから完全に削除するにはブログで投稿を削除する必要があります。"},
+    "admin.posts.delete_modal.hub_notice_title": {"ko":"스벨트킷블로그 허브 연동 안내","en":"SvelteKit Blog Hub Syndication Notice","ja":"SvelteKitブログハブ連携のご案内"},
+    "admin.posts.delete_modal.hub_notice_1": {"ko":"허브에 등록된 글의 경우, <strong>추천(좋아요)이 없는 경우에만 허브에서 완전 삭제</strong>됩니다.","en":"For syndicated posts, it will only be <strong>completely removed from the Hub if it has 0 likes/recommendations</strong>.","ja":"ハブに登録された投稿の場合、<strong>推薦(いいね)がない場合のみハブから完全削除</strong>されます。"},
+    "admin.posts.delete_modal.hub_notice_2": {"ko":"추천이 1개 이상 존재하는 경우에는 방문자 추천 통계 보존을 위해 <strong>허브 피드에서 자동으로 비공개(숨김)</strong> 처리됩니다.","en":"If 1 or more likes exist, it is <strong>automatically set to Private (Hidden) on the Hub feed</strong> to preserve visitor recommendation statistics.","ja":"推薦が1件以上ある場合は、訪問者の推薦統計保持のため<strong>ハブフィード上で自動的に非公開(非表示)</strong>となります。"},
+    "admin.editor.validate_title": {"ko":"제목을 입력해 주세요.","en":"Please enter a title.","ja":"タイトルを入力してください。"},
+    "admin.editor.validate_slug": {"ko":"슬러그를 입력해 주세요.","en":"Please enter a slug.","ja":"スラッグを入力してください。"},
+    "admin.editor.validate_category": {"ko":"카테고리를 입력해 주세요.","en":"Please enter a category.","ja":"カテゴリーを入力してください。"},
+    "admin.posts.main.delete_confirm": {"ko":"을(를) 정말 삭제하시겠습니까?","en":"Are you sure you want to delete this post?","ja":"を本当に削除しますか？"},
+    "admin.posts.delete_failed_server": {"ko":"삭제에 실패했습니다. (서버 오류)","en":"Failed to delete. (Server error)","ja":"削除に失敗しました。(サーバーエラー)"},
     "common.lang.ko": { "ko": "한국어", "en": "한국어", "ja": "한국어" },
     "common.lang.en": { "ko": "English", "en": "English", "ja": "English" },
     "common.lang.ja": { "ko": "日本語", "en": "日本語", "ja": "日本語" },
@@ -232,7 +247,7 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.settings.purge_failed": { "ko": "캐시 삭제 실패", "en": "Cache purge failed", "ja": "キャッシュ削除に失敗しました" },
     "admin.settings.cdn_cache_title": { "ko": "CDN Edge 캐시 설정", "en": "CDN Edge Cache Settings", "ja": "CDN Edge キャッシュ設定" },
     "admin.settings.enable_cdn_cache": { "ko": "CDN Edge 캐싱 사용", "en": "Enable CDN Edge Caching", "ja": "CDN Edge キャッシュを有効にする" },
-    "admin.settings.cdn_cache_desc": { "ko": "활성화하면 비로그인 방문자들에게 초고속 CDN 캐시 페이지를 서빙합니다. 디자인 수정 중에는 꺼두시는 것을 권장합니다.", "en": "When enabled, serves super-fast CDN-cached pages to non-logged-in visitors. We recommend keeping this disabled during layout design editing.", "ja": "有効にすると、非ログインユーザーに超高速なCDNキャッシュページを提供します。レイアウトデザイン의編集中は無効にすることをお勧めします。" },
+    "admin.settings.cdn_cache_desc": { "ko": "활성화하면 비로그인 방문자들에게 초고속 CDN 캐시 페이지를 서빙합니다. 디자인 수정 중에는 꺼두시는 것을 권장합니다.", "en": "When enabled, serves super-fast CDN-cached pages to non-logged-in visitors. We recommend keeping this disabled during layout design editing.", "ja": "有効にすると、非ログインユーザーに超高速なCDNキャッシュページを提供します。レイアウトデザインの編集中は無効にすることをお勧めします。" },
     "admin.settings.cdn_cache_ttl_label": { "ko": "Edge 캐시 유지 기간", "en": "Edge Cache Lifespan (TTL)", "ja": "Edge キャッシュ保持期間" },
     "admin.settings.unit_minutes": { "ko": "분", "en": "Minutes", "ja": "分" },
     "admin.settings.unit_hours": { "ko": "시간", "en": "Hours", "ja": "時間" },
@@ -254,7 +269,7 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.settings.admin_account_create_btn": { "ko": "관리자 계정 생성", "en": "Create Admin Account", "ja": "管理者アカウントを作成" },
     "admin.settings.admin_account_saved": { "ko": "✅ 변경사항이 저장되었습니다.", "en": "✅ Changes saved successfully.", "ja": "✅ 変更が保存されました。" },
     "admin.settings.admin_password_confirm": { "ko": "비밀번호 확인", "en": "Confirm Password", "ja": "パスワードの確認" },
-    "admin.settings.admin_password_help": { "ko": "💡 새로운 비밀번호를 설정하려면 입력하세요. 빈 칸으로 두면 기존 비밀번호가 유지됩니다.", "en": "💡 Enter a new password to change it. Leave blank to keep the current password.", "ja": "💡 新しいパスワードを設定するには入力してください。空欄의ままにすると現在のパスワードが維持されます。" },
+    "admin.settings.admin_password_help": { "ko": "💡 새로운 비밀번호를 설정하려면 입력하세요. 빈 칸으로 두면 기존 비밀번호가 유지됩니다.", "en": "💡 Enter a new password to change it. Leave blank to keep the current password.", "ja": "💡 新しいパスワードを設定するには入力してください。空欄のままにすると現在のパスワードが維持されます。" },
     "admin.settings.admin_exists": { "ko": "이미 관리자 계정이 생성되어 존재합니다.", "en": "An admin account already exists.", "ja": "管理者アカウントが既に存在します。" },
     "admin.settings.social_login_title": { "ko": "로그인 설정", "en": "Login Settings", "ja": "ログイン設定" },
     "admin.settings.social_warning_title": { "ko": "⚠️ 중요 안내", "en": "⚠️ Important Notice", "ja": "⚠️ 重要なお知らせ" },
@@ -277,7 +292,7 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.settings.timezone_title": { "ko": "사이트 대표 시간대 설정", "en": "Site Timezone Settings", "ja": "サイト代表タイムゾーン設定" },
     "admin.settings.timezone_search_placeholder": { "ko": "도시/시간대 검색 (예: Seoul, New_York)", "en": "Search city/timezone (e.g., Seoul, New_York)", "ja": "都市/タイムゾーン検索 (例: Seoul, New_York)" },
     "admin.settings.timezone_no_match": { "ko": "일치하는 시간대가 없습니다.", "en": "No matching timezone found.", "ja": "一致するタイムゾーンが見つかりません。" },
-    "admin.settings.timezone_hint": { "ko": "선택한 시간대로 게시글의 기본 작성 시간이 정렬되어 고정 표기됩니다.", "en": "The basic writing time of the post will be aligned and fixed to the selected timezone.", "ja": "選択したタイムゾーンに基づいて、投稿의作成日時が統一されて表示されます。" },
+    "admin.settings.timezone_hint": { "ko": "선택한 시간대로 게시글의 기본 작성 시간이 정렬되어 고정 표기됩니다.", "en": "The basic writing time of the post will be aligned and fixed to the selected timezone.", "ja": "選択したタイムゾーンに基づいて、投稿の作成日時が統一されて表示されます。" },
     "admin.backup.settings_path": { "ko": "설정/관리", "en": "Settings/Manage", "ja": "設定/管理" },
     "admin.backup.manage_suffix": { "ko": "에서 별도로 관리하세요.", "en": "to manage separately.", "ja": "で別途管理してください。" },
     "admin.backup.full_export_label": { "ko": "시스템 전체 내보내기 (JSON)", "en": "Full System Export (JSON)", "ja": "システム全体のエクスポート (JSON)" },
@@ -290,7 +305,7 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.backup.deploy_title": { "ko": "배포 설정 백업", "en": "Deploy Config Backup", "ja": "デプロイ設定バックアップ" },
     "admin.backup.deploy_desc": { "ko": "Cloudflare D1 데이터베이스 및 KV 리소스 연동 정보를 포함한 wrangler.backup.json 설정을 백업합니다.", "en": "Backup deploy environment configuration including Cloudflare resource bindings.", "ja": "Cloudflare D1データベースおよびKVリソース連携情報を含むwrangler.backup.json設定をバックアップします。" },
     "admin.backup.deploy_export_label": { "ko": "배포 설정 파일 내보내기", "en": "Export Deploy Configuration", "ja": "デプロイ設定ファイルのエクスポート" },
-    "admin.backup.deploy_export_hint": { "ko": "신버전 코드나 새 패치를 빌드/배포하려면, 이 백업 설정을 다운로드하여 각 앱 디렉토리(apps/blog, apps/admin) 내에 wrangler.json 파일로 복사해 넣으십시오.", "en": "To build/deploy new code, download this configuration and copy it as wrangler.json in each app directory.", "ja": "新バージョンコードや新しいパッチをビルド/デプロイするには、このバック업設定をダウンロードして各アプリのディレクトリ(apps/blog, apps/admin)内にwrangler.jsonファイルとしてコピーしてください。" },
+    "admin.backup.deploy_export_hint": { "ko": "신버전 코드나 새 패치를 빌드/배포하려면, 이 백업 설정을 다운로드하여 각 앱 디렉토리(apps/blog, apps/admin) 내에 wrangler.json 파일로 복사해 넣으십시오.", "en": "To build/deploy new code, download this configuration and copy it as wrangler.json in each app directory.", "ja": "新バージョンコードや新しいパッチをビルド/デプロイするには、このバックアップ設定をダウンロードして各アプリのディレクトリ(apps/blog, apps/admin)内にwrangler.jsonファイルとしてコピーしてください。" },
     "admin.backup.deploy_download_btn": { "ko": "설정 백업 다운로드", "en": "Download Config Backup", "ja": "設定バックアップのダウンロード" },
     "admin.backup.browse": { "ko": "파일 선택", "en": "Browse...", "ja": "ファイル選択" },
     "admin.backup.no_file": { "ko": "선택된 파일 없음", "en": "No file selected", "ja": "ファイルが選択されていません" },
@@ -498,7 +513,7 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.theme.footer_font_size": { "ko": "텍스트 크기", "en": "Text Size", "ja": "テキストのサイズ" },
     "admin.theme.footer_font_size_placeholder": { "ko": "예: 0.875rem or 14px", "en": "e.g. 0.875rem or 14px", "ja": "例: 0.875rem または 14px" },
     "admin.theme.footer_copyright": { "ko": "카피라이트", "en": "Copyright", "ja": "コピーライト" },
-    "admin.theme.footer_copyright_hint": { "ko": "일반 텍스트뿐만 아니라 HTML 태그도 지원합니다.", "en": "Supports plain text as well as HTML tags.", "ja": "プレーンテキストだけでなく、HTMLタグ도サポートしています。" },
+    "admin.theme.footer_copyright_hint": { "ko": "일반 텍스트뿐만 아니라 HTML 태그도 지원합니다.", "en": "Supports plain text as well as HTML tags.", "ja": "プレーンテキストだけでなく、HTMLタグもサポートしています。" },
     "admin.theme.footer_copyright_example": { "ko": "예: © 2026 내블로그. All rights reserved.", "en": "e.g. © 2026 MyBlog. All rights reserved.", "ja": "例: © 2026 マイブログ. All rights reserved." },
     "admin.theme.footer_nav": { "ko": "푸터 내비게이션 링크", "en": "Footer Navigation Links", "ja": "フッターナビゲーションリンク" },
     "admin.theme.footer_link_font_size": { "ko": "링크 폰트 크기", "en": "Link Font Size", "ja": "リンクのフォントサイズ" },
@@ -575,7 +590,7 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.theme.widget_layout_horizontal": { "ko": "가로 (이미지 좌측)", "en": "Horizontal (image left)", "ja": "横 (画像左側)" },
     "admin.theme.widget_card_height": { "ko": "카드 전체 고정 높이 (선택적)", "en": "Fixed Card Height (optional)", "ja": "カードの固定高さ (任意)" },
     "admin.theme.widget_card_height_placeholder": { "ko": "예: 400px (비워두면 내부 콘텐츠에 맞춤)", "en": "e.g. 400px (blank = fit content)", "ja": "例: 400px (空欄の場合はコンテンツに合わせる)" },
-    "admin.theme.widget_card_height_hint": { "ko": "포스트 카드의 크기를 일정하게 맞추려면 '400px' 등 단위를 포함해 적어주세요. (가로형 레이아웃의 경우, 글자 잘림 방지를 위해 최소 140px 이상 지정을 권장하며 디자인에 따라 적절히 조절해 주세요.)", "en": "To keep card sizes consistent, enter a value like '400px'. (For horizontal layouts, we recommend at least 140px to prevent text clipping, but adjust according to your design.)", "ja": "카드サイズ를 일정하게 맞추는에는 「400px」等の単位を含めて入力してください。（横型レイアウトの場合、テキストが途切れるのを防ぐために最小 140px 以上を推奨します。デザインに応じて適宜調整してください。）" },
+    "admin.theme.widget_card_height_hint": { "ko": "포스트 카드의 크기를 일정하게 맞추려면 '400px' 등 단위를 포함해 적어주세요. (가로형 레이아웃의 경우, 글자 잘림 방지를 위해 최소 140px 이상 지정을 권장하며 디자인에 따라 적절히 조절해 주세요.)", "en": "To keep card sizes consistent, enter a value like '400px'. (For horizontal layouts, we recommend at least 140px to prevent text clipping, but adjust according to your design.)", "ja": "カードサイズを一定に揃えるには「400px」等の単位を含めて入力してください。（横型レイアウトの場合、テキストが途切れるのを防ぐために最小 140px 以上を推奨します。デザインに応じて適宜調整してください。）" },
     "admin.theme.widget_card_font": { "ko": "카드 글자 크기", "en": "Card Font Size", "ja": "カードのフォントサイズ" },
     "admin.theme.widget_img_ratio_h": { "ko": "이미지 박스 가로 비율 (%)", "en": "Image Box Width Ratio (%)", "ja": "画像ボックスの横幅比率 (%)" },
     "admin.theme.widget_img_ratio_h_hint": { "ko": "카드의 가로 너비 중 이미지가 차지할 비율입니다.", "en": "The ratio of the card's width occupied by the image.", "ja": "カードの横幅のうち、画像が占める割合です。" },
@@ -1009,7 +1024,7 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.theme.share_design_enable_hint": {
         "ko": "블로그 푸터의 RSS 옆에 공유 링크를 생성합니다.",
         "en": "Creates a share link next to the RSS icon/link in the blog footer.",
-        "ja": "ブログフッターのRSS의 옆에 공유 링크를 생성합니다." // Wait! Note that the file has: "ja": "ブログフッターのRSSの隣に共有リンクを生成します。" Let's use exactly that.
+        "ja": "ブログフッターのRSSの隣に共有リンクを生成します。"
     },
 
     // 신규 추가된 에디터 관련 번역 키 (admin.editor)
@@ -1039,7 +1054,7 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.editor.modal_edit_title": { "ko": "이미지 설정 편집", "en": "Edit Image Settings", "ja": "画像設定の編集" },
     "admin.editor.editing_alt": { "ko": "편집 중인 이미지", "en": "Image being edited", "ja": "編集中の画像" },
     "admin.editor.delete_image": { "ko": "🗑️ 이미지 삭제", "en": "🗑️ Delete Image", "ja": "🗑️ 画像の削除" },
-    "admin.editor.deleting": { "ko": "삭제 중...", "en": "Deleting...", "ja": "削除중..." }, // Wait, let's use "削除中..."
+    "admin.editor.deleting": { "ko": "삭제 중...", "en": "Deleting...", "ja": "削除中..." }, // Wait, let's use "削除中..."
     "admin.editor.label_body": { "ko": "글 내용을 작성하세요...", "en": "Write the post content here...", "ja": "記事の内容を入力してください..." },
     "admin.editor.markdown_guide": {
         "ko": `---

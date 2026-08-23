@@ -53,7 +53,7 @@
         return cleanHtml.length;
     });
 
-    // Initialize blank data for each language
+        // Initialize blank data for each language
     $effect(() => {
         if (data.languages && Object.keys(translationsData).length === 0) {
             data.languages.forEach((lang: any) => {
@@ -73,7 +73,8 @@
                     tags: "",
                     contentType: "html",
                     contentMarkdown: "",
-                    thumbnailFit: "cover"
+                    thumbnailFit: "cover",
+                    submitToBoard: false
                 };
             });
             activeLang = data.languages.find((l: any) => l.is_default)?.code || data.languages[0]?.code || 'ko';
@@ -242,6 +243,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                 bind:excerpt={translationsData[activeLang].excerpt}
                 bind:tags={translationsData[activeLang].tags}
                 bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
+                bind:submitToBoard={translationsData[activeLang].submitToBoard}
                 categories={data.categories}
                 lang={activeLang}
                 {defaultLang}
@@ -282,6 +284,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                             bind:excerpt={translationsData[activeLang].excerpt}
                             bind:tags={translationsData[activeLang].tags}
                             bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
+                            bind:submitToBoard={translationsData[activeLang].submitToBoard}
                             categories={data.categories}
                             lang={activeLang}
                             {defaultLang}

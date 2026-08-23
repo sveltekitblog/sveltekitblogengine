@@ -25,6 +25,7 @@
         excerpt: string;
         tags: string;
         thumbnailFit?: string;
+        submitToBoard?: boolean;
         categories?: Array<{slug: string, name: string, lang?: string}>;
         lang?: string;
         defaultLang?: string;
@@ -41,6 +42,7 @@
         excerpt = $bindable(),
         tags = $bindable(),
         thumbnailFit = $bindable("cover"),
+        submitToBoard = $bindable(false),
         categories = [],
         lang = 'ko',
         defaultLang = 'ko',
@@ -186,6 +188,20 @@
                 <option value="contain">{t('admin.posts.form.thumbnail_fit_contain', { default: 'Contain (원본비율 보존)' })}</option>
             </select>
         </div>
+    </div>
+
+        <div class="form-group" style="margin-top: 1.25rem; margin-bottom: 0; padding: 0.85rem 1rem; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <label class="flex items-center gap-2 cursor-pointer select-none" style="margin-bottom: 0; font-weight: 600; color: #1e293b; display: flex; align-items: center;">
+            <input
+                type="checkbox"
+                bind:checked={submitToBoard}
+                style="width: 1.1rem; height: 1.1rem; cursor: pointer; accent-color: #3b82f6;"
+            />
+            <span>🌐 {t('admin.posts.form.submit_to_hub', { default: '스벨트킷블로그 허브(hub.sveltekitblog.com)에 자동 제출' })}</span>
+        </label>
+        <small class="help-text" style="margin-top: 0.4rem; color: #64748b; padding-left: 1.6rem; display: block; line-height: 1.45;">
+            {t('admin.posts.form.submit_to_hub_help', { default: '체크 시 글이 발행될 때 허브 피드로 요약 카드가 자동 전송됩니다. 체크를 해제하면 허브 피드에서 "숨김" 처리되어 추천(좋아요) 통계가 안전하게 보존되며, 허브에서 완전히 삭제하려면 블로그에서 포스트를 삭제해야 합니다.' })}
+        </small>
     </div>
 </div>
 

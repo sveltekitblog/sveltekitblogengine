@@ -75,7 +75,8 @@ export const load: PageServerLoad = async ({ locals, parent, setHeaders }) => {
             description: guestbookTitle,
             url: `${siteUrl}${locals.lang !== locals.dbDefaultLang ? `/${locals.lang}` : ''}/guestbook`,
             alternates,
-            xDefaultUrl
+            xDefaultUrl,
+            noindex: true
         }
     };
 };

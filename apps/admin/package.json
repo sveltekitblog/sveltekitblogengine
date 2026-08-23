@@ -5,8 +5,8 @@
     "license": "AGPL-3.0-only",
     "type": "module",
     "scripts": {
-        "dev": "vite dev --port 5174",
-        "build": "vite build",
+        "dev": "npx vite dev --port 5174",
+        "build": "npx vite build",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
         "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
     },

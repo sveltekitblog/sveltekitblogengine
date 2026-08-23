@@ -29,19 +29,29 @@ export const GET: RequestHandler = async ({ platform, url, locals }) => {
         const siteUrl = url.origin;
         const dbDefaultLang = locals.dbDefaultLang || 'ko';
 
-        // Fetch all published posts
+        // Fetch published article posts
         const { results: posts } = await db
             .prepare(`
                 SELECT slug, category_slug, updated_at, lang, translation_group_id 
                 FROM posts 
-                WHERE status = 'published' AND type = 'post'
+                WHERE status = 'published' 
+                  AND type = 'post'
+                  AND category_slug IS NOT NULL 
+                  AND category_slug != ''
                 ORDER BY updated_at DESC
             `)
             .all();
 
-        // Fetch all categories
-        const { results: categories } = await db
-            .prepare('SELECT slug, lang FROM categories')
+        // Fetch published CMS pages (about, privacy, contact, etc.)
+        const { results: pages } = await db
+            .prepare(`
+                SELECT slug, updated_at, lang, translation_group_id 
+                FROM posts 
+                WHERE status = 'published' 
+                  AND type = 'page'
+                  AND slug NOT IN ('guestbook', 'login', 'profile')
+                ORDER BY updated_at DESC
+            `)
             .all();
 
         // Fetch all active languages configured in admin DB
@@ -60,7 +70,18 @@ export const GET: RequestHandler = async ({ platform, url, locals }) => {
             }
         });
 
+        // Group CMS pages by translation_group_id for alternates
+        const pageGroupMap = new Map<string, Array<{ lang: string; slug: string }>>();
+        (pages || []).forEach((p: any) => {
+            if (p.translation_group_id) {
+                const list = pageGroupMap.get(p.translation_group_id) || [];
+                list.push({ lang: p.lang, slug: p.slug });
+                pageGroupMap.set(p.translation_group_id, list);
+            }
+        });
+
         const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
     <url>
         <loc>${siteUrl}/</loc>
@@ -68,16 +89,18 @@ ${activeLangs.map((code: string) => `        <xhtml:link rel="alternate" hreflan
         <changefreq>daily</changefreq>
         <priority>1.0</priority>
     </url>
-    <url>
-        <loc>${siteUrl}/guestbook</loc>
+${(pages || []).map((page: any) => {
+    const translations = page.translation_group_id ? (pageGroupMap.get(page.translation_group_id) || []) : [];
+    const alternateLinks = translations.map((tr: any) => 
+        `        <xhtml:link rel="alternate" hreflang="${tr.lang}" href="${siteUrl}${tr.lang !== dbDefaultLang ? `/${tr.lang}` : ''}/${tr.slug}" />`
+    ).join('\n');
+    return `    <url>
+        <loc>${siteUrl}${page.lang !== dbDefaultLang ? `/${page.lang}` : ''}/${page.slug}</loc>
+${alternateLinks ? alternateLinks + '\n' : ''}        <lastmod>${new Date(page.updated_at).toISOString()}</lastmod>
         <changefreq>weekly</changefreq>
-        <priority>0.5</priority>
-    </url>
-${categories.map((cat: any) => `    <url>
-        <loc>${siteUrl}${cat.lang !== dbDefaultLang ? `/${cat.lang}` : ''}/${cat.slug}</loc>
-        <changefreq>weekly</changefreq>
-        <priority>0.7</priority>
-    </url>`).join('\n')}
+        <priority>0.9</priority>
+    </url>`;
+}).join('\n')}
 ${(posts || []).map((post: any) => {
     const translations = post.translation_group_id ? (groupMap.get(post.translation_group_id) || []) : [];
     const alternateLinks = translations.map((tr: any) => 
@@ -95,7 +118,7 @@ ${alternateLinks ? alternateLinks + '\n' : ''}        <lastmod>${new Date(post.u
         return new Response(sitemap, {
             headers: {
                 'Content-Type': 'application/xml; charset=utf-8',
-                'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400'
+                'Cache-Control': 'public, max-age=3600'
             }
         });
     } catch (error) {

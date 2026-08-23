@@ -80,6 +80,20 @@ export const actions: Actions = {
                 return fail(404, { error: 'Post not found' });
             }
 
+            // 0. 허브에 등록된 카드 철회(삭제) 요청
+            try {
+                const { removePostFromHub, buildPostUrl } = await import('$lib/server/hub');
+                const { results: sRows } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'siteUrl'").all();
+                const siteUrl = (sRows?.[0] as any)?.value || 'https://sveltekitblog.com';
+                const pSlug = (post as any).slug;
+                const pCategory = (post as any).category_slug || '일반';
+                const pLang = (post as any).lang || 'ko';
+                const postUrl = buildPostUrl(siteUrl, pLang, pCategory, pSlug);
+                await removePostFromHub(postUrl, db);
+            } catch (hubErr) {
+                console.warn('[Hub Delete Warning] Failed to remove post from hub:', hubErr);
+            }
+
             // 1. Delete associated images using StorageAdapter
             const slug = (post as any).slug;
             if (slug && platform) {

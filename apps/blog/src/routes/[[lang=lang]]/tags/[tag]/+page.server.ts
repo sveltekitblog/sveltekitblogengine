@@ -57,12 +57,10 @@ export const load: PageServerLoad = async ({ params, locals, url, parent }) => {
             ? languages.map((l: any) => l.code).filter((code: string) =>
                 code === (dbDefaultLang || 'ko') || langsWithTagPosts.includes(code))
             : [locals.dbDefaultLang || 'ko'];
-
         const alternates = activeLangs.map((code: string) => ({
             lang: code,
             url: `${cleanBase}${code === (dbDefaultLang || 'ko') ? '' : `/${code}`}/tags/${encodeURIComponent(tag)}`
         }));
-        const xDefaultUrl = `${cleanBase}/tags/${encodeURIComponent(tag)}`;
 
         return {
             tag,
@@ -73,12 +71,13 @@ export const load: PageServerLoad = async ({ params, locals, url, parent }) => {
                 url: cleanUrl,
                 image: settings?.logo || '',
                 alternates,
-                xDefaultUrl
+                xDefaultUrl,
+                noindex: true
             },
             settings
         };
     } catch (err) {
-        console.error('Error loading tag posts:', err);
+                console.error('Error loading tag posts:', err);
         error(500, 'Error loading posts');
     }
 };

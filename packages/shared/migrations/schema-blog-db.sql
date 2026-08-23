@@ -1,20 +1,20 @@
--- BLOG_DB (Content Database) Schema (Finalized Version)
+-- SQLite Schema for BLOG_DB (D1)
+-- Multi-language supported schema
 
--- 1. Blog Settings
-CREATE TABLE IF NOT EXISTS blog_settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+-- 1. Languages
+CREATE TABLE IF NOT EXISTS languages (
+    code TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    is_default INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0
 );
 
 -- 2. Categories
 CREATE TABLE IF NOT EXISTS categories (
-    slug TEXT,
-    lang TEXT DEFAULT 'ko',
+    slug TEXT NOT NULL,
     name TEXT NOT NULL,
-    description TEXT,
-    created_at TEXT DEFAULT (datetime('now', '+9 hours')),
-    updated_at TEXT DEFAULT (datetime('now', '+9 hours')),
+    lang TEXT DEFAULT 'ko',
     translation_group_id TEXT,
     PRIMARY KEY (slug, lang)
 );
@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS posts (
     content_type TEXT DEFAULT 'html',
     content_markdown TEXT,
     thumbnail_fit TEXT DEFAULT 'cover',
+    is_syndicated INTEGER DEFAULT 0,
     UNIQUE(lang, slug)
 );
 CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
@@ -62,38 +63,43 @@ CREATE TABLE IF NOT EXISTS layouts (
 -- 5. Widgets
 CREATE TABLE IF NOT EXISTS widgets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
+    layout_id INTEGER NOT NULL,
+    column_index INTEGER NOT NULL,
     type TEXT NOT NULL,
-    config TEXT, -- JSON string
+    title TEXT NOT NULL,
+    content TEXT,
+    sort_order INTEGER DEFAULT 0,
+    is_visible INTEGER DEFAULT 1,
+    config TEXT, -- JSON configuration
     created_at TEXT DEFAULT (datetime('now', '+9 hours')),
+    updated_at TEXT DEFAULT (datetime('now', '+9 hours')),
+    FOREIGN KEY (layout_id) REFERENCES layouts(id) ON DELETE CASCADE
+);
+
+-- 6. Blog Settings (Key-Value)
+CREATE TABLE IF NOT EXISTS blog_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
     updated_at TEXT DEFAULT (datetime('now', '+9 hours'))
 );
 
--- 6. Layout Widgets
-CREATE TABLE IF NOT EXISTS layout_widgets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    layout_id INTEGER REFERENCES layouts(id),
-    widget_id INTEGER REFERENCES widgets(id),
-    column_index INTEGER NOT NULL,
-    sort_order INTEGER NOT NULL,
-    custom_title TEXT,
-    device TEXT DEFAULT 'both'
-);
-
--- 7. Visitor Stats
-CREATE TABLE IF NOT EXISTS visitor_stats (
-    date TEXT PRIMARY KEY,
-    unique_visitors INTEGER DEFAULT 0,
-    page_views INTEGER DEFAULT 0
-);
-
--- 8. Languages
-CREATE TABLE IF NOT EXISTS languages (
-    code TEXT PRIMARY KEY,
+-- 7. Media Library (R2 images metadata)
+CREATE TABLE IF NOT EXISTS media (
+    id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    is_default INTEGER DEFAULT 0,
-    sort_order INTEGER DEFAULT 0,
-    fallback_message TEXT
+    key TEXT NOT NULL UNIQUE,
+    url TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now', '+9 hours'))
 );
 
--- (Initial Seed Data has been decoupled and moved to seed-ko.sql, seed-en.sql, and seed-ja.sql)
+-- 8. UI Dictionary (Multilingual UI translations)
+CREATE TABLE IF NOT EXISTS ui_dictionary (
+    key TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    value TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now', '+9 hours')),
+    updated_at TEXT DEFAULT (datetime('now', '+9 hours')),
+    PRIMARY KEY (key, lang)
+);

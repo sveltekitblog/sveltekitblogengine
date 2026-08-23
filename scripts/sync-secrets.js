@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, copyFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, copyFileSync, rmSync } from 'fs';
 import { createInterface } from 'readline';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -15,6 +15,23 @@ const skipDb = process.argv.includes('--skip-db');
 if (!appPath || !projectName) {
     console.error('Usage: node scripts/sync-secrets.js <appPath> <projectName> [--skip-db]');
     process.exit(1);
+}
+
+// 🔒 deploy:multi가 아닌 순정 단일 배포(deploy:admin / deploy:blog)일 때는 잔여 캐시와 환경변수를 강제 제거하여 메인 세션 보장
+if (!process.env.TARGET_BLOG_DB) {
+    delete process.env.CLOUDFLARE_API_TOKEN;
+    delete process.env.CLOUDFLARE_ACCOUNT_ID;
+    
+    const cacheDirs = [
+        resolve(ROOT, `${appPath}/.wrangler`),
+        resolve(ROOT, `${appPath}/node_modules/.cache/wrangler`),
+        resolve(ROOT, 'node_modules/.cache/wrangler')
+    ];
+    for (const dir of cacheDirs) {
+        if (existsSync(dir)) {
+            try { rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+        }
+    }
 }
 
 // ── 클라우드플레어 로그인 상태 검증 및 안전한 로그인 연동 ──
@@ -124,75 +141,89 @@ if (!d1Config || !kvConfig) {
     }
 }
 
-if (d1Config && kvConfig && !skipDb) {
-    const deployConfig = {
-        d1: d1Config,
-        kv: kvConfig,
-        blogProjectName,
-        adminProjectName
-    };
 
-    const blogDbName = d1Config.BLOG_DB?.name;
+if (!skipDb) {
+    let deployConfig = null;
+
+    if (process.env.DEPLOY_CONFIG_JSON) {
+        try {
+            deployConfig = JSON.parse(process.env.DEPLOY_CONFIG_JSON);
+        } catch (e) {}
+    }
+
+    if (!deployConfig) {
+        if (process.env.TARGET_IMAGES_KV) {
+            if (!kvConfig) kvConfig = {};
+            kvConfig.IMAGES_KV = process.env.TARGET_IMAGES_KV;
+        }
+        if (process.env.TARGET_USER_DB) {
+            if (!d1Config) d1Config = {};
+            if (!d1Config.USER_DB) d1Config.USER_DB = { name: process.env.TARGET_USER_DB };
+            else d1Config.USER_DB.name = process.env.TARGET_USER_DB;
+        }
+
+        deployConfig = {
+            d1: d1Config || {},
+            kv: kvConfig || {},
+            blogProjectName,
+            adminProjectName
+        };
+    }
+
+    const blogDbName = deployConfig.d1?.BLOG_DB?.name || process.env.TARGET_BLOG_DB || d1Config?.BLOG_DB?.name;
     if (blogDbName) {
-        // ─── i18n Dictionary Interactive Sync ───
+        // ─── i18n Dictionary Interactive Sync (setup or deploy:admin prompt) ───
+        let shouldSyncI18n = false;
         if (appPath.includes('admin')) {
+            if (process.env.IS_SETUP === 'true') {
+                shouldSyncI18n = true;
+            } else if (!process.env.DEPLOY_MULTI) {
+                console.log('\n🌐 [i18n Dictionary Sync / 다국어 사전 동기화]');
+                console.log('   [KO] 로컬 i18n 사전을 D1 데이터베이스(ui_dictionary)에 동기화하시겠습니까? (y/N) [기본값: N]');
+                console.log('   [EN] Sync local i18n dictionary to D1 database? (y/N) [Default: N]');
+                const ans = await ask('   > ');
+                shouldSyncI18n = ans.toLowerCase() === 'y' || ans.toLowerCase() === 'yes';
+            }
+        }
+
+        if (shouldSyncI18n) {
             try {
-                const isSetup = process.env.IS_SETUP === 'true';
-                let syncChoice = 'n';
-                if (isSetup) {
-                    syncChoice = 'y';
-                } else {
-                    console.log('\n======================================================');
-                    console.log('[EN] Force sync remote D1 ui_dictionary with local index.ts? (Web changes will be lost)');
-                    console.log('[KO] D1 DB의 ui_dictionary를 로컬 index.ts 기준으로 강제 덮어쓰시겠습니까? (웹 수정본 유실 주의)');
-                    console.log('  [EN] Select option (y/N) [Default: N]');
-                    console.log('  [KO] 옵션을 선택하세요 (y/N) [기본값: N]');
-                    syncChoice = await ask('  > ');
-                }
-                
-                if (syncChoice.toLowerCase() === 'y') {
-                    console.log('🔄 Parsing local i18n/index.ts dictionary data...');
-                    const i18nFilePath = resolve(ROOT, 'packages/shared/src/i18n/index.ts');
-                    if (existsSync(i18nFilePath)) {
-                        const i18nContent = readFileSync(i18nFilePath, 'utf-8');
-                        const match = i18nContent.match(/export\s+const\s+fallbackDictionary[^=]*=\s*(\{[\s\S]+?\});/m);
-                        if (match) {
-                            const rawObj = new Function(`return ${match[1]}`)();
-                            const jsonStr = JSON.stringify(rawObj);
-                            
-                            const chunkSize = 20000;
-                            const chunks = [];
-                            for (let i = 0; i < jsonStr.length; i += chunkSize) {
-                                chunks.push(jsonStr.substring(i, i + chunkSize));
-                            }
-                            
-                            let sqlCmd = '';
-                            const firstChunkEscaped = chunks[0].replace(/'/g, "''");
-                            sqlCmd += `INSERT OR REPLACE INTO blog_settings (key, value, updated_at) VALUES ('ui_dictionary', '${firstChunkEscaped}', datetime('now', '+9 hours'));\n`;
-                            
-                            for (let i = 1; i < chunks.length; i++) {
-                                const chunkEscaped = chunks[i].replace(/'/g, "''");
-                                sqlCmd += `UPDATE blog_settings SET value = value || '${chunkEscaped}' WHERE key = 'ui_dictionary';\n`;
-                            }
-                            
-                            const tempI18nSql = resolve(ROOT, 'temp-deploy-i18n.sql');
-                            writeFileSync(tempI18nSql, sqlCmd, 'utf-8');
-                            
-                            console.log(`🚀 Forcing i18n sync into D1 database '${blogDbName}'...`);
-                            execSync(`${NPX} wrangler d1 execute ${blogDbName} --remote --yes --file "${tempI18nSql.replace(/\\/g, '/')}"`, {
-                                cwd: ROOT,
-                                stdio: 'inherit'
-                            });
-                            console.log('✅ i18n Dictionary sync completed successfully.');
-                            if (existsSync(tempI18nSql)) unlinkSync(tempI18nSql);
-                        } else {
-                            console.warn('⚠ Could not find fallbackDictionary block in index.ts.');
+                console.log('🔄 Parsing local i18n/index.ts dictionary data...');
+                const i18nFilePath = resolve(ROOT, 'packages/shared/src/i18n/index.ts');
+                if (existsSync(i18nFilePath)) {
+                    const i18nContent = readFileSync(i18nFilePath, 'utf-8');
+                    const match = i18nContent.match(/export\s+const\s+fallbackDictionary[^=]*=\s*(\{[\s\S]+?\});/m);
+                    if (match) {
+                        const rawObj = new Function(`return ${match[1]}`)();
+                        const jsonStr = JSON.stringify(rawObj);
+                        
+                        const chunkSize = 20000;
+                        const chunks = [];
+                        for (let i = 0; i < jsonStr.length; i += chunkSize) {
+                            chunks.push(jsonStr.substring(i, i + chunkSize));
                         }
-                    } else {
-                        console.warn(`⚠ index.ts not found at: ${i18nFilePath}`);
+                        
+                        let sqlCmd = '';
+                        const firstChunkEscaped = chunks[0].replace(/'/g, "''");
+                        sqlCmd += `INSERT OR REPLACE INTO blog_settings (key, value, updated_at) VALUES ('ui_dictionary', '${firstChunkEscaped}', datetime('now', '+9 hours'));\n`;
+                        
+                        for (let i = 1; i < chunks.length; i++) {
+                            const chunkEscaped = chunks[i].replace(/'/g, "''");
+                            sqlCmd += `UPDATE blog_settings SET value = value || '${chunkEscaped}' WHERE key = 'ui_dictionary';\n`;
+                        }
+                        
+                        const tempI18nSql = resolve(ROOT, 'temp-deploy-i18n.sql');
+                        writeFileSync(tempI18nSql, sqlCmd, 'utf-8');
+                        
+                        console.log(`🚀 Forcing i18n sync into D1 database '${blogDbName}'...`);
+                        execSync(`${NPX} wrangler d1 execute ${blogDbName} --remote --yes --file "${tempI18nSql.replace(/\\/g, '/')}"`, {
+                            cwd: ROOT,
+                            stdio: 'inherit',
+                            env: process.env
+                        });
+                        console.log('✅ i18n Dictionary sync completed successfully.');
+                        if (existsSync(tempI18nSql)) unlinkSync(tempI18nSql);
                     }
-                } else {
-                    console.log('⏭️ Skipping i18n dictionary force-sync (keeping existing DB dictionary).');
                 }
             } catch (e) {
                 console.warn('⚠ Failed to sync i18n dictionary to D1:', e.message);
@@ -201,25 +232,41 @@ if (d1Config && kvConfig && !skipDb) {
 
         const tempSqlFile = resolve(ROOT, 'temp-deploy-config.sql');
         try {
-            const configJsonStr = JSON.stringify(deployConfig).replace(/'/g, "''"); // SQL escape single quotes
+            const configJsonStr = JSON.stringify(deployConfig).replace(/'/g, "''");
             const sqlCmd = `INSERT OR REPLACE INTO blog_settings (key, value, updated_at) VALUES ('deploy_config', '${configJsonStr}', datetime('now', '+9 hours'));`;
             writeFileSync(tempSqlFile, sqlCmd, 'utf-8');
             
-            const isWin = process.platform === 'win32';
+                        const isWin = process.platform === 'win32';
             const NPX = isWin ? 'npx.cmd' : 'npx';
             
             console.log(`\n📦 Synchronizing deploy configuration into D1 database '${blogDbName}'...`);
             execSync(`${NPX} wrangler d1 execute ${blogDbName} --remote --yes --file "${tempSqlFile.replace(/\\/g, '/')}"`, {
                 cwd: ROOT,
-                stdio: 'inherit'
+                stdio: 'inherit',
+                env: process.env
             });
             console.log('✅ Synchronized deploy configuration to D1 successfully.');
         } catch (e) {
-            console.warn('⚠ Failed to sync deploy configuration to D1 database:', e.message);
+            console.warn('⚠ [Notice] D1 deploy config sync skipped (will continue Pages deployment):', e.message);
         } finally {
             if (existsSync(tempSqlFile)) {
                 try { unlinkSync(tempSqlFile); } catch (e) {}
             }
+        }
+
+        // ─── D1 Schema Auto-Migration (누락 컬럼 is_syndicated 자동 보정) ───
+        try {
+            const isWin = process.platform === 'win32';
+            const NPX = isWin ? 'npx.cmd' : 'npx';
+            const migrationSql = "ALTER TABLE posts ADD COLUMN is_syndicated INTEGER DEFAULT 0;";
+            execSync(`${NPX} wrangler d1 execute ${blogDbName} --remote --yes --command="${migrationSql}"`, {
+                cwd: ROOT,
+                stdio: 'pipe',
+                env: process.env
+            });
+            console.log(`✨ D1 Schema auto-migrated successfully for '${blogDbName}' (is_syndicated column added).`);
+        } catch (migErr) {
+            // 이미 컬럼이 존재하는 경우 정상 통과
         }
     } else {
         console.warn('⚠ BLOG_DB name not resolved. Cannot sync deploy configuration to D1.');

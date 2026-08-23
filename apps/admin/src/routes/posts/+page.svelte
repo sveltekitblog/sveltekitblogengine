@@ -235,6 +235,14 @@
             </div>
             <div class="modal-body">
                 <p>"{deleteConfirmPost.title}"{t('admin.posts.main.delete_confirm', { default: '을(를) 정말 삭제하시겠습니까?' })}</p>
+                {#if deleteConfirmPost.is_syndicated}
+                    <div style="margin: 0.85rem 0; padding: 0.75rem; background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; font-size: 0.8125rem; color: #0369a1; line-height: 1.45;">
+                        <span style="font-weight: 700; display: block; margin-bottom: 0.25rem;">🌐 {t('admin.posts.delete_modal.hub_notice_title', { default: '스벨트킷블로그 허브 연동 안내' })}</span>
+                        • {@html t('admin.posts.delete_modal.hub_notice_1', { default: '허브에 등록된 글의 경우, <strong>추천(좋아요)이 없는 경우에만 허브에서 완전 삭제</strong>됩니다.' })}<br/>
+                        • {@html t('admin.posts.delete_modal.hub_notice_2', { default: '추천이 1개 이상 존재하는 경우에는 방문자 추천 통계 보존을 위해 <strong>허브 피드에서 자동으로 비공개(숨김)</strong> 처리됩니다.' })}
+                    </div>
+                {/if}
+
                 <p class="warning">{t('admin.common.warning_irreversible', { default: '이 작업은 되돌릴 수 없습니다.' })}</p>
             </div>
             <div class="modal-actions">

@@ -3,15 +3,14 @@ node_modules
 # .gitignore 추가 권장
 /scratch
 /scratch.cjs
-/docs
+
+docs/
+DOCS_GUIDE.md
+
 **/*.md
 !/README.md
 !/README.kr.md
 !/README.ja.md
-/*.json
-!package.json
-!package-lock.json
-*.bak
 
 # Logs
 *.log
@@ -26,6 +25,11 @@ query.sql
 wrangler.backup.json
 *.backup.json
 
+# Multi Account & Sandbox
+.deploy-accounts.json
+.wrangler-multi-temp
+!.deploy-accounts.example.json
+
 # AI Rules
 GEMINI*.md
 CS_GUIDE.md
@@ -34,8 +38,7 @@ CS_GUIDE.md
 .output
 .vercel
 .netlify
-.wrangler
-.astro
+
 .logs
 /.svelte-kit
 /build
@@ -57,4 +60,3 @@ vite.config.ts.timestamp-*
 
 # Auto-generated Cloudflare configs
 **/wrangler.json
-

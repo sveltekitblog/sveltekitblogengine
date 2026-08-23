@@ -51,11 +51,14 @@ export const load: PageServerLoad = async ({ locals }) => {
     try {
         const { results: languages } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
         const { results: categories } = await db.prepare('SELECT slug, name, lang FROM categories ORDER BY name ASC').all();
+        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_api_key', 'board_hub_url')").all();
+        const settingsMap = (settingsRows || []).reduce((acc: any, curr: any) => { acc[curr.key] = curr.value; return acc; }, {});
 
         return { 
             groupId: crypto.randomUUID(),
             languages: languages || [],
-            categories: categories || [] 
+            categories: categories || [],
+            settings: settingsMap
         };
     } catch (err) {
         throw error(500, 'Failed to load editor resources');
@@ -127,13 +130,37 @@ export const actions: Actions = {
                     `).bind(category, categoryName || category, lang, category).run();
                 }
 
+                const shouldSyndicate = status === 'published' && (item.submitToBoard === true || item.submitToBoard === 'true');
+                let isSyndicatedVal = shouldSyndicate ? 1 : 0;
+
                 await db.prepare(`
-                    INSERT INTO posts (id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, created_at, updated_at, published_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
+                    INSERT INTO posts (id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, is_syndicated, created_at, updated_at, published_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
                     CASE WHEN ? = 'published' THEN datetime('now', '+9 hours') ELSE NULL END)
                 `).bind(
-                    id, title, slug, content, excerpt || '', category || '일반', type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, status
+                    id, title, slug, content, excerpt || '', category || '일반', type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
                 ).run();
+
+                // 허브 자동 제출 훅 (status === 'published' & submitToBoard === true)
+                if (shouldSyndicate) {
+                    try {
+                        const { publishPostToHub } = await import('$lib/server/hub');
+                        const res = await publishPostToHub({
+                            title,
+                            slug,
+                            excerpt,
+                            categorySlug: category || '일반',
+                            featuredImage: featured_image,
+                            tags: tagsJson,
+                            lang
+                        }, db);
+                        if (!res.success) {
+                            console.warn('[Hub Sync Warning]', res.error || res.reason);
+                        }
+                    } catch (e) {
+                        console.error('[Hub Sync Error]', e);
+                    }
+                }
             }
 
             try {

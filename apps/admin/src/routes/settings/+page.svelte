@@ -18,7 +18,7 @@
 <script lang="ts">
     import { enhance } from "$app/forms";
     import type { PageData, ActionData } from "./$types";
-    import { Settings, Save, Globe, LayoutDashboard, Code, UserCog, Shield, Download, Upload, AlertTriangle, RefreshCcw } from "lucide-svelte";
+    import { Settings, Save, Globe, LayoutDashboard, Code, UserCog, Shield, Download, Upload, AlertTriangle, RefreshCcw, Share2 } from "lucide-svelte";
     import { t } from "$lib/i18n.svelte";
     import { SOCIAL_PROVIDER_META, PRIMARY_PROVIDERS, EXTRA_PROVIDERS } from "@blog/shared";
 
@@ -78,6 +78,10 @@
     // 세계 시간대 데이터 로드 및 네이티브 Datalist 바인딩 상태
     let selectedTimezone = $state(untrack(() => data.settings.timezone || 'Asia/Seoul'));
     const allTimezones = Intl.supportedValuesOf('timeZone');
+
+    // --- Hub Syndication Settings (Svelte 5 Runes) ---
+    let boardHubUrl = $state(untrack(() => data.settings.board_hub_url || 'https://hub.sveltekitblog.com'));
+    let boardApiKey = $state(untrack(() => data.settings.board_api_key || ''));
 
     function toggleProvider(code: string) {
         if (authProviders.includes(code)) {
@@ -648,6 +652,49 @@
                         >
                             {isPurging ? 'Purging...' : t('admin.settings.manual_purge_btn', { default: '캐시 전체 삭제 (Purge)' })}
                         </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 스벨트킷블로그 허브(Hub) 연동 설정 -->
+            <section class="settings-card mb-6">
+                <div class="card-header">
+                    <Share2 size={20} />
+                    <h2>{t('admin.settings.hub_title', { default: '스벨트킷블로그 허브(Hub) 연동 설정' })}</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-group mb-4">
+                        <label for="board_hub_url" class="block text-sm font-bold text-slate-700 mb-2">
+                            {t('admin.settings.hub_url_label', { default: '허브 플랫폼 URL' })}
+                        </label>
+                        <input 
+                            type="url" 
+                            id="board_hub_url" 
+                            name="board_hub_url" 
+                            bind:value={boardHubUrl} 
+                            placeholder="https://hub.sveltekitblog.com"
+                            class="admin-name-input w-full"
+                        />
+                        <p class="text-xs text-slate-400 mt-1">
+                            💡 {t('admin.settings.hub_url_hint', { default: '포스트 카드 메타데이터가 전송될 허브 주소입니다. (기본: https://hub.sveltekitblog.com)' })}
+                        </p>
+                    </div>
+
+                    <div class="form-group mb-2">
+                        <label for="board_api_key" class="block text-sm font-bold text-slate-700 mb-2">
+                            {t('admin.settings.hub_api_key_label', { default: '허브 발급 API Key' })}
+                        </label>
+                        <input 
+                            type="password" 
+                            id="board_api_key" 
+                            name="board_api_key" 
+                            bind:value={boardApiKey} 
+                            placeholder="sk_hub_live_..."
+                            class="admin-name-input w-full font-mono text-sm"
+                        />
+                        <p class="text-xs text-slate-400 mt-1">
+                            🔑 {t('admin.settings.hub_api_key_hint', { default: '허브 플랫폼에서 발급받은 사이트 고유 API Key를 입력하세요. 비워둘 경우 허브 전송이 비활성화됩니다.' })}
+                        </p>
                     </div>
                 </div>
             </section>

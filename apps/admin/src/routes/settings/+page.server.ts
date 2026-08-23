@@ -43,13 +43,15 @@ export const load: PageServerLoad = async ({ locals }) => {
             enable_cdn_cache: 'false',
             cdn_cache_ttl: '86400',
             auth_providers: '[]',
-            timezone: 'Asia/Seoul'
+            timezone: 'Asia/Seoul',
+            board_hub_url: 'https://hub.sveltekitblog.com',
+            board_api_key: ''
         };
 
         // Override with DB values
         if (settingsResults) {
             for (const row of settingsResults as any[]) {
-                if (row.key in settings || row.key === 'enable_ip_logging' || row.key === 'enable_email_login' || row.key === 'enable_cdn_cache' || row.key === 'cdn_cache_ttl' || row.key === 'timezone') {
+                if (row.key in settings || row.key === 'enable_ip_logging' || row.key === 'enable_email_login' || row.key === 'enable_cdn_cache' || row.key === 'cdn_cache_ttl' || row.key === 'timezone' || row.key === 'board_hub_url' || row.key === 'board_api_key') {
                     settings[row.key] = row.value;
                 }
             }
@@ -100,7 +102,9 @@ export const actions: Actions = {
             'enable_cdn_cache',
             'cdn_cache_ttl',
             'auth_providers',
-            'timezone'
+            'timezone',
+            'board_hub_url',
+            'board_api_key'
         ];
 
         try {

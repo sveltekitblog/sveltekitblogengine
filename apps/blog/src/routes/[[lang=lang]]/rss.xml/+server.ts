@@ -53,14 +53,19 @@ export const GET: RequestHandler = async ({ platform, url, params, locals }) => 
         const siteTitle = getLocalized(settingsMap.site_title) || 'Blog';
         const siteDescription = getLocalized(settingsMap.description) || 'Blog RSS Feed';
 
-        // Fetch recent 20 published posts with category info strictly for specific language
+        // Fetch recent 20 published article posts with category info strictly for specific language (excluding pages/legal notices)
         const { results: posts } = await db
             .prepare(`
                 SELECT p.title, p.slug, p.category_slug, p.content, p.excerpt, 
                        p.featured_image, p.published_at, c.name as category_name
                 FROM posts p
                 LEFT JOIN categories c ON p.category_slug = c.slug AND c.lang = p.lang
-                WHERE p.status = 'published' AND p.lang = ?
+                WHERE p.status = 'published' 
+                  AND p.type = 'post'
+                  AND p.category_slug IS NOT NULL 
+                  AND p.category_slug != ''
+                  AND p.slug NOT IN ('about', 'privacy', 'contact', 'introduce', 'guestbook', 'admin-guide', 'blog-guide', 'detail-manual', 'devlog', 'general-guide')
+                  AND p.lang = ?
                 ORDER BY p.published_at DESC
                 LIMIT 20
             `)

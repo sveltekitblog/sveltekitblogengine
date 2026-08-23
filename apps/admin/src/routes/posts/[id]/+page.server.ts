@@ -18,7 +18,7 @@
 import type { PageServerLoad, Actions } from './$types';
 import { error, fail, redirect } from '@sveltejs/kit';
 import { marked } from 'marked';
-import { processContentHtml, stripFigureWrapper } from '$lib/utils/contentProcessor';
+import { processContentHtml } from '$lib/utils/contentProcessor';
 
 // Configure marked
 marked.setOptions({
@@ -44,27 +44,40 @@ function extractFirstImageSrc(html: string): string | undefined {
     return undefined;
 }
 
+// Helper: Strip <figure> wrappers to get raw <img> or <iframe> for editor parsing
+function stripFigureWrapper(html: string): string {
+    if (!html) return '';
+    return html.replace(/<figure[^>]*>([\s\S]*?)<\/figure>/gi, (match, innerContent) => {
+        // Strip out any <figcaption> tags inside the figure
+        const contentWithoutCaption = innerContent.replace(/<figcaption[^>]*>[\s\S]*?<\/figcaption>/gi, '').trim();
+        return contentWithoutCaption;
+    });
+}
+
 export const load: PageServerLoad = async ({ params, locals }) => {
     const db = locals.blogDb;
     if (!db) throw error(500, 'Database not found');
 
     try {
-        // 1. Fetch requested post
-        const requestedPost = await db.prepare('SELECT translation_group_id FROM posts WHERE id = ?').bind(params.id).first();
-        if (!requestedPost) throw error(404, 'Post not found');
-        const groupId = requestedPost.translation_group_id || params.id;
+        // 1. Fetch current post to get translation_group_id
+        const currentPost = await db.prepare('SELECT translation_group_id, id FROM posts WHERE id = ?').bind(params.id).first();
+        if (!currentPost) throw error(404, 'Post not found');
 
-        // 2. Fetch all translations in group
+        const groupId = (currentPost.translation_group_id as string) || currentPost.id;
+
+        // 2. Fetch all posts in this translation group
         const { results: posts } = await db.prepare(`
-            SELECT p.*, c.name as category_name 
+            SELECT p.*, c.name as category_name
             FROM posts p
             LEFT JOIN categories c ON p.category_slug = c.slug AND c.lang = p.lang
             WHERE p.translation_group_id = ?
         `).bind(groupId).all();
 
-        // 3. Fetch all languages
+        // 3. Fetch all languages, categories and settings
         const { results: languages } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
         const { results: categories } = await db.prepare('SELECT slug, name, lang FROM categories ORDER BY name ASC').all();
+        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_api_key', 'board_hub_url')").all();
+        const settingsMap = (settingsRows || []).reduce((acc: any, curr: any) => { acc[curr.key] = curr.value; return acc; }, {});
 
         // 4. Strip figure wrappers from post content for editor parsing compatibility
         const parsedPosts = (posts || []).map((post: any) => {
@@ -78,7 +91,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
             posts: parsedPosts, 
             groupId,
             languages: languages || [],
-            categories: categories || [] 
+            categories: categories || [],
+            settings: settingsMap
         };
     } catch (err) {
         console.error('Failed to load post translations:', err);
@@ -154,15 +168,18 @@ export const actions: Actions = {
                     `).bind(category, categoryName || category, lang, category).run();
                 }
 
+                const shouldPublishToHub = status === 'published' && (item.submitToBoard === true || item.submitToBoard === 'true');
+                const isSyndicatedVal = shouldPublishToHub ? 1 : 0;
+
                 // Check if exists
-                const existing = await db.prepare('SELECT id FROM posts WHERE id = ?').bind(id).first();
+                const existing = await db.prepare('SELECT id, is_syndicated FROM posts WHERE id = ?').bind(id).first();
                 
                 if (existing) {
                     await db.prepare(`
                         UPDATE posts
                         SET title = ?, slug = ?, content = ?, excerpt = ?, category_slug = ?, type = ?,
                             author_id = ?, status = ?, tags = ?, featured_image = ?, lang = ?,
-                            content_type = ?, content_markdown = ?, thumbnail_fit = ?,
+                            content_type = ?, content_markdown = ?, thumbnail_fit = ?, is_syndicated = ?,
                             updated_at = datetime('now', '+9 hours'),
                             published_at = CASE 
                                 WHEN ? = 'published' THEN COALESCE(published_at, datetime('now', '+9 hours'))
@@ -171,16 +188,50 @@ export const actions: Actions = {
                         WHERE id = ?
                     `).bind(
                         title, slug, content, excerpt || '', category || '일반', type,
-                        author_id, status, tagsJson, featured_image, lang, contentType, contentMarkdown || null, thumbnail_fit, status, id
+                        author_id, status, tagsJson, featured_image, lang, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status, id
                     ).run();
                 } else {
                     await db.prepare(`
-                        INSERT INTO posts (id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, created_at, updated_at, published_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
+                        INSERT INTO posts (id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, is_syndicated, created_at, updated_at, published_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
                         CASE WHEN ? = 'published' THEN datetime('now', '+9 hours') ELSE NULL END)
                     `).bind(
-                        id, title, slug, content, excerpt || '', category || '일반', type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, status
+                        id, title, slug, content, excerpt || '', category || '일반', type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
                     ).run();
+                }
+
+                // 허브 동기화 / 비공개(숨김) 라이프사이클 처리
+                try {
+                    const { publishPostToHub, hidePostFromHub, buildPostUrl } = await import('$lib/server/hub');
+                    if (shouldPublishToHub) {
+                        // 1. 공개 발행/수정 -> 허브 카드 갱신
+                        await publishPostToHub({
+                            title,
+                            slug,
+                            excerpt,
+                            categorySlug: category || '일반',
+                            featuredImage: featured_image,
+                            tags: tagsJson,
+                            lang
+                        }, db);
+                    } else if (existing && (existing as any).is_syndicated === 1) {
+                        // 2. 이전에 허브에 발행되었으나 비공개(draft)로 전환되었거나 허브 체크가 해제된 경우 -> 허브 피드 숨김 (좋아요 보존)
+                        const { results: sRows } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'siteUrl'").all();
+                        const siteUrl = (sRows?.[0] as any)?.value || 'https://sveltekitblog.com';
+                        const postUrl = buildPostUrl(siteUrl, lang, category || '일반', slug);
+                        await hidePostFromHub({
+                            title,
+                            slug,
+                            excerpt,
+                            categorySlug: category || '일반',
+                            featuredImage: featured_image,
+                            tags: tagsJson,
+                            lang,
+                            url: postUrl
+                        }, db);
+                    }
+                } catch (e) {
+                    console.error('[Hub Sync/Hide Error]', e);
                 }
             }
 
