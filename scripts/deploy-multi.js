@@ -22,12 +22,15 @@ const accounts = syncAccounts(true);
 
 const args = process.argv.slice(2);
 const target = args[0];
-const isBlogOnly = args.includes('--blog-only');
-const isAdminOnly = args.includes('--admin-only');
+
+// 간결한 옵션(admin, blog) 및 기존 플래그(--admin-only, --blog-only 등) 전수 지원
+const isBlogOnly = args.some(arg => ['--blog-only', 'blog-only', 'blog'].includes(arg));
+const isAdminOnly = args.some(arg => ['--admin-only', 'admin-only', 'admin'].includes(arg));
 
 if (!target) {
     console.log('\n📖 [사용법]');
-    console.log('  npm run deploy:multi -- <계정키> [--blog-only | --admin-only]');
+    console.log('  npm run deploy:multi -- <계정키> [admin | blog]');
+    console.log('  npm run deploy:multi -- <계정키> [--admin-only | --blog-only]');
     console.log('  npm run deploy:multi -- --all');
     console.log('\n📋 [등록된 계정 목록]');
     Object.keys(accounts).forEach(k => {

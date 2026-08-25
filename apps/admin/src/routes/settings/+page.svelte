@@ -80,7 +80,6 @@
     const allTimezones = Intl.supportedValuesOf('timeZone');
 
     // --- Hub Syndication Settings (Svelte 5 Runes) ---
-    let boardHubUrl = $state(untrack(() => data.settings.board_hub_url || 'https://hub.sveltekitblog.com'));
     let boardApiKey = $state(untrack(() => data.settings.board_api_key || ''));
     let boardAutoSyndicate = $state(untrack(() => data.settings.board_auto_syndicate !== 'false'));
 
@@ -672,12 +671,13 @@
                             type="url" 
                             id="board_hub_url" 
                             name="board_hub_url" 
-                            bind:value={boardHubUrl} 
+                            value="https://hub.sveltekitblog.com" 
+                            readonly
                             placeholder="https://hub.sveltekitblog.com"
-                            class="admin-name-input w-full"
+                            class="admin-name-input w-full bg-slate-100 text-slate-500 cursor-not-allowed select-all font-mono text-sm"
                         />
                         <p class="text-xs text-slate-400 mt-1">
-                            💡 {t('admin.settings.hub_url_hint', { default: '포스트 카드 메타데이터가 전송될 허브 주소입니다. (기본: https://hub.sveltekitblog.com)' })}
+                            🌐 {t('admin.settings.hub_url_hint', { default: '스벨트킷 블로그 공식 허브 주소(고정)입니다.' })}
                         </p>
                     </div>
 

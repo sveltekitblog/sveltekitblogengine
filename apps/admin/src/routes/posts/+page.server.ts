@@ -26,10 +26,19 @@ export const load: PageServerLoad = async ({ locals, platform }) => {
     const userDb = platform?.env?.USER_DB;
 
     try {
-        // Posts 목록 (작성자 JOIN 제거, 단일 관리자 가정)
-        const { results: postsRaw } = await db.prepare(`
-            SELECT * FROM posts ORDER BY created_at DESC
-        `).all();
+        // Posts 목록 & Languages 목록 병렬 조회
+        const [{ results: postsRaw }, langResult] = await Promise.all([
+            db.prepare(`
+                SELECT * FROM posts ORDER BY created_at DESC
+            `).all(),
+            db.prepare(`
+                SELECT * FROM languages ORDER BY sort_order ASC, code ASC
+            `).all().catch((e: any) => {
+                console.warn('Failed to load languages in admin posts:', e);
+                return { results: [] };
+            })
+        ]);
+        const languages = (langResult as any)?.results || [];
 
         // Aggregate view counts from USER_DB
         let viewCountMap: Record<string, number> = {};
@@ -54,7 +63,8 @@ export const load: PageServerLoad = async ({ locals, platform }) => {
         }));
 
         return {
-            posts
+            posts,
+            languages
         };
     } catch (err) {
         console.error('Failed to load posts:', err);

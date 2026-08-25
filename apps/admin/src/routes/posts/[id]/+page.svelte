@@ -121,8 +121,47 @@
         groupDataJson = JSON.stringify(Object.values(translationsData));
     });
 
-    function setMode(newMode: EditorMode) {
+    function setModeSafe(newMode: EditorMode) {
+        if (mode === 'html' && newMode === 'visual') {
+            const html = translationsData[activeLang]?.content || '';
+            const hasUnsafeTags = /<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(html) || /style\s*=\s*["'][^"']+["']/i.test(html);
+
+            if (hasUnsafeTags) {
+                const confirmed = confirm(
+                    t('admin.editor.warn_html_to_visual', { 
+                        default: '⚠️ 작성하신 HTML 코드에 포함된 표(Table)나 커스텀 태그/스타일은 Visual 에디터로 전환 시 자동 정제되어 삭제될 수 있습니다. Visual 모드로 전환하시겠습니까?' 
+                    })
+                );
+                if (!confirmed) return;
+            }
+        }
         mode = newMode;
+    }
+
+    function handleEditorTypeChange(targetLang: string, newType: 'html' | 'markdown') {
+        const curr = translationsData[targetLang];
+        if (!curr) return;
+        const prevType = curr.contentType;
+        if (prevType === newType) return;
+
+        // 본문 내용이 실제로 작성되어 있는지 검사
+        const hasContent = prevType === 'markdown'
+            ? (curr.contentMarkdown && curr.contentMarkdown.replace(/^---[\s\S]*?---\s*/m, '').trim().length > 0)
+            : (curr.content && curr.content.replace(/<[^>]*>/g, '').trim().length > 0);
+
+        if (hasContent) {
+            const confirmed = confirm(
+                t('admin.editor.warn_change_type', { 
+                    default: '⚠️ 에디터 유형을 변경하면 기존에 작성한 본문 내용이나 서식이 손실될 수 있습니다. 계속 진행하시겠습니까?' 
+                })
+            );
+            if (!confirmed) {
+                // 취소 시 라디오 버튼 원래 상태 유지
+                curr.contentType = prevType;
+                return;
+            }
+        }
+        curr.contentType = newType;
     }
 
     let markdownEditorRef = $state<any>(null);
@@ -236,22 +275,26 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                 <span class="font-bold text-gray-800 block">{t('admin.editor.type_title', { default: '문서 에디터 유형 선택' })}</span>
                 <span class="text-xs text-gray-500">{t('admin.editor.type_desc', { default: '작성하시는 문서의 포맷을 선택하세요. 마크다운은 YAML Front Matter 헤더 작성을 지원합니다.' })}</span>
             </div>
-            <div class="flex gap-4">
-                <label class="flex items-center gap-2 cursor-pointer font-semibold text-sm">
+            <div class="flex gap-4" title={!translationsData[activeLang].id.startsWith('new-') ? t('admin.editor.type_locked_hint', { default: '저장된 포스트의 에디터 유형은 데이터 보호를 위해 고정됩니다.' }) : ''}>
+                <label class="flex items-center gap-2 font-semibold text-sm {!translationsData[activeLang].id.startsWith('new-') ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}">
                     <input
                         type="radio"
                         name="editor_type_{activeLang}"
                         value="html"
-                        bind:group={translationsData[activeLang].contentType}
+                        checked={translationsData[activeLang].contentType === "html"}
+                        onchange={() => handleEditorTypeChange(activeLang, "html")}
+                        disabled={!translationsData[activeLang].id.startsWith('new-')}
                     />
                     <span>{t('admin.editor.type_html', { default: '비주얼 HTML 에디터' })}</span>
                 </label>
-                <label class="flex items-center gap-2 cursor-pointer font-semibold text-sm">
+                <label class="flex items-center gap-2 font-semibold text-sm {!translationsData[activeLang].id.startsWith('new-') ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}">
                     <input
                         type="radio"
                         name="editor_type_{activeLang}"
                         value="markdown"
-                        bind:group={translationsData[activeLang].contentType}
+                        checked={translationsData[activeLang].contentType === "markdown"}
+                        onchange={() => handleEditorTypeChange(activeLang, "markdown")}
+                        disabled={!translationsData[activeLang].id.startsWith('new-')}
                     />
                     <span>{t('admin.editor.type_markdown', { default: '마크다운 에디터' })}</span>
                 </label>
@@ -359,15 +402,15 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                     <button
                         type="button"
                         class:active={mode === "visual"}
-                        onclick={() => setMode("visual")}>{t('admin.posts.write.visual', { default: 'Visual' })}</button>
+                        onclick={() => setModeSafe("visual")}>{t('admin.posts.write.visual', { default: 'Visual' })}</button>
                     <button
                         type="button"
                         class:active={mode === "html"}
-                        onclick={() => setMode("html")}>{t('admin.posts.write.html', { default: 'HTML' })}</button>
+                        onclick={() => setModeSafe("html")}>{t('admin.posts.write.html', { default: 'HTML' })}</button>
                     <button
                         type="button"
                         class:active={mode === "preview"}
-                        onclick={() => setMode("preview")}>{t('admin.posts.write.preview', { default: 'Preview' })}</button>
+                        onclick={() => setModeSafe("preview")}>{t('admin.posts.write.preview', { default: 'Preview' })}</button>
                 </div>
 
                 <!-- Visual Editor -->

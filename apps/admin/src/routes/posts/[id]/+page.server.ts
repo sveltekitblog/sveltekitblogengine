@@ -172,7 +172,7 @@ export const actions: Actions = {
                 const isSyndicatedVal = shouldPublishToHub ? 1 : 0;
 
                 // Check if exists
-                const existing = await db.prepare('SELECT id, is_syndicated, slug, category_slug, lang FROM posts WHERE id = ?').bind(id).first();
+                const existing = await db.prepare('SELECT id, is_syndicated, slug, category_slug, lang, published_at, created_at FROM posts WHERE id = ?').bind(id).first();
                 
                 if (existing) {
                     await db.prepare(`
@@ -207,6 +207,9 @@ export const actions: Actions = {
                     const siteUrl = (sRows?.[0] as any)?.value || 'https://sveltekitblog.com';
                     const currUrl = buildPostUrl(siteUrl, lang, category || '일반', slug);
 
+                    // 💡 [핵심] 글 수정 시 수정일이 아닌 최초 발행일(published_at 또는 created_at)을 보존
+                    const originalPublishedAt = (existing as any)?.published_at || (existing as any)?.created_at || new Date().toISOString();
+
                     // URL 변경 감지: 이전에 허브에 등록된 글의 슬러그/카테고리/언어가 변경된 경우 이전 URL 삭제
                     if (existing && (existing as any).is_syndicated === 1) {
                         const prevSlug = (existing as any).slug;
@@ -231,7 +234,8 @@ export const actions: Actions = {
                             featuredImage: featured_image,
                             tags: tagsJson,
                             lang,
-                            url: currUrl
+                            url: currUrl,
+                            publishedAt: originalPublishedAt
                         }, db);
                     } else if (existing && (existing as any).is_syndicated === 1) {
                         // 2. 이전에 허브에 발행되었으나 비공개(draft)로 전환되었거나 허브 체크가 해제된 경우 -> 허브 피드 숨김 (좋아요 보존)
@@ -243,7 +247,8 @@ export const actions: Actions = {
                             featuredImage: featured_image,
                             tags: tagsJson,
                             lang,
-                            url: currUrl
+                            url: currUrl,
+                            publishedAt: originalPublishedAt
                         }, db);
                     }
                 } catch (e) {

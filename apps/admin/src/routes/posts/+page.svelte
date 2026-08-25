@@ -60,6 +60,65 @@
         return `${year}-${month}-${day} ${hours}:${minutes}`;
     }
 
+    // Language filtering state
+    let selectedLang = $state<string>('all');
+
+    // Dynamic languages list: DB languages + any existing post languages
+    let availableLanguages = $derived.by(() => {
+        const langMap = new Map<string, { code: string; name: string }>();
+        
+        // 1. Add configured languages from DB
+        (data.languages || []).forEach((l: any) => {
+            if (l?.code) {
+                langMap.set(l.code, {
+                    code: l.code,
+                    name: l.name || l.code.toUpperCase()
+                });
+            }
+        });
+
+        // 2. Discover any additional languages present in existing posts
+        (data.posts || []).forEach((p: any) => {
+            const code = p.lang || 'ko';
+            if (!langMap.has(code)) {
+                langMap.set(code, {
+                    code,
+                    name: code.toUpperCase()
+                });
+            }
+        });
+
+        return Array.from(langMap.values());
+    });
+
+    // Counts per language
+    let langCounts = $derived.by(() => {
+        const counts: Record<string, number> = {
+            all: data.posts?.length || 0
+        };
+        availableLanguages.forEach(l => {
+            counts[l.code] = 0;
+        });
+        (data.posts || []).forEach((p: any) => {
+            const code = p.lang || 'ko';
+            counts[code] = (counts[code] || 0) + 1;
+        });
+        return counts;
+    });
+
+    // Filtered posts based on selected language
+    let filteredPosts = $derived.by(() => {
+        if (selectedLang === 'all') return data.posts || [];
+        return (data.posts || []).filter((p: any) => (p.lang || 'ko') === selectedLang);
+    });
+
+    let selectedLangObj = $derived(availableLanguages.find(l => l.code === selectedLang));
+
+    function selectLanguageTab(code: string) {
+        selectedLang = code;
+        currentPage = 1;
+    }
+
     // Pagination & Numbering state
     let currentPage = $state(1);
     let itemsPerPage = $state(20);
@@ -79,7 +138,7 @@
         }
     });
 
-    let totalPages = $derived(Math.ceil(data.posts.length / itemsPerPage) || 1);
+    let totalPages = $derived(Math.ceil(filteredPosts.length / itemsPerPage) || 1);
     
     // Ensure currentPage is within bounds when totalPages changes
     $effect(() => {
@@ -88,7 +147,7 @@
         }
     });
 
-    let paginatedPosts = $derived(data.posts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage));
+    let paginatedPosts = $derived(filteredPosts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage));
 
     // Calculate numbering and labels for published posts using a Map for O(1) rendering lookup
     let publishedPosts = $derived(data.posts.filter((p: any) => p.status === 'published' && p.type !== 'page'));
@@ -147,6 +206,31 @@
         </div>
     </header>
 
+    <!-- Dynamic Language Filter Tabs -->
+    {#if availableLanguages.length > 1}
+        <div class="lang-filter-bar">
+            <button
+                type="button"
+                class="lang-filter-tab {selectedLang === 'all' ? 'active' : ''}"
+                onclick={() => selectLanguageTab('all')}
+            >
+                <span>{t('admin.posts.filter_all', { default: '전체' })}</span>
+                <span class="count-badge">{langCounts['all'] || 0}</span>
+            </button>
+            {#each availableLanguages as lang}
+                <button
+                    type="button"
+                    class="lang-filter-tab {selectedLang === lang.code ? 'active' : ''}"
+                    onclick={() => selectLanguageTab(lang.code)}
+                >
+                    <span class="lang-code-pill">{lang.code === 'ko' ? 'KR' : lang.code.toUpperCase()}</span>
+                    <span>{lang.name}</span>
+                    <span class="count-badge {langCounts[lang.code] === 0 ? 'zero' : ''}">{langCounts[lang.code] || 0}</span>
+                </button>
+            {/each}
+        </div>
+    {/if}
+
     <div class="table-container">
         <table>
             <thead>
@@ -162,17 +246,32 @@
             <tbody>
                 {#if paginatedPosts.length === 0}
                     <tr>
-                        <td colspan="6" class="empty-state">{t('admin.posts.empty', { default: '작성된 글이 없습니다.' })}</td>
+                        <td colspan="6" class="empty-state">
+                            {#if selectedLang !== 'all'}
+                                <div class="empty-lang-box">
+                                    <p class="empty-lang-title">
+                                        {selectedLangObj ? `${selectedLangObj.name} (${selectedLangObj.code.toUpperCase()}) ` : ''}
+                                        {t('admin.posts.filter_empty_lang', { default: '해당 언어로 작성된 포스트가 없습니다.' })}
+                                    </p>
+                                    <a href="/posts/new" class="btn-primary mt-3 inline-flex items-center gap-1.5 text-xs">
+                                        <Plus size={14} /> {selectedLangObj ? `${selectedLangObj.name} ` : ''}{t('admin.posts.filter_write_new', { default: '새 글 작성하기' })}
+                                    </a>
+                                </div>
+                            {:else}
+                                {t('admin.posts.empty', { default: '작성된 글이 없습니다.' })}
+                            {/if}
+                        </td>
                     </tr>
                 {/if}
                 {#each paginatedPosts as post}
                     <tr>
                         <td>
-                            <div class="post-title">
+                            <div class="post-title flex items-center flex-wrap gap-1.5">
                                 {#if postNumberMap.has(post.id)}
-                                    <span class="text-indigo-600 font-bold mr-2">{postNumberMap.get(post.id)}</span>
+                                    <span class="text-indigo-600 font-bold mr-1">{postNumberMap.get(post.id)}</span>
                                 {/if}
-                                {post.title}
+                                <span class="title-text">{post.title}</span>
+                                <span class="lang-chip">{post.lang === 'ko' ? 'KR' : (post.lang || 'KR').toUpperCase()}</span>
                                 {#if post.type === 'page'}
                                     <span class="badge type-page">Page</span>
                                 {/if}
@@ -297,6 +396,93 @@
         color: #111827;
         font-weight: 700;
     }
+
+    /* Language Filter Tabs */
+    .lang-filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        overflow-x: auto;
+        padding-bottom: 0.5rem;
+        scrollbar-width: thin;
+    }
+    .lang-filter-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.875rem;
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        white-space: nowrap;
+    }
+    .lang-filter-tab:hover {
+        background: #e2e8f0;
+        color: #1e293b;
+        border-color: #cbd5e1;
+    }
+    .lang-filter-tab.active {
+        background: #1e293b;
+        color: white;
+        border-color: #1e293b;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .lang-code-pill {
+        font-size: 0.6875rem;
+        font-weight: 700;
+        padding: 0.125rem 0.375rem;
+        border-radius: 0.25rem;
+        background: #e2e8f0;
+        color: #334155;
+    }
+    .lang-filter-tab.active .lang-code-pill {
+        background: #334155;
+        color: #f8fafc;
+    }
+    .count-badge {
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.125rem 0.45rem;
+        border-radius: 9999px;
+        background: #cbd5e1;
+        color: #1e293b;
+    }
+    .count-badge.zero {
+        opacity: 0.6;
+    }
+    .lang-filter-tab.active .count-badge {
+        background: #475569;
+        color: white;
+    }
+    .lang-chip {
+        font-size: 0.6875rem;
+        font-weight: 700;
+        padding: 0.125rem 0.4rem;
+        border-radius: 0.25rem;
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #e2e8f0;
+        letter-spacing: 0.03em;
+    }
+    .empty-lang-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem 0;
+    }
+    .empty-lang-title {
+        color: #64748b;
+        font-size: 0.9375rem;
+        margin: 0;
+    }
+
     .btn-primary {
         display: inline-flex;
         align-items: center;
