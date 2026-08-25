@@ -76,7 +76,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         // 3. Fetch all languages, categories and settings
         const { results: languages } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
         const { results: categories } = await db.prepare('SELECT slug, name, lang FROM categories ORDER BY name ASC').all();
-        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_api_key', 'board_hub_url')").all();
+        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_api_key', 'board_hub_url', 'board_auto_syndicate')").all();
         const settingsMap = (settingsRows || []).reduce((acc: any, curr: any) => { acc[curr.key] = curr.value; return acc; }, {});
 
         // 4. Strip figure wrappers from post content for editor parsing compatibility
@@ -172,7 +172,7 @@ export const actions: Actions = {
                 const isSyndicatedVal = shouldPublishToHub ? 1 : 0;
 
                 // Check if exists
-                const existing = await db.prepare('SELECT id, is_syndicated FROM posts WHERE id = ?').bind(id).first();
+                const existing = await db.prepare('SELECT id, is_syndicated, slug, category_slug, lang FROM posts WHERE id = ?').bind(id).first();
                 
                 if (existing) {
                     await db.prepare(`
@@ -202,23 +202,39 @@ export const actions: Actions = {
 
                 // 허브 동기화 / 비공개(숨김) 라이프사이클 처리
                 try {
-                    const { publishPostToHub, hidePostFromHub, buildPostUrl } = await import('$lib/server/hub');
+                    const { publishPostToHub, hidePostFromHub, removePostFromHub, buildPostUrl } = await import('$lib/server/hub');
+                    const { results: sRows } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'siteUrl'").all();
+                    const siteUrl = (sRows?.[0] as any)?.value || 'https://sveltekitblog.com';
+                    const currUrl = buildPostUrl(siteUrl, lang, category || '일반', slug);
+
+                    // URL 변경 감지: 이전에 허브에 등록된 글의 슬러그/카테고리/언어가 변경된 경우 이전 URL 삭제
+                    if (existing && (existing as any).is_syndicated === 1) {
+                        const prevSlug = (existing as any).slug;
+                        const prevCat = (existing as any).category_slug || '일반';
+                        const prevLang = (existing as any).lang || 'ko';
+                        const prevUrl = buildPostUrl(siteUrl, prevLang, prevCat, prevSlug);
+
+                        if (prevUrl && prevUrl !== currUrl) {
+                            await removePostFromHub(prevUrl, db);
+                        }
+                    }
+
                     if (shouldPublishToHub) {
                         // 1. 공개 발행/수정 -> 허브 카드 갱신
                         await publishPostToHub({
                             title,
                             slug,
                             excerpt,
+                            content: contentType === 'markdown' ? contentMarkdown : content,
+                            contentType,
                             categorySlug: category || '일반',
                             featuredImage: featured_image,
                             tags: tagsJson,
-                            lang
+                            lang,
+                            url: currUrl
                         }, db);
                     } else if (existing && (existing as any).is_syndicated === 1) {
                         // 2. 이전에 허브에 발행되었으나 비공개(draft)로 전환되었거나 허브 체크가 해제된 경우 -> 허브 피드 숨김 (좋아요 보존)
-                        const { results: sRows } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'siteUrl'").all();
-                        const siteUrl = (sRows?.[0] as any)?.value || 'https://sveltekitblog.com';
-                        const postUrl = buildPostUrl(siteUrl, lang, category || '일반', slug);
                         await hidePostFromHub({
                             title,
                             slug,
@@ -227,7 +243,7 @@ export const actions: Actions = {
                             featuredImage: featured_image,
                             tags: tagsJson,
                             lang,
-                            url: postUrl
+                            url: currUrl
                         }, db);
                     }
                 } catch (e) {

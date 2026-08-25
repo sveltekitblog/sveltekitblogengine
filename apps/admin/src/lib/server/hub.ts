@@ -16,6 +16,7 @@
  */
 
 import type { D1Database } from '@cloudflare/workers-types';
+import { marked } from 'marked';
 
 export const DEFAULT_HUB_INGEST_URL = 'https://hub.sveltekitblog.com/api/v1/posts/ingest';
 
@@ -23,6 +24,8 @@ export interface PostSyncData {
     title: string;
     slug: string;
     excerpt?: string;
+    content?: string;         // 원본 본문 (HTML 또는 Markdown)
+    contentType?: string;     // 'html' | 'markdown'
     category?: string;
     categorySlug?: string;
     featuredImage?: string;
@@ -39,6 +42,51 @@ export interface HubSyncResult {
     reason?: string;
     message?: string;
     error?: string;
+}
+
+/**
+ * 1. 상대 경로 이미지를 절대 URL로 변환하는 유틸
+ */
+export function makeAbsoluteUrl(urlStr: string | undefined, siteUrl: string): string {
+    if (!urlStr) return '';
+    if (urlStr.startsWith('http://') || urlStr.startsWith('https://') || urlStr.startsWith('data:')) {
+        return urlStr;
+    }
+    const cleanBase = siteUrl.replace(/\/+$/, '');
+    const cleanPath = urlStr.startsWith('/') ? urlStr : `/${urlStr}`;
+    return `${cleanBase}${cleanPath}`;
+}
+
+/**
+ * 2. 본문 서론 1,000~1,500자 표준 HTML 추출 및 이미지 절대경로화
+ */
+export function extractStandardHtmlIntro(post: PostSyncData, siteUrl: string): string {
+    let html = '';
+
+    if (post.contentType === 'markdown') {
+        const rawContent = post.content || '';
+        const parts = rawContent.split(/^---\s*$/m);
+        const mdBody = parts.length >= 3 ? parts.slice(2).join('---').trim() : rawContent.trim();
+        try {
+            html = marked.parse(mdBody) as string;
+        } catch {
+            html = mdBody;
+        }
+    } else {
+        html = post.content || '';
+    }
+
+    // 본문 속 상대경로 이미지(/images/..., /uploads/... 등)를 절대 URL로 변환
+    const cleanBase = siteUrl.replace(/\/+$/, '');
+    html = html.replace(/<img\s+([^>]*?)src=(['"])(.*?)\2([^>]*?)>/gi, (match, before, quote, src, after) => {
+        if (src.startsWith('/')) {
+            return `<img ${before}src="${cleanBase}${src}"${after}>`;
+        }
+        return match;
+    });
+
+    // 서론 1,500자 분량 슬라이스
+    return html.slice(0, 1500);
 }
 
 /**
@@ -88,6 +136,8 @@ export async function publishPostToHub(post: PostSyncData, db: D1Database): Prom
         const categorySlug = post.categorySlug || post.category || 'general';
         const lang = post.lang || 'ko';
         const postUrl = post.url || buildPostUrl(siteUrl, lang, categorySlug, post.slug);
+        const htmlIntro = extractStandardHtmlIntro(post, siteUrl);
+        const featuredImageUrl = makeAbsoluteUrl(post.featuredImage, siteUrl);
 
         let parsedTags: string[] = [];
         if (Array.isArray(post.tags)) {
@@ -105,8 +155,9 @@ export async function publishPostToHub(post: PostSyncData, db: D1Database): Prom
             post: {
                 title: post.title,
                 excerpt: post.excerpt || '',
+                content: htmlIntro,
                 original_url: postUrl,
-                featured_image: post.featuredImage || '',
+                featured_image: featuredImageUrl,
                 tags: parsedTags,
                 lang: lang,
                 status: 'published',
@@ -154,12 +205,14 @@ export async function hidePostFromHub(post: PostSyncData, db: D1Database): Promi
         const lang = post.lang || 'ko';
         const postUrl = post.url || buildPostUrl(siteUrl, lang, categorySlug, post.slug);
 
+        const featuredImageUrl = makeAbsoluteUrl(post.featuredImage, siteUrl);
+
         const payload = {
             post: {
                 title: post.title,
                 excerpt: post.excerpt || '',
                 original_url: postUrl,
-                featured_image: post.featuredImage || '',
+                featured_image: featuredImageUrl,
                 tags: Array.isArray(post.tags) ? post.tags : [],
                 lang: lang,
                 status: 'hidden',

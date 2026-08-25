@@ -51,7 +51,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     try {
         const { results: languages } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
         const { results: categories } = await db.prepare('SELECT slug, name, lang FROM categories ORDER BY name ASC').all();
-        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_api_key', 'board_hub_url')").all();
+        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_api_key', 'board_hub_url', 'board_auto_syndicate')").all();
         const settingsMap = (settingsRows || []).reduce((acc: any, curr: any) => { acc[curr.key] = curr.value; return acc; }, {});
 
         return { 
@@ -149,6 +149,8 @@ export const actions: Actions = {
                             title,
                             slug,
                             excerpt,
+                            content: contentType === 'markdown' ? contentMarkdown : content,
+                            contentType,
                             categorySlug: category || '일반',
                             featuredImage: featured_image,
                             tags: tagsJson,

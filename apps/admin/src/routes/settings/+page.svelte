@@ -82,6 +82,7 @@
     // --- Hub Syndication Settings (Svelte 5 Runes) ---
     let boardHubUrl = $state(untrack(() => data.settings.board_hub_url || 'https://hub.sveltekitblog.com'));
     let boardApiKey = $state(untrack(() => data.settings.board_api_key || ''));
+    let boardAutoSyndicate = $state(untrack(() => data.settings.board_auto_syndicate !== 'false'));
 
     function toggleProvider(code: string) {
         if (authProviders.includes(code)) {
@@ -695,6 +696,21 @@
                         <p class="text-xs text-slate-400 mt-1">
                             🔑 {t('admin.settings.hub_api_key_hint', { default: '허브 플랫폼에서 발급받은 사이트 고유 API Key를 입력하세요. 비워둘 경우 허브 전송이 비활성화됩니다.' })}
                         </p>
+                    </div>
+
+                    <div class="form-group flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl mt-4">
+                        <div class="flex-1 pr-6">
+                            <span class="font-bold text-slate-800 block text-sm mb-1">
+                                {t('admin.settings.hub_auto_syndicate_title', { default: '🌐 글 작성 시 허브 동시 발행 기본 활성화' })}
+                            </span>
+                            <span class="text-xs text-slate-500 block leading-relaxed">
+                                {t('admin.settings.hub_auto_syndicate_desc', { default: '활성화하면 포스트 에디터에서 새 글 작성 시 "허브 자동 제출" 체크박스가 기본적으로 선택됩니다.' })}
+                            </span>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                            <input type="checkbox" name="board_auto_syndicate" value="true" class="sr-only peer" checked={boardAutoSyndicate} onchange={(e) => boardAutoSyndicate = e.currentTarget.checked}>
+                            <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
                     </div>
                 </div>
             </section>

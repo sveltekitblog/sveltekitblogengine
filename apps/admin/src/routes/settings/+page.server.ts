@@ -45,13 +45,14 @@ export const load: PageServerLoad = async ({ locals }) => {
             auth_providers: '[]',
             timezone: 'Asia/Seoul',
             board_hub_url: 'https://hub.sveltekitblog.com',
-            board_api_key: ''
+            board_api_key: '',
+            board_auto_syndicate: 'true'
         };
 
         // Override with DB values
         if (settingsResults) {
             for (const row of settingsResults as any[]) {
-                if (row.key in settings || row.key === 'enable_ip_logging' || row.key === 'enable_email_login' || row.key === 'enable_cdn_cache' || row.key === 'cdn_cache_ttl' || row.key === 'timezone' || row.key === 'board_hub_url' || row.key === 'board_api_key') {
+                if (row.key in settings || row.key === 'enable_ip_logging' || row.key === 'enable_email_login' || row.key === 'enable_cdn_cache' || row.key === 'cdn_cache_ttl' || row.key === 'timezone' || row.key === 'board_hub_url' || row.key === 'board_api_key' || row.key === 'board_auto_syndicate') {
                     settings[row.key] = row.value;
                 }
             }
@@ -104,7 +105,8 @@ export const actions: Actions = {
             'auth_providers',
             'timezone',
             'board_hub_url',
-            'board_api_key'
+            'board_api_key',
+            'board_auto_syndicate'
         ];
 
         try {
@@ -117,7 +119,7 @@ export const actions: Actions = {
                     // These are expected to be JSON stringified from the frontend multi-lang inputs
                     // We just save the string as is.
                     value = data.get(key) as string || '{}';
-                } else if (key === 'enable_ip_logging' || key === 'enable_email_login') {
+                } else if (key === 'enable_ip_logging' || key === 'enable_email_login' || key === 'board_auto_syndicate') {
                     value = data.get(key) === 'true' ? 'true' : 'false';
                 } else if (key === 'auth_providers') {
                     value = data.get(key) as string || '[]';
