@@ -15,6 +15,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-export const APP_VERSION = 'v1.0.0.9';
+export const APP_VERSION = 'v1.0.0.10';
 export const ENGINE_NAME = 'SKBE';
 export const FULL_VERSION = `${ENGINE_NAME} ${APP_VERSION}`;
