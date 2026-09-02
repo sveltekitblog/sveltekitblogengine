@@ -483,12 +483,17 @@
 
     const headerStaticHtml = $derived.by(() => {
         if (!rawHeaderStaticHtml) return "";
+        // 정적 캐시 HTML 내부의 모든 내부 상대경로를 현재 테넌트/언어 경로(processUrl)로 동적 치환
+        let processedHtml = rawHeaderStaticHtml.replace(/href="(\/[^"]*)"/g, (match, path) => {
+            return `href="${processUrl(path)}"`;
+        });
+
         const logoColor = header.logoColor || { type: "solid", value: "" };
         const freshLogoHtml = logoColor.type === "gradient"
             ? `<span style="background: ${logoColor.value}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; display: inline-block; padding-bottom: 0.2em; margin-bottom: -0.2em;">${logoText}</span>`
             : logoText;
         // DB 캐시 HTML 내부의 <a> 태그 속성(class 및 style)을 동적으로 안전 치환하여 효과 주입
-        return rawHeaderStaticHtml.replace(
+        return processedHtml.replace(
             /(<a\s+href="\/[^"]*"\s+class=")(logo)([^"]*"\s+style=")([^"]*)(")/i,
             (match, p1, p2, p3, p4, p5) => {
                 let hoverTransform = 'none';

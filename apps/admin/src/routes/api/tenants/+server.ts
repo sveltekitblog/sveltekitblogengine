@@ -28,12 +28,33 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             VALUES (?, ?, ?, ?, 'active', datetime('now', '+9 hours'), datetime('now', '+9 hours'))
         `).bind(id, cleanSlug, cleanName, cleanDomain).run();
 
-        // 새 블로그의 기본 설정 자동 초기화 (타이틀)
+        // 새 블로그의 기본 설정 자동 초기화 (타이틀 및 기본 헤더 메뉴)
         const siteTitleJson = JSON.stringify({ ko: cleanName, en: cleanName });
+        const defaultHeaderJson = JSON.stringify({
+            logoText: { ko: cleanName, en: cleanName, ja: "Blog" },
+            menuItems: [
+                { id: 1, type: "link", label: { ko: "Home", en: "Home", ja: "Home" }, url: "/", icon: "Home" },
+                { id: 3, type: "category_drawer", label: { ko: "Categories", en: "Categories", ja: "Categories" }, icon: "Menu" },
+                { id: 2, type: "link", label: { ko: "방명록", en: "Guestbook", ja: "ゲストブック" }, url: "/guestbook", icon: "MessageSquare" }
+            ],
+            mobile: {
+                menuItems: [
+                    { id: 1, type: "link", label: { ko: "Home", en: "Home", ja: "Home" }, url: "/", icon: "Home" },
+                    { id: 3, type: "category_drawer", label: { ko: "Categories", en: "Categories", ja: "Categories" }, icon: "Menu" },
+                    { id: 2, type: "link", label: { ko: "방명록", en: "Guestbook", ja: "ゲストブック" }, url: "/guestbook", icon: "MessageSquare" }
+                ]
+            }
+        });
+
         await db.prepare(`
             INSERT OR IGNORE INTO blog_settings (tenant_id, key, value, updated_at)
             VALUES (?, 'site_title', ?, datetime('now', '+9 hours'))
         `).bind(id, siteTitleJson).run();
+
+        await db.prepare(`
+            INSERT OR IGNORE INTO blog_settings (tenant_id, key, value, updated_at)
+            VALUES (?, 'header', ?, datetime('now', '+9 hours'))
+        `).bind(id, defaultHeaderJson).run();
 
         return json({ success: true, tenant: { id, slug: cleanSlug, name: cleanName, customDomain: cleanDomain } });
     } catch (e: any) {
