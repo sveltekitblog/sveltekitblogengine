@@ -61,6 +61,8 @@
         } finally {
             isSubmitting = false;
         }
+    }
+
     function getTenantDisplayName(tenant: Tenant) {
         if (tenant.slug === 'default' || tenant.id === 'default' || tenant.name === '메인 블로그') {
             return t('admin.tenant.default_name', { default: '메인 블로그' });
