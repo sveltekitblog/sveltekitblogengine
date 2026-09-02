@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS languages (
     name TEXT NOT NULL,
     is_default INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
-    sort_order INTEGER DEFAULT 0
+    sort_order INTEGER DEFAULT 0,
+    fallback_message TEXT
 );
 
 -- 2. Categories
