@@ -20,6 +20,7 @@
  * Both frontend (i18n.ts) and backend (+page.server.ts) import this file.
  */
 export const fallbackDictionary: Record<string, Record<string, string>> = {
+    "admin.tenant.default_name": {"ko":"메인 블로그","en":"Main Blog","ja":"メインブログ"},
     "admin.tenant.select_header": {"ko":"관리할 블로그 선택","en":"Select Blog to Manage","ja":"管理するブログを選択"},
     "admin.tenant.add_btn": {"ko":"+ 새 블로그 추가","en":"+ Add New Blog","ja":"+ 新規ブログ追加"},
     "admin.tenant.modal_title": {"ko":"새 블로그 개설","en":"Create New Blog","ja":"新規ブログ開設"},

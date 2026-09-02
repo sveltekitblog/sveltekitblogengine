@@ -24,12 +24,24 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     if (!db) throw error(500, 'Database not found');
 
     try {
-        const [{ results: languages }, { results: categories }, { results: dictQuery }] = await Promise.all([
+        let [{ results: languagesRaw }, { results: categories }, { results: dictQuery }] = await Promise.all([
             db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all(),
             db.prepare('SELECT * FROM categories WHERE tenant_id = ? ORDER BY slug ASC, lang ASC').bind(locals.tenantId).all(),
             db.prepare("SELECT value FROM blog_settings WHERE tenant_id = ? AND key = 'ui_dictionary'").bind(locals.tenantId).all()
         ]);
         
+        let languages = languagesRaw || [];
+        if (languages.length === 0) {
+            await db.prepare(`
+                INSERT OR IGNORE INTO languages (code, name, is_default, is_active, sort_order, fallback_message) VALUES
+                ('ko', '한국어', 1, 1, 1, '이 포스트는 한국어로 작성되었습니다.'),
+                ('en', 'English', 0, 1, 2, 'This post is written in English.'),
+                ('ja', '日本語', 0, 1, 3, 'この投稿は日本語で書かれています。')
+            `).run();
+            const { results: reloaded } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
+            languages = reloaded || [];
+        }
+
         let ui_dictionary: Record<string, Record<string, string>> = {};
         let needsDbSync = false;
 

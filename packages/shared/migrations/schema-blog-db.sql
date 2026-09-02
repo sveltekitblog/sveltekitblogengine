@@ -136,3 +136,9 @@ CREATE TABLE IF NOT EXISTS visitor_stats (
 
 -- 기본 테넌트 초기화
 INSERT OR IGNORE INTO tenants (id, slug, name, status) VALUES ('default', 'default', '메인 블로그', 'active');
+
+-- 기본 언어 목록 초기화
+INSERT OR IGNORE INTO languages (code, name, is_default, is_active, sort_order, fallback_message) VALUES
+('ko', '한국어', 1, 1, 1, '이 포스트는 한국어로 작성되었습니다.'),
+('en', 'English', 0, 1, 2, 'This post is written in English.'),
+('ja', '日本語', 0, 1, 3, 'この投稿は日本語で書かれています。');

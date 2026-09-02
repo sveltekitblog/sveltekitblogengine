@@ -61,6 +61,11 @@
         } finally {
             isSubmitting = false;
         }
+    function getTenantDisplayName(tenant: Tenant) {
+        if (tenant.slug === 'default' || tenant.id === 'default' || tenant.name === '메인 블로그') {
+            return t('admin.tenant.default_name', { default: '메인 블로그' });
+        }
+        return tenant.name;
     }
 </script>
 
@@ -68,7 +73,7 @@
     <button class="tenant-current-btn" onclick={() => (isOpen = !isOpen)} aria-expanded={isOpen}>
         <div class="tenant-info">
             <span class="tenant-badge">BLOG</span>
-            <span class="tenant-name" title={currentTenant.name}>{currentTenant.name}</span>
+            <span class="tenant-name" title={getTenantDisplayName(currentTenant)}>{getTenantDisplayName(currentTenant)}</span>
         </div>
         <span class="chevron">▼</span>
     </button>
@@ -83,7 +88,7 @@
                         class:active={tItem.id === currentTenant.id}
                         onclick={() => switchTenant(tItem.id)}
                     >
-                        <div class="tenant-item-title">{tItem.name}</div>
+                        <div class="tenant-item-title">{getTenantDisplayName(tItem)}</div>
                         <div class="tenant-item-sub">/@{tItem.slug} {tItem.customDomain ? `· ${tItem.customDomain}` : ''}</div>
                     </button>
                 {/each}
