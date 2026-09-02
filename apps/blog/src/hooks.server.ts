@@ -19,7 +19,7 @@ import { getAuth } from "$lib/auth";
 import { svelteKitHandler } from "better-auth/svelte-kit";
 import { BlogDB } from "$lib/server/db";
 import { userDb } from "@blog/shared/db";
-import type { Handle } from "@sveltejs/kit";
+import { error, type Handle } from "@sveltejs/kit";
 import { building } from "$app/environment";
 import '$lib/server/storageAdapter';
 import type { Tenant } from '@blog/shared';
@@ -39,32 +39,37 @@ export const handle: Handle = async ({ event, resolve }) => {
     };
 
     if (blog_d1 && !building) {
-        try {
-            const pathname = event.url.pathname;
-            const hostname = event.url.hostname;
-            const pathSegments = pathname.split('/').filter(Boolean);
+        const pathname = event.url.pathname;
+        const hostname = event.url.hostname;
+        const pathSegments = pathname.split('/').filter(Boolean);
 
-            // ① 경로 기반 감지 (예: /@tech/...)
-            if (pathSegments[0] && pathSegments[0].startsWith('@')) {
-                const slugCandidate = pathSegments[0].slice(1);
-                const { results } = await blog_d1.prepare("SELECT * FROM tenants WHERE slug = ? AND status = 'active'").bind(slugCandidate).all();
-                if (results && results[0]) currentTenant = results[0] as unknown as Tenant;
-            } 
-            // ② 도메인/서브도메인 기반 감지
-            else if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.endsWith('.pages.dev')) {
-                // 1) 커스텀 도메인 매칭
-                const { results: customMatch } = await blog_d1.prepare("SELECT * FROM tenants WHERE custom_domain = ? AND status = 'active'").bind(hostname).all();
-                if (customMatch && customMatch[0]) {
-                    currentTenant = customMatch[0] as unknown as Tenant;
-                } else {
-                    // 2) 서브도메인 slug 매칭 (예: tech.domain.com -> tech)
-                    const subCandidate = hostname.split('.')[0];
+        // ① 경로 기반 감지 (예: /@tech/...)
+        if (pathSegments[0] && pathSegments[0].startsWith('@')) {
+            const slugCandidate = pathSegments[0].slice(1);
+            const { results } = await blog_d1.prepare("SELECT * FROM tenants WHERE slug = ? AND status = 'active'").bind(slugCandidate).all();
+            if (results && results[0]) {
+                currentTenant = results[0] as unknown as Tenant;
+            } else {
+                // 시나리오 B: 존재하지 않거나 삭제된 서브 블로그 접근 시 404 발생
+                throw error(404, 'TENANT_NOT_FOUND');
+            }
+        } 
+        // ② 도메인/서브도메인 기반 감지
+        else if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.endsWith('.pages.dev')) {
+            // 1) 커스텀 도메인 매칭
+            const { results: customMatch } = await blog_d1.prepare("SELECT * FROM tenants WHERE custom_domain = ? AND status = 'active'").bind(hostname).all();
+            if (customMatch && customMatch[0]) {
+                currentTenant = customMatch[0] as unknown as Tenant;
+            } else {
+                // 2) 서브도메인 slug 매칭 (예: tech.domain.com -> tech)
+                const subCandidate = hostname.split('.')[0];
+                if (subCandidate && subCandidate !== 'www') {
                     const { results: subMatch } = await blog_d1.prepare("SELECT * FROM tenants WHERE slug = ? AND status = 'active'").bind(subCandidate).all();
-                    if (subMatch && subMatch[0]) currentTenant = subMatch[0] as unknown as Tenant;
+                    if (subMatch && subMatch[0]) {
+                        currentTenant = subMatch[0] as unknown as Tenant;
+                    }
                 }
             }
-        } catch (e) {
-            console.warn('[Tenant Resolution Warning]:', e);
         }
     }
 
