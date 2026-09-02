@@ -1,6 +1,7 @@
 <script lang="ts">
     import { page } from "$app/stores";
     import { t } from "$lib/i18n.svelte";
+    import { Trash2 } from "lucide-svelte";
     import type { Tenant } from "@blog/shared";
 
     let tenants = $derived(($page.data.tenants || []) as Tenant[]);
@@ -63,6 +64,33 @@
         }
     }
 
+    async function deleteTenant(e: MouseEvent, tenant: Tenant) {
+        e.stopPropagation();
+        if (tenant.id === 'default' || tenant.slug === 'default') return;
+
+        const confirmMsg = `[${tenant.name}] ${t("admin.tenant.delete_confirm", { default: "블로그를 정말 삭제하시겠습니까? 모든 데이터가 영구 삭제됩니다." })}`;
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            const res = await fetch("/api/tenants", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: tenant.id })
+            });
+            if (res.ok) {
+                if (tenant.id === currentTenant.id) {
+                    await switchTenant("default");
+                } else {
+                    window.location.reload();
+                }
+            } else {
+                alert(t("admin.tenant.delete_failed", { default: "블로그 삭제에 실패했습니다." }));
+            }
+        } catch (err) {
+            alert(t("admin.tenant.delete_failed", { default: "블로그 삭제에 실패했습니다." }));
+        }
+    }
+
     function getTenantDisplayName(tenant: Tenant) {
         if (tenant.slug === 'default' || tenant.id === 'default' || tenant.name === '메인 블로그') {
             return t('admin.tenant.default_name', { default: '메인 블로그' });
@@ -85,14 +113,29 @@
             <div class="tenant-dropdown-header">{t("admin.tenant.select_header", { default: "관리할 블로그 선택" })}</div>
             <div class="tenant-list">
                 {#each tenants as tItem}
-                    <button 
-                        class="tenant-item" 
+                    <div 
+                        class="tenant-item-row"
                         class:active={tItem.id === currentTenant.id}
-                        onclick={() => switchTenant(tItem.id)}
                     >
-                        <div class="tenant-item-title">{getTenantDisplayName(tItem)}</div>
-                        <div class="tenant-item-sub">/@{tItem.slug} {tItem.customDomain ? `· ${tItem.customDomain}` : ''}</div>
-                    </button>
+                        <button 
+                            type="button"
+                            class="tenant-item-btn" 
+                            onclick={() => switchTenant(tItem.id)}
+                        >
+                            <div class="tenant-item-title">{getTenantDisplayName(tItem)}</div>
+                            <div class="tenant-item-sub">/@{tItem.slug} {tItem.customDomain ? `· ${tItem.customDomain}` : ''}</div>
+                        </button>
+                        {#if tItem.id !== 'default' && tItem.slug !== 'default'}
+                            <button 
+                                type="button" 
+                                class="tenant-delete-btn" 
+                                title={t("admin.tenant.delete_btn", { default: "삭제" })}
+                                onclick={(e) => deleteTenant(e, tItem)}
+                            >
+                                <Trash2 size={13} />
+                            </button>
+                        {/if}
+                    </div>
                 {/each}
             </div>
             <button class="add-tenant-btn" onclick={() => { isOpen = false; showModal = true; }}>
@@ -147,12 +190,16 @@
     .chevron { font-size: 0.65rem; color: #94a3b8; }
     .tenant-dropdown { position: absolute; top: calc(100% + 4px); left: 0; width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; overflow: hidden; }
     .tenant-dropdown-header { font-size: 0.7rem; color: #94a3b8; padding: 0.5rem 0.75rem 0.25rem 0.75rem; font-weight: 600; text-transform: uppercase; }
-    .tenant-list { max-height: 180px; overflow-y: auto; }
-    .tenant-item { width: 100%; text-align: left; background: none; border: none; padding: 0.5rem 0.75rem; color: #e2e8f0; cursor: pointer; border-bottom: 1px solid #1e293b; transition: background 0.15s; }
-    .tenant-item:hover, .tenant-item.active { background: #1e293b; }
-    .tenant-item.active .tenant-item-title { color: #38bdf8; font-weight: 700; }
+    .tenant-list { max-height: 200px; overflow-y: auto; }
+    .tenant-item-row { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1e293b; transition: background 0.15s; }
+    .tenant-item-row:hover { background: #1e293b; }
+    .tenant-item-row.active { background: rgba(56, 189, 248, 0.08); }
+    .tenant-item-row.active .tenant-item-title { color: #38bdf8; font-weight: 700; }
+    .tenant-item-btn { flex: 1; text-align: left; background: none; border: none; padding: 0.5rem 0.75rem; color: #e2e8f0; cursor: pointer; }
     .tenant-item-title { font-size: 0.82rem; font-weight: 500; }
     .tenant-item-sub { font-size: 0.7rem; color: #64748b; }
+    .tenant-delete-btn { background: none; border: none; color: #64748b; padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.15s, background 0.15s; margin-right: 0.35rem; }
+    .tenant-delete-btn:hover { color: #ef4444; background: rgba(239, 68, 68, 0.15); }
     .add-tenant-btn { width: 100%; background: #1e293b; border: none; padding: 0.6rem; color: #38bdf8; font-size: 0.8rem; font-weight: 600; cursor: pointer; text-align: center; }
     .add-tenant-btn:hover { background: #334155; }
     .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(4px); }

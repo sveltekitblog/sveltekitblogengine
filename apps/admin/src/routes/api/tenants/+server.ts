@@ -103,6 +103,8 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
             db.prepare("DELETE FROM blog_settings WHERE tenant_id = ?").bind(id),
             db.prepare("DELETE FROM layouts WHERE tenant_id = ?").bind(id),
             db.prepare("DELETE FROM widgets WHERE tenant_id = ?").bind(id),
+            db.prepare("DELETE FROM visitor_stats WHERE tenant_id = ?").bind(id),
+            db.prepare("DELETE FROM media WHERE tenant_id = ?").bind(id),
             db.prepare("DELETE FROM tenants WHERE id = ?").bind(id)
         ]);
 
