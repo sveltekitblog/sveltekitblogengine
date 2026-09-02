@@ -18,16 +18,32 @@
 import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index, primaryKey } from "drizzle-orm/sqlite-core";
 
+// 0. Tenants
+export const tenants = sqliteTable("tenants", {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    name: text("name").notNull(),
+    customDomain: text("custom_domain").unique(),
+    ownerId: text("owner_id"),
+    status: text("status").default('active'),
+    createdAt: text("created_at").default(sql`(datetime('now', '+9 hours'))`),
+    updatedAt: text("updated_at").default(sql`(datetime('now', '+9 hours'))`),
+});
+
 // 1. Blog Settings
 export const blogSettings = sqliteTable("blog_settings", {
-    key: text("key").primaryKey(),
+    tenantId: text("tenant_id").notNull().default('default'),
+    key: text("key").notNull(),
     value: text("value").notNull(),
     updatedAt: text("updated_at").notNull(),
-});
+}, (table) => [
+    primaryKey({ columns: [table.tenantId, table.key] })
+]);
 
 // 2. Categories
 export const categories = sqliteTable("categories", {
-    slug: text("slug").primaryKey(),
+    tenantId: text("tenant_id").notNull().default('default'),
+    slug: text("slug").notNull(),
     name: text("name").notNull(),
     description: text("description"),
     createdAt: text("created_at").default(sql`(datetime('now'))`),
@@ -35,12 +51,13 @@ export const categories = sqliteTable("categories", {
     lang: text("lang").default('ko'),
     translationGroupId: text("translation_group_id"),
 }, (table) => [
-    primaryKey({ columns: [table.slug, table.lang] })
+    primaryKey({ columns: [table.tenantId, table.slug, table.lang] })
 ]);
 
 // 3. Posts
 export const posts = sqliteTable("posts", {
     id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull().default('default'),
     title: text("title").notNull(),
     slug: text("slug").notNull(),
     content: text("content"),
@@ -60,14 +77,15 @@ export const posts = sqliteTable("posts", {
     contentMarkdown: text("content_markdown"),
     thumbnailFit: text("thumbnail_fit").default('cover'),
 }, (table) => [
-    index("idx_posts_slug").on(table.slug),
-    index("idx_posts_status_published").on(table.status, table.publishedAt),
-    index("idx_posts_translation_group").on(table.translationGroupId)
+    index("idx_posts_tenant_slug").on(table.tenantId, table.slug),
+    index("idx_posts_tenant_status").on(table.tenantId, table.status, table.publishedAt),
+    index("idx_posts_tenant_trans").on(table.tenantId, table.translationGroupId)
 ]);
 
 // 4. Layouts
 export const layouts = sqliteTable("layouts", {
     id: integer("id").primaryKey({ autoIncrement: true }),
+    tenantId: text("tenant_id").notNull().default('default'),
     name: text("name").notNull(),
     columnCount: integer("column_count").default(3),
     columnWidths: text("column_widths").default('1-2-1'),
@@ -76,11 +94,14 @@ export const layouts = sqliteTable("layouts", {
     isActive: integer("is_active", { mode: 'boolean' }).default(false),
     createdAt: text("created_at").default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").default(sql`(datetime('now'))`),
-});
+}, (table) => [
+    index("idx_layouts_tenant").on(table.tenantId)
+]);
 
 // 5. Widgets
 export const widgets = sqliteTable("widgets", {
     id: integer("id").primaryKey({ autoIncrement: true }),
+    tenantId: text("tenant_id").notNull().default('default'),
     name: text("name").notNull(),
     type: text("type").notNull(),
     config: text("config"), // JSON string
@@ -101,10 +122,13 @@ export const layoutWidgets = sqliteTable("layout_widgets", {
 
 // 7. Visitor Stats
 export const visitorStats = sqliteTable("visitor_stats", {
-    date: text("date").primaryKey(),
+    tenantId: text("tenant_id").notNull().default('default'),
+    date: text("date").notNull(),
     uniqueVisitors: integer("unique_visitors").default(0),
     pageViews: integer("page_views").default(0),
-});
+}, (table) => [
+    primaryKey({ columns: [table.tenantId, table.date] })
+]);
 
 // 8. Post Views
 // 8. Post Views (MOVED TO USER_DB)
