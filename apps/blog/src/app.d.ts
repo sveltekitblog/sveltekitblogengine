@@ -17,6 +17,7 @@
 
 import type { D1Database, KVNamespace, R2Bucket } from '@cloudflare/workers-types';
 import type { BlogDB } from '$lib/server/db';
+import type { Tenant } from '@blog/shared';
 
 declare global {
     namespace App {
@@ -24,6 +25,8 @@ declare global {
         interface Locals {
             user: import("better-auth").User | null;
             session: import("better-auth").Session | null;
+            tenant: Tenant;
+            tenantId: string;
             db: BlogDB;
             userDb?: import("drizzle-orm/d1").DrizzleD1Database<any>;
             lang: string;

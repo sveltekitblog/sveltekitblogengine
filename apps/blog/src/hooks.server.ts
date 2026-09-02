@@ -22,16 +22,60 @@ import { userDb } from "@blog/shared/db";
 import type { Handle } from "@sveltejs/kit";
 import { building } from "$app/environment";
 import '$lib/server/storageAdapter';
+import type { Tenant } from '@blog/shared';
 
 export const handle: Handle = async ({ event, resolve }) => {
     const user_d1 = event.platform?.env.USER_DB;
     const blog_d1 = event.platform?.env.BLOG_DB;
 
+    // 1. 테넌트 스마트 식별 (경로 /@slug -> 커스텀 도메인 -> 서브도메인 -> default 폴백)
+    let currentTenant: Tenant = {
+        id: 'default',
+        slug: 'default',
+        name: '메인 블로그',
+        customDomain: null,
+        ownerId: null,
+        status: 'active'
+    };
+
+    if (blog_d1 && !building) {
+        try {
+            const pathname = event.url.pathname;
+            const hostname = event.url.hostname;
+            const pathSegments = pathname.split('/').filter(Boolean);
+
+            // ① 경로 기반 감지 (예: /@tech/...)
+            if (pathSegments[0] && pathSegments[0].startsWith('@')) {
+                const slugCandidate = pathSegments[0].slice(1);
+                const { results } = await blog_d1.prepare("SELECT * FROM tenants WHERE slug = ? AND status = 'active'").bind(slugCandidate).all();
+                if (results && results[0]) currentTenant = results[0] as unknown as Tenant;
+            } 
+            // ② 도메인/서브도메인 기반 감지
+            else if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.endsWith('.pages.dev')) {
+                // 1) 커스텀 도메인 매칭
+                const { results: customMatch } = await blog_d1.prepare("SELECT * FROM tenants WHERE custom_domain = ? AND status = 'active'").bind(hostname).all();
+                if (customMatch && customMatch[0]) {
+                    currentTenant = customMatch[0] as unknown as Tenant;
+                } else {
+                    // 2) 서브도메인 slug 매칭 (예: tech.domain.com -> tech)
+                    const subCandidate = hostname.split('.')[0];
+                    const { results: subMatch } = await blog_d1.prepare("SELECT * FROM tenants WHERE slug = ? AND status = 'active'").bind(subCandidate).all();
+                    if (subMatch && subMatch[0]) currentTenant = subMatch[0] as unknown as Tenant;
+                }
+            }
+        } catch (e) {
+            console.warn('[Tenant Resolution Warning]:', e);
+        }
+    }
+
+    event.locals.tenant = currentTenant;
+    event.locals.tenantId = currentTenant.id;
+
     // Globally enforce IP logging setting
     let enableIpLogging = false;
     if (blog_d1) {
         try {
-            const { results } = await blog_d1.prepare("SELECT value FROM blog_settings WHERE key = 'enable_ip_logging'").all();
+            const { results } = await blog_d1.prepare("SELECT value FROM blog_settings WHERE tenant_id = ? AND key = 'enable_ip_logging'").bind(currentTenant.id).all();
             if (results && results[0] && results[0].value === 'true') {
                 enableIpLogging = true;
             }
@@ -43,7 +87,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     let enableEmailLogin = true;
     if (blog_d1) {
         try {
-            const { results } = await blog_d1.prepare("SELECT key, value FROM blog_settings WHERE key IN ('auth_providers', 'enable_email_login')").all();
+            const { results } = await blog_d1.prepare("SELECT key, value FROM blog_settings WHERE tenant_id = ? AND key IN ('auth_providers', 'enable_email_login')").bind(currentTenant.id).all();
             if (results) {
                 const providersRow = results.find((r: any) => r.key === 'auth_providers');
                 if (providersRow && providersRow.value) {
@@ -76,7 +120,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
 
     if (!building && user_d1 && blog_d1) {
-        event.locals.db = new BlogDB(blog_d1, user_d1);
+        event.locals.db = new BlogDB(blog_d1, user_d1, currentTenant.id);
         event.locals.userDb = userDb(user_d1);
 
         try {

@@ -25,11 +25,14 @@ import { eq, desc, asc, and, or, sql, inArray } from 'drizzle-orm';
 export class BlogDB {
     private db;
     private userDb;
+    public tenantId: string;
 
     constructor(
         private blogD1: D1Database,
-        private userD1: D1Database
+        private userD1: D1Database,
+        tenantId: string = 'default'
     ) {
+        this.tenantId = tenantId;
         this.db = drizzle(blogD1, { schema });
         this.userDb = drizzle(userD1, { schema: userSchema });
     }
@@ -49,7 +52,9 @@ export class BlogDB {
 
     // BLOG_DB 데이터 (설정, 레이아웃, 포스트)
     async getSettings(lang: string = 'ko', dbDefaultLang: string = 'ko'): Promise<Record<string, any>> {
-        const results = await this.db.query.blogSettings.findMany();
+        const results = await this.db.query.blogSettings.findMany({
+            where: eq(schema.blogSettings.tenantId, this.tenantId)
+        });
         
         // Define fields that are expected to be multilingual objects
         const multiLangFields = ['site_title', 'description', 'authorName'];
@@ -74,7 +79,10 @@ export class BlogDB {
 
     async getActiveLayout(): Promise<Layout | null> {
         const result = await this.db.query.layouts.findFirst({
-            where: eq(schema.layouts.isActive, true)
+            where: and(
+                eq(schema.layouts.tenantId, this.tenantId),
+                eq(schema.layouts.isActive, true)
+            )
         });
         if (!result) return null;
         return {
@@ -143,9 +151,18 @@ export class BlogDB {
             displayDate: sql`COALESCE(${schema.posts.publishedAt}, ${schema.posts.createdAt})`.as('display_date')
         })
             .from(schema.posts)
-            .leftJoin(schema.categories, and(eq(schema.posts.categorySlug, schema.categories.slug), eq(schema.categories.lang, schema.posts.lang)));
+            .leftJoin(schema.categories, and(
+                eq(schema.categories.tenantId, this.tenantId),
+                eq(schema.posts.categorySlug, schema.categories.slug),
+                eq(schema.categories.lang, schema.posts.lang)
+            ));
 
-        const whereClauses = [eq(schema.posts.status, 'published'), eq(schema.posts.type, 'post'), eq(schema.posts.lang, lang)];
+        const whereClauses = [
+            eq(schema.posts.tenantId, this.tenantId),
+            eq(schema.posts.status, 'published'),
+            eq(schema.posts.type, 'post'),
+            eq(schema.posts.lang, lang)
+        ];
         if (categorySlug && categorySlug !== 'all') {
             whereClauses.push(eq(schema.posts.categorySlug, categorySlug));
         }
@@ -208,6 +225,7 @@ export class BlogDB {
                 })
                     .from(schema.posts)
                     .where(and(
+                        eq(schema.posts.tenantId, this.tenantId),
                         inArray(schema.posts.translationGroupId, uniqueGroupIds),
                         eq(schema.posts.status, 'published')
                     ));
@@ -240,12 +258,16 @@ export class BlogDB {
         })
             .from(schema.categories)
             .leftJoin(schema.posts, and(
+                eq(schema.posts.tenantId, this.tenantId),
                 eq(schema.categories.slug, schema.posts.categorySlug),
                 eq(schema.posts.lang, schema.categories.lang),
                 eq(schema.posts.status, 'published'),
                 eq(schema.posts.type, 'post')
             ))
-            .where(eq(schema.categories.lang, lang))
+            .where(and(
+                eq(schema.categories.tenantId, this.tenantId),
+                eq(schema.categories.lang, lang)
+            ))
             .groupBy(schema.categories.slug)
             .orderBy(desc(sql`post_count`));
 
@@ -266,6 +288,7 @@ export class BlogDB {
      */
     async getLangsWithPosts(categorySlug?: string): Promise<string[]> {
         const whereClauses = [
+            eq(schema.posts.tenantId, this.tenantId),
             eq(schema.posts.status, 'published'),
             eq(schema.posts.type, 'post')
         ];
@@ -292,6 +315,7 @@ export class BlogDB {
         })
             .from(schema.posts)
             .where(and(
+                eq(schema.posts.tenantId, this.tenantId),
                 eq(schema.posts.status, 'published'),
                 eq(schema.posts.type, 'post')
             ));
@@ -314,7 +338,12 @@ export class BlogDB {
             slug: schema.posts.slug
         })
             .from(schema.posts)
-            .where(and(eq(schema.posts.status, 'published'), eq(schema.posts.type, 'page'), eq(schema.posts.lang, lang)))
+            .where(and(
+                eq(schema.posts.tenantId, this.tenantId),
+                eq(schema.posts.status, 'published'),
+                eq(schema.posts.type, 'page'),
+                eq(schema.posts.lang, lang)
+            ))
             .orderBy(asc(schema.posts.createdAt));
             
         return results;
@@ -343,14 +372,16 @@ export class BlogDB {
         })
             .from(schema.posts)
             .leftJoin(schema.categories, and(
+                eq(schema.categories.tenantId, this.tenantId),
                 eq(schema.posts.categorySlug, schema.categories.slug),
                 // lang별 카테고리 Row가 없을 때 defaultLang fallback
                 sql`${schema.categories.lang} = COALESCE(
-                    (SELECT lang FROM categories WHERE slug = ${schema.posts.categorySlug} AND lang = ${schema.posts.lang} LIMIT 1),
+                    (SELECT lang FROM categories WHERE tenant_id = ${this.tenantId} AND slug = ${schema.posts.categorySlug} AND lang = ${schema.posts.lang} LIMIT 1),
                     ${defaultLang}
                 )`
             ))
             .where(and(
+                eq(schema.posts.tenantId, this.tenantId),
                 eq(schema.posts.slug, slug),
                 eq(schema.posts.status, 'published'),
                 categorySlug === 'all' ? sql`1=1` : eq(schema.posts.categorySlug, categorySlug),
@@ -374,6 +405,7 @@ export class BlogDB {
             translations = await this.db.select({ lang: schema.posts.lang, slug: schema.posts.slug })
                 .from(schema.posts)
                 .where(and(
+                    eq(schema.posts.tenantId, this.tenantId),
                     eq(schema.posts.translationGroupId, post.translationGroupId),
                     eq(schema.posts.status, 'published')
                 ));
@@ -434,7 +466,6 @@ export class BlogDB {
             const postIds = topViews.map(v => v.postId);
 
             // 2. Fetch posts from BLOG_DB
-            // Use 'inArray' if possible, or mapping. Drizzle supports inArray.
             const results = await this.db.select({
                 id: schema.posts.id,
                 title: schema.posts.title,
@@ -451,8 +482,13 @@ export class BlogDB {
                 displayDate: sql`COALESCE(${schema.posts.publishedAt}, ${schema.posts.createdAt})`.as('display_date')
             })
                 .from(schema.posts)
-                .leftJoin(schema.categories, and(eq(schema.posts.categorySlug, schema.categories.slug), eq(schema.categories.lang, schema.posts.lang)))
+                .leftJoin(schema.categories, and(
+                    eq(schema.categories.tenantId, this.tenantId),
+                    eq(schema.posts.categorySlug, schema.categories.slug),
+                    eq(schema.categories.lang, schema.posts.lang)
+                ))
                 .where(and(
+                    eq(schema.posts.tenantId, this.tenantId),
                     eq(schema.posts.status, 'published'),
                     eq(schema.posts.type, 'post'),
                     eq(schema.posts.lang, lang),
@@ -474,12 +510,6 @@ export class BlogDB {
                 }
             }
 
-            // If we found fewer posts than limit (e.g. some popular posts were deleted), fill with recent
-            if (sortedPosts.length < limit) {
-                // This logic can be complex, for now let's just return what we have
-                // or separate recent posts call could be made.
-            }
-
             return sortedPosts;
 
         } catch (e) {
@@ -491,7 +521,11 @@ export class BlogDB {
     async incrementViewCount(slug: string, lang: string = 'ko', ip?: string) {
         // Find post ID by slug and lang first
         const post = await this.db.query.posts.findFirst({
-            where: and(eq(schema.posts.slug, slug), eq(schema.posts.lang, lang)),
+            where: and(
+                eq(schema.posts.tenantId, this.tenantId),
+                eq(schema.posts.slug, slug),
+                eq(schema.posts.lang, lang)
+            ),
             columns: { id: true, lang: true }
         });
 
@@ -500,7 +534,6 @@ export class BlogDB {
         const date = new Date().toISOString().split('T')[0];
 
         // UPSERT view count
-        // D1 (SQLite) supports UPSERT via ON CONFLICT
         await this.userDb.insert(userSchema.postViews)
             .values({
                 postId: post.id,
@@ -519,7 +552,11 @@ export class BlogDB {
 
     async getViewCount(slug: string, lang: string = 'ko'): Promise<number> {
         const post = await this.db.query.posts.findFirst({
-            where: and(eq(schema.posts.slug, slug), eq(schema.posts.lang, lang)),
+            where: and(
+                eq(schema.posts.tenantId, this.tenantId),
+                eq(schema.posts.slug, slug),
+                eq(schema.posts.lang, lang)
+            ),
             columns: { id: true }
         });
 
@@ -535,7 +572,6 @@ export class BlogDB {
     }
 
     async getPostsByTag(tag: string, lang: string = 'ko', dbDefaultLang: string = 'ko'): Promise<Post[]> {
-        // 태그 검색: JSON 배열 내부 검색이 복잡하므로 JS 필터링 사용 (데이터 규모 감안 시 수용 가능)
         const results = await this.db.select({
             id: schema.posts.id,
             title: schema.posts.title,
@@ -552,8 +588,17 @@ export class BlogDB {
             displayDate: sql`COALESCE(${schema.posts.publishedAt}, ${schema.posts.createdAt})`.as('display_date')
         })
             .from(schema.posts)
-            .leftJoin(schema.categories, and(eq(schema.posts.categorySlug, schema.categories.slug), eq(schema.categories.lang, schema.posts.lang)))
-            .where(and(eq(schema.posts.status, 'published'), eq(schema.posts.type, 'post'), eq(schema.posts.lang, lang)))
+            .leftJoin(schema.categories, and(
+                eq(schema.categories.tenantId, this.tenantId),
+                eq(schema.posts.categorySlug, schema.categories.slug),
+                eq(schema.categories.lang, schema.posts.lang)
+            ))
+            .where(and(
+                eq(schema.posts.tenantId, this.tenantId),
+                eq(schema.posts.status, 'published'),
+                eq(schema.posts.type, 'post'),
+                eq(schema.posts.lang, lang)
+            ))
             .orderBy(desc(sql`display_date`));
 
         const filtered = results.filter(r => {
@@ -561,7 +606,6 @@ export class BlogDB {
             return parsedTags.includes(tag);
         });
 
-        // Fetch likes and views for filtered tags
         const postIds = filtered.map(r => r.id);
         let viewsMap = new Map<string, number>();
         let likesMap = new Map<string, number>();
@@ -606,7 +650,12 @@ export class BlogDB {
                 tags: schema.posts.tags
             })
                 .from(schema.posts)
-                .where(and(eq(schema.posts.status, 'published'), eq(schema.posts.type, 'post'), eq(schema.posts.lang, lang)));
+                .where(and(
+                    eq(schema.posts.tenantId, this.tenantId),
+                    eq(schema.posts.status, 'published'),
+                    eq(schema.posts.type, 'post'),
+                    eq(schema.posts.lang, lang)
+                ));
 
             const tagsSet = new Set<string>();
             results.forEach(r => {
@@ -634,8 +683,8 @@ export class BlogDB {
 
         if (limitComments === undefined || limitGuestbooks === undefined) {
             const { results: settings } = await this.blogD1.prepare(
-                "SELECT key, value FROM blog_settings WHERE key IN ('dashboard_recent_comments', 'dashboard_recent_guestbooks')"
-            ).all();
+                "SELECT key, value FROM blog_settings WHERE tenant_id = ? AND key IN ('dashboard_recent_comments', 'dashboard_recent_guestbooks')"
+            ).bind(this.tenantId).all();
 
             if (settings) {
                 for (const row of settings as any[]) {
@@ -661,8 +710,8 @@ export class BlogDB {
             const postIds = rawComments.map((c: any) => `'${c.post_id}'`).filter((id: string) => id !== "'null'").join(',');
             if (postIds) {
                 const { results: postTitles } = await this.blogD1.prepare(`
-                    SELECT id, title, slug, lang, category_slug FROM posts WHERE slug IN (${postIds})
-                `).all();
+                    SELECT id, title, slug, lang, category_slug FROM posts WHERE tenant_id = ? AND slug IN (${postIds})
+                `).bind(this.tenantId).all();
 
                 const titleMap: Record<string, Record<string, { title: string; slug: string; categorySlug: string }>> = {};
                 for (const row of postTitles as any[]) {
