@@ -36,6 +36,7 @@
         getBgValue,
         getBgStyle,
     } from "$lib/utils/background";
+    import { buildLocalizedUrl } from "$lib/utils/url";
     import { onMount, untrack } from "svelte";
 
     let {
@@ -165,14 +166,10 @@
     });
 
     let langPrefix = $derived($page.params.lang ? `/${$page.params.lang}` : "");
+    let tenantPrefix = $derived(($page.data.tenantPrefix || "") as string);
 
     function processUrl(url: string) {
-        if (!url || url === "#") return url;
-        if (url.startsWith("http") || url.startsWith("mailto:")) return url;
-        if (url === "/") return langPrefix || "/";
-        return url.startsWith("/")
-            ? `${langPrefix}${url}`
-            : `${langPrefix}/${url}`;
+        return buildLocalizedUrl(url, langPrefix, tenantPrefix);
     }
 
     function ensureMenuItemStructure(items: any) {

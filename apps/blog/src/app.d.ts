@@ -27,6 +27,7 @@ declare global {
             session: import("better-auth").Session | null;
             tenant: Tenant;
             tenantId: string;
+            tenantPrefix: string;
             db: BlogDB;
             userDb?: import("drizzle-orm/d1").DrizzleD1Database<any>;
             lang: string;

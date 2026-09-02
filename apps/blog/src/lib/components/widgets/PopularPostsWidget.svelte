@@ -19,11 +19,13 @@
     import type { Post } from "$lib/types";
     import { formatDate } from "$lib/utils";
     import { page } from "$app/stores";
+    import { buildLocalizedUrl } from "$lib/utils/url";
     let { posts }: { posts: Post[] } = $props();
 
     function getLocalizedUrl(path: string) {
-        const lang = $page.params.lang;
-        return lang ? `/${lang}${path}` : path;
+        const langPrefix = $page.params.lang ? `/${$page.params.lang}` : "";
+        const tenantPrefix = ($page.data.tenantPrefix || "") as string;
+        return buildLocalizedUrl(path, langPrefix, tenantPrefix);
     }
 </script>
 

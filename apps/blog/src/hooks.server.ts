@@ -71,6 +71,10 @@ export const handle: Handle = async ({ event, resolve }) => {
     event.locals.tenant = currentTenant;
     event.locals.tenantId = currentTenant.id;
 
+    // 경로 기반 서브 테넌트 접두사 계산 (커스텀 도메인이 아니고 default가 아닐 때)
+    const isPathTenant = currentTenant.slug !== 'default' && (!currentTenant.customDomain || event.url.hostname.endsWith('.pages.dev') || event.url.hostname === 'localhost' || event.url.hostname === '127.0.0.1');
+    event.locals.tenantPrefix = isPathTenant ? `/@${currentTenant.slug}` : '';
+
     // Globally enforce IP logging setting
     let enableIpLogging = false;
     if (blog_d1) {
@@ -140,7 +144,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 
         // Language evaluation
         let reqLang: string | undefined = undefined;
-        const pathSegments = event.url.pathname.split('/').filter(Boolean);
+        const rawSegments = event.url.pathname.split('/').filter(Boolean);
+        // @slug 접두사가 있으면 언어 검사 시 제외
+        const pathSegments = rawSegments[0]?.startsWith('@') ? rawSegments.slice(1) : rawSegments;
         let allLangs: any[] = [];
         let langData;
         let dbDefaultLang = 'ko';
