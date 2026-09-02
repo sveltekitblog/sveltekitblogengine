@@ -35,6 +35,9 @@ declare global {
         interface Locals {
             blogDb?: D1Database;
             userDb?: D1Database;
+            tenantId: string;
+            tenant: import("@blog/shared").Tenant;
+            tenants: import("@blog/shared").Tenant[];
         }
     }
 }

@@ -19,6 +19,7 @@
     import { page, navigating } from "$app/stores";
     import { t, adminLang } from "$lib/i18n.svelte";
     import { FULL_VERSION } from "@blog/shared";
+    import TenantSwitcher from "$lib/components/navigation/TenantSwitcher.svelte";
     import "../app.css";
     
     let { children } = $props();
@@ -42,6 +43,7 @@
                     <option value="ja">日本語</option>
                 </select>
             </div>
+            <TenantSwitcher />
             <ul>
                 <li>
                     <a href="/dashboard" class:active={$page.url.pathname === "/dashboard"}

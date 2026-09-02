@@ -50,8 +50,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 
     try {
         const { results: languages } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
-        const { results: categories } = await db.prepare('SELECT slug, name, lang FROM categories ORDER BY name ASC').all();
-        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_api_key', 'board_hub_url', 'board_auto_syndicate')").all();
+        const { results: categories } = await db.prepare('SELECT slug, name, lang FROM categories WHERE tenant_id = ? ORDER BY name ASC').bind(locals.tenantId).all();
+        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE tenant_id = ? AND key IN ('board_api_key', 'board_hub_url', 'board_auto_syndicate')").bind(locals.tenantId).all();
         const settingsMap = (settingsRows || []).reduce((acc: any, curr: any) => { acc[curr.key] = curr.value; return acc; }, {});
 
         return { 
@@ -73,7 +73,9 @@ export const actions: Actions = {
         const data = await request.formData();
         const groupDataStr = data.get('groupData') as string;
         
-        if (!groupDataStr) return fail(400, { error: 'Group data is missing' });
+        if (!groupDataStr) {
+            return fail(400, { error: 'Group data is missing' });
+        }
 
         let groupData: any[];
         try {
@@ -84,15 +86,15 @@ export const actions: Actions = {
 
         try {
             const adminIdRow = await db.prepare(
-                "SELECT value FROM blog_settings WHERE key = 'admin_user_id'"
-            ).first();
+                "SELECT value FROM blog_settings WHERE tenant_id = ? AND key = 'admin_user_id'"
+            ).bind(locals.tenantId).first();
             const defaultAuthorId = adminIdRow?.value as string || 'admin';
 
             for (const item of groupData) {
-                // Skip any tab (new or existing) that has no title — prevents ghost posts from empty translation tabs
+                // Skip tabs with empty title (e.g. unused language tabs)
                 if (!item.title?.trim()) continue;
 
-                const id = item.id.startsWith('new-') ? crypto.randomUUID() : item.id;
+                const id = crypto.randomUUID();
                 const title = item.title;
                 const slug = item.slug;
                 const contentType = item.contentType || item.content_type || 'html';
@@ -102,16 +104,16 @@ export const actions: Actions = {
                 if (contentType === 'markdown') {
                     // Extract body if Front-Matter is present
                     const parts = contentMarkdown.split(/^---\s*$/m);
-                    const mdBody = parts.length >= 3 ? parts.slice(2).join("---").trim() : contentMarkdown.trim();
-                    content = marked.parse(mdBody);
+                    const mdBody = parts.length >= 3 ? parts.slice(2).join('---').trim() : contentMarkdown.trim();
+                    content = (await marked.parse(mdBody)) as string;
                 }
 
                 // 저장 시점 파싱 (Save-Time Parsing) 적용
                 content = processContentHtml(content);
 
                 const excerpt = item.excerpt;
-                const category = item.category;
-                const categoryName = item.categoryName;
+                const category = item.categorySlug || item.category_slug || '';
+                const categoryName = item.categoryName || item.category_name || '';
                 const status = item.status || 'draft';
                 const type = item.type || 'post';
                 const author_id = item.authorId || item.author_id || defaultAuthorId;
@@ -125,20 +127,20 @@ export const actions: Actions = {
 
                 if (category) {
                     await db.prepare(`
-                        INSERT OR REPLACE INTO categories (slug, name, lang, translation_group_id)
-                        VALUES (?, ?, ?, ?)
-                    `).bind(category, categoryName || category, lang, category).run();
+                        INSERT OR REPLACE INTO categories (tenant_id, slug, name, lang, translation_group_id)
+                        VALUES (?, ?, ?, ?, ?)
+                    `).bind(locals.tenantId, category, categoryName || category, lang, category).run();
                 }
 
                 const shouldSyndicate = status === 'published' && (item.submitToBoard === true || item.submitToBoard === 'true');
                 let isSyndicatedVal = shouldSyndicate ? 1 : 0;
 
                 await db.prepare(`
-                    INSERT INTO posts (id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, is_syndicated, created_at, updated_at, published_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
+                    INSERT INTO posts (id, tenant_id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, is_syndicated, created_at, updated_at, published_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
                     CASE WHEN ? = 'published' THEN datetime('now', '+9 hours') ELSE NULL END)
                 `).bind(
-                    id, title, slug, content, excerpt || '', category || '일반', type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
+                    id, locals.tenantId, title, slug, content, excerpt || '', category || '일반', type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
                 ).run();
 
                 // 허브 자동 제출 훅 (status === 'published' & submitToBoard === true)
@@ -157,10 +159,17 @@ export const actions: Actions = {
                             lang
                         }, db);
                         if (!res.success) {
-                            console.warn('[Hub Sync Warning]', res.error || res.reason);
+                            if (res.code === 'PROHIBITED_CONTENT_DETECTED') {
+                                console.warn(`[Hub Moderation Warning] Post '${title}' was rejected by hub moderation policy (PROHIBITED_CONTENT_DETECTED)`);
+                            } else {
+                                console.warn(`[Hub Sync Warning] Post '${title}' sync failed with code: ${res.code}`, res.error || res.reason);
+                            }
+                            // 허브 등록 거절/실패 시 DB의 is_syndicated 플래그를 0으로 보정
+                            await db.prepare('UPDATE posts SET is_syndicated = 0 WHERE id = ?').bind(id).run();
                         }
                     } catch (e) {
                         console.error('[Hub Sync Error]', e);
+                        await db.prepare('UPDATE posts SET is_syndicated = 0 WHERE id = ?').bind(id).run().catch(() => {});
                     }
                 }
             }

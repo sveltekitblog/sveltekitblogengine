@@ -56,15 +56,11 @@ export const POST: RequestHandler = async ({ request, platform }) => {
             return null;
         }
 
-        const backupType = body.backupType || findBackupType(body) || 'design';
-        const data = findCoreData(body);
+        const payload = await request.json();
+        const { backupType, data } = payload;
 
-        if (!data) {
-            console.error('Restore Error: Could not find core data in payload', { 
-                bodyKeys: Object.keys(body),
-                backupType 
-            });
-            return json({ error: 'Invalid backup file format (Core data not found)' }, { status: 400 });
+        if (!data || !backupType) {
+            return json({ error: 'Invalid restore payload format' }, { status: 400 });
         }
 
         // 1. Data Integrity Check (Safety Guard)
@@ -98,10 +94,15 @@ export const POST: RequestHandler = async ({ request, platform }) => {
         const userDeleteStatements: any[] = [];
         const userInsertStatements: any[] = [];
 
-        // Helper to generate insert statements
+        // Helper to generate insert statements with tenant_id injection
         const addInsertStatements = (dbInstance: any, statementsArray: any[], tableName: string, items: any[]) => {
             if (Array.isArray(items) && items.length > 0) {
-                for (const item of items) {
+                const tenantScopedTables = ['posts', 'categories', 'blog_settings', 'layouts', 'widgets'];
+                for (const rawItem of items) {
+                    const item = { ...rawItem };
+                    if (tenantScopedTables.includes(tableName)) {
+                        item.tenant_id = targetTenantId;
+                    }
                     const keys = Object.keys(item).join(', ');
                     const placeholders = Object.keys(item).map(() => '?').join(', ');
                     statementsArray.push(
@@ -112,10 +113,10 @@ export const POST: RequestHandler = async ({ request, platform }) => {
             }
         };
 
-        // --- Phase 1: Prepare BLOG_DB Statements ---
+        // --- Phase 1: Prepare BLOG_DB Statements (Tenant-Scoped) ---
         if (backupType === 'content' || backupType === 'full') {
-            blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM posts'));
-            blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM categories'));
+            blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM posts WHERE tenant_id = ?').bind(targetTenantId));
+            blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM categories WHERE tenant_id = ?').bind(targetTenantId));
             
             // Backward compatibility fallback for older backups
             if (data.posts && Array.isArray(data.posts)) {
@@ -139,8 +140,8 @@ export const POST: RequestHandler = async ({ request, platform }) => {
         // Design restore: 기존 텍스트 필드 보존을 위해 현재 header/footer 읽기
         if (backupType === 'design' && data.blog_settings) {
             const [currentHeader, currentFooter] = await Promise.all([
-                BLOG_DB.prepare("SELECT value FROM blog_settings WHERE key = 'header'").first<{value: string}>(),
-                BLOG_DB.prepare("SELECT value FROM blog_settings WHERE key = 'footer'").first<{value: string}>()
+                BLOG_DB.prepare("SELECT value FROM blog_settings WHERE tenant_id = ? AND key = 'header'").bind(targetTenantId).first<{value: string}>(),
+                BLOG_DB.prepare("SELECT value FROM blog_settings WHERE tenant_id = ? AND key = 'footer'").bind(targetTenantId).first<{value: string}>()
             ]);
 
             for (const setting of data.blog_settings) {
@@ -170,17 +171,17 @@ export const POST: RequestHandler = async ({ request, platform }) => {
         if (backupType === 'design' || backupType === 'full') {
             if (backupType === 'design') {
                 blogDeleteStatements.push(
-                    BLOG_DB.prepare(`DELETE FROM blog_settings WHERE key NOT IN (${SITE_INFO_KEYS.map(() => '?').join(',')})`)
-                        .bind(...SITE_INFO_KEYS)
+                    BLOG_DB.prepare(`DELETE FROM blog_settings WHERE tenant_id = ? AND key NOT IN (${SITE_INFO_KEYS.map(() => '?').join(',')})`)
+                        .bind(targetTenantId, ...SITE_INFO_KEYS)
                 );
             } else {
-                blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM blog_settings'));
+                blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM blog_settings WHERE tenant_id = ?').bind(targetTenantId));
             }
 
             // Order matters for DELETE: Children first
             blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM layout_widgets'));
-            blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM layouts'));
-            blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM widgets'));
+            blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM layouts WHERE tenant_id = ?').bind(targetTenantId));
+            blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM widgets WHERE tenant_id = ?').bind(targetTenantId));
             blogDeleteStatements.push(BLOG_DB.prepare('DELETE FROM languages'));
 
             // Order matters for INSERT: Parents first
