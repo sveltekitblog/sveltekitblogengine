@@ -81,17 +81,25 @@ CREATE INDEX IF NOT EXISTS idx_layouts_tenant ON layouts(tenant_id);
 CREATE TABLE IF NOT EXISTS widgets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id TEXT NOT NULL DEFAULT 'default',
-    layout_id INTEGER NOT NULL,
-    column_index INTEGER NOT NULL,
+    name TEXT NOT NULL,
     type TEXT NOT NULL,
-    title TEXT NOT NULL,
-    content TEXT,
-    sort_order INTEGER DEFAULT 0,
-    is_visible INTEGER DEFAULT 1,
     config TEXT, -- JSON configuration
     created_at TEXT DEFAULT (datetime('now', '+9 hours')),
-    updated_at TEXT DEFAULT (datetime('now', '+9 hours')),
-    FOREIGN KEY (layout_id) REFERENCES layouts(id) ON DELETE CASCADE
+    updated_at TEXT DEFAULT (datetime('now', '+9 hours'))
+);
+CREATE INDEX IF NOT EXISTS idx_widgets_tenant ON widgets(tenant_id);
+
+-- 5.1 Layout Widgets Mapping
+CREATE TABLE IF NOT EXISTS layout_widgets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    layout_id INTEGER NOT NULL,
+    widget_id INTEGER NOT NULL,
+    column_index INTEGER DEFAULT 0,
+    sort_order INTEGER DEFAULT 0,
+    custom_title TEXT,
+    device TEXT DEFAULT 'desktop',
+    FOREIGN KEY (layout_id) REFERENCES layouts(id) ON DELETE CASCADE,
+    FOREIGN KEY (widget_id) REFERENCES widgets(id) ON DELETE CASCADE
 );
 
 -- 6. Blog Settings (Key-Value)
@@ -142,3 +150,20 @@ INSERT OR IGNORE INTO languages (code, name, is_default, is_active, sort_order, 
 ('ko', '한국어', 1, 1, 1, '이 포스트는 한국어로 작성되었습니다.'),
 ('en', 'English', 0, 1, 2, 'This post is written in English.'),
 ('ja', '日本語', 0, 1, 3, 'この投稿は日本語で書かれています。');
+
+-- 기본 레이아웃 및 5종 기본 위젯 초기화
+INSERT OR IGNORE INTO layouts (id, tenant_id, name, column_count, column_widths, mobile_column_count, mobile_column_widths, is_active) VALUES
+(1, 'default', '미니멀 싱글 레이아웃', 1, '1fr', 1, '1fr', 1);
+
+INSERT OR IGNORE INTO widgets (id, tenant_id, name, type, config) VALUES
+(1, 'default', '최신 포스트', 'RecentPosts', '{}'),
+(2, 'default', '카테고리', 'CategoryMenu', '{}'),
+(3, 'default', '인기 포스트', 'PopularPosts', '{}'),
+(4, 'default', '태그', 'TagCloud', '{"mobile":{"sortOrder":"popular","maxTags":10},"desktop":{"sortOrder":"popular","maxTags":20}}'),
+(5, 'default', '본문', 'PostContent', '{"desktop":{"columns":1,"layout":"horizontal","imageRatio":25,"badgeBg":"#e2e8f0","badgeColor":"#475569","cardBg":"transparent","cardTextColor":"#1c1917","cardFontSize":"1rem","itemsPerPage":7,"hoverEffect":"none","paginationStyle":"default","cardHeight":"250px"},"mobile":{"columns":1,"layout":"horizontal","imageRatio":20,"badgeBg":"#e2e8f0","badgeColor":"#475569","cardBg":"transparent","cardTextColor":"#1c1917","cardFontSize":"0.8rem","itemsPerPage":5,"hoverEffect":"none","paginationStyle":"default","cardHeight":"175px"}}');
+
+INSERT OR IGNORE INTO layout_widgets (layout_id, widget_id, column_index, sort_order, custom_title, device) VALUES
+(1, 5, 0, 1, '{"ko":"저널","en":"Journal","ja":"ジャーナル"}', 'desktop'),
+(1, 4, 0, 1, '{"ko":"태그","en":"","ja":"タグ"}', 'desktop'),
+(1, 5, 0, 0, '{"ko":"저널","en":"Journal","ja":"ジャーナル"}', 'mobile'),
+(1, 4, 0, 1, '{"ko":"태그","en":"","ja":"タグ"}', 'mobile');

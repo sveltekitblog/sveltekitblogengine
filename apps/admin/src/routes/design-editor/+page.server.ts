@@ -23,7 +23,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     if (!db) throw error(500, 'Database not found');
 
     try {
-        const { results: settings } = await db.prepare('SELECT * FROM blog_settings').all();
+        const { results: settings } = await db.prepare('SELECT * FROM blog_settings WHERE tenant_id = ?').bind(locals.tenantId).all();
         const settingsMap = settings.reduce((acc: any, curr: any) => {
             try {
                 acc[curr.key] = JSON.parse(curr.value);
@@ -33,15 +33,40 @@ export const load: PageServerLoad = async ({ locals }) => {
             return acc;
         }, {});
 
-        const { results: layouts } = await db.prepare('SELECT * FROM layouts').all();
-        const { results: widgets } = await db.prepare('SELECT * FROM widgets').all();
+        let { results: layouts } = await db.prepare('SELECT * FROM layouts WHERE tenant_id = ?').bind(locals.tenantId).all();
+        let { results: widgets } = await db.prepare('SELECT * FROM widgets WHERE tenant_id = ?').bind(locals.tenantId).all();
+
+        // 레이아웃/위젯이 비어있는 경우 기본 1단 레이아웃 및 5종 위젯 자동 생성 (Auto-seeding)
+        if (!layouts || layouts.length === 0 || !widgets || widgets.length === 0) {
+            await db.prepare(`
+                INSERT OR IGNORE INTO layouts (tenant_id, name, column_count, column_widths, mobile_column_count, mobile_column_widths, is_active)
+                VALUES (?, '미니멀 싱글 레이아웃', 1, '1fr', 1, '1fr', 1)
+            `).bind(locals.tenantId).run();
+            const layoutRes = await db.prepare('SELECT id FROM layouts WHERE tenant_id = ? LIMIT 1').bind(locals.tenantId).first<{id: number}>();
+            const targetLayoutId = layoutRes?.id || 1;
+
+            await db.batch([
+                db.prepare("INSERT OR IGNORE INTO widgets (tenant_id, name, type, config) VALUES (?, '최신 포스트', 'RecentPosts', '{}')").bind(locals.tenantId),
+                db.prepare("INSERT OR IGNORE INTO widgets (tenant_id, name, type, config) VALUES (?, '카테고리', 'CategoryMenu', '{}')").bind(locals.tenantId),
+                db.prepare("INSERT OR IGNORE INTO widgets (tenant_id, name, type, config) VALUES (?, '인기 포스트', 'PopularPosts', '{}')").bind(locals.tenantId),
+                db.prepare("INSERT OR IGNORE INTO widgets (tenant_id, name, type, config) VALUES (?, '태그', 'TagCloud', '{\"mobile\":{\"sortOrder\":\"popular\",\"maxTags\":10},\"desktop\":{\"sortOrder\":\"popular\",\"maxTags\":20}}')").bind(locals.tenantId),
+                db.prepare("INSERT OR IGNORE INTO widgets (tenant_id, name, type, config) VALUES (?, '본문', 'PostContent', '{\"desktop\":{\"columns\":1,\"layout\":\"horizontal\",\"imageRatio\":25,\"badgeBg\":\"#e2e8f0\",\"badgeColor\":\"#475569\",\"cardBg\":\"transparent\",\"cardTextColor\":\"#1c1917\",\"cardFontSize\":\"1rem\",\"itemsPerPage\":7,\"hoverEffect\":\"none\",\"paginationStyle\":\"default\",\"cardHeight\":\"250px\"},\"mobile\":{\"columns\":1,\"layout\":\"horizontal\",\"imageRatio\":20,\"badgeBg\":\"#e2e8f0\",\"badgeColor\":\"#475569\",\"cardBg\":\"transparent\",\"cardTextColor\":\"#1c1917\",\"cardFontSize\":\"0.8rem\",\"itemsPerPage\":5,\"hoverEffect\":\"none\",\"paginationStyle\":\"default\",\"cardHeight\":\"175px\"}}')").bind(locals.tenantId)
+            ]);
+
+            const { results: lReload } = await db.prepare('SELECT * FROM layouts WHERE tenant_id = ?').bind(locals.tenantId).all();
+            const { results: wReload } = await db.prepare('SELECT * FROM widgets WHERE tenant_id = ?').bind(locals.tenantId).all();
+            layouts = lReload || [];
+            widgets = wReload || [];
+        }
+
         const { results: languages } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
         const { results: categories } = await db.prepare(`
             SELECT c.slug, c.name, c.lang, COUNT(p.id) as postCount
             FROM categories c
-            LEFT JOIN posts p ON c.slug = p.category_slug AND c.lang = p.lang AND p.status = 'published' AND p.type = 'post'
+            LEFT JOIN posts p ON c.slug = p.category_slug AND c.lang = p.lang AND p.status = 'published' AND p.type = 'post' AND p.tenant_id = ?
+            WHERE c.tenant_id = ?
             GROUP BY c.slug, c.lang
-        `).all();
+        `).bind(locals.tenantId, locals.tenantId).all();
 
         // Active layout and its widgets
         const activeLayout = layouts.find((l: any) => l.is_active === 1) || layouts[0];
@@ -97,12 +122,12 @@ export const actions: Actions = {
 
         try {
             await db.prepare(`
-                INSERT INTO blog_settings (key, value, updated_at)
-                VALUES (?, ?, strftime('%s', 'now'))
-                ON CONFLICT(key) DO UPDATE SET
+                INSERT INTO blog_settings (tenant_id, key, value, updated_at)
+                VALUES (?, ?, ?, datetime('now', '+9 hours'))
+                ON CONFLICT(tenant_id, key) DO UPDATE SET
                 value = excluded.value,
                 updated_at = excluded.updated_at
-            `).bind(key, value).run();
+            `).bind(locals.tenantId, key, value).run();
             return { success: true };
         } catch (err) {
             console.error('Failed to update settings:', err);
@@ -127,19 +152,19 @@ export const actions: Actions = {
         try {
             let id = layoutId;
             if (is_active) {
-                await db.prepare('UPDATE layouts SET is_active = 0').run();
+                await db.prepare('UPDATE layouts SET is_active = 0 WHERE tenant_id = ?').bind(locals.tenantId).run();
             }
 
             if (layoutId) {
                 await db.prepare(`
-                    UPDATE layouts SET name = ?, column_count = ?, column_widths = ?, is_active = ?, mobile_column_count = ?, mobile_column_widths = ?, updated_at = strftime('%s', 'now')
-                    WHERE id = ?
-                `).bind(name, columnCount, columnWidths, is_active, mobileColumnCount, mobileColumnWidths, layoutId).run();
+                    UPDATE layouts SET name = ?, column_count = ?, column_widths = ?, is_active = ?, mobile_column_count = ?, mobile_column_widths = ?, updated_at = datetime('now', '+9 hours')
+                    WHERE id = ? AND tenant_id = ?
+                `).bind(name, columnCount, columnWidths, is_active, mobileColumnCount, mobileColumnWidths, layoutId, locals.tenantId).run();
             } else {
                 const result = await db.prepare(`
-                    INSERT INTO layouts (name, column_count, column_widths, is_active, mobile_column_count, mobile_column_widths)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                `).bind(name, columnCount, columnWidths, is_active, mobileColumnCount, mobileColumnWidths).run();
+                    INSERT INTO layouts (tenant_id, name, column_count, column_widths, is_active, mobile_column_count, mobile_column_widths)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                `).bind(locals.tenantId, name, columnCount, columnWidths, is_active, mobileColumnCount, mobileColumnWidths).run();
                 id = result.meta.last_row_id;
             }
 
@@ -179,9 +204,9 @@ export const actions: Actions = {
 
         try {
             const result = await db.prepare(`
-                INSERT INTO widgets (name, type, config)
-                VALUES (?, ?, ?)
-            `).bind(name, type, config).run();
+                INSERT INTO widgets (tenant_id, name, type, config)
+                VALUES (?, ?, ?, ?)
+            `).bind(locals.tenantId, name, type, config).run();
             return { success: true, id: result.meta.last_row_id };
         } catch (err) {
             console.error('Failed to create widget:', err);
@@ -199,8 +224,8 @@ export const actions: Actions = {
         const config = data.get('config') as string;
 
         try {
-            await db.prepare('UPDATE widgets SET name = ?, config = ? WHERE id = ?')
-                .bind(name, config, id).run();
+            await db.prepare('UPDATE widgets SET name = ?, config = ? WHERE id = ? AND tenant_id = ?')
+                .bind(name, config, id, locals.tenantId).run();
             return { success: true };
         } catch (err) {
             console.error('Failed to update widget:', err);
@@ -219,7 +244,7 @@ export const actions: Actions = {
             // D1 batch로 트랜잭션과 유사하게 처리
             await db.batch([
                 db.prepare('DELETE FROM layout_widgets WHERE widget_id = ?').bind(id),
-                db.prepare('DELETE FROM widgets WHERE id = ?').bind(id)
+                db.prepare('DELETE FROM widgets WHERE id = ? AND tenant_id = ?').bind(id, locals.tenantId)
             ]);
             return { success: true };
         } catch (err) {
