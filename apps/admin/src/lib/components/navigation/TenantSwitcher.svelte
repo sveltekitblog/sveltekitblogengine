@@ -1,5 +1,6 @@
 <script lang="ts">
     import { page } from "$app/stores";
+    import { t } from "$lib/i18n.svelte";
     import type { Tenant } from "@blog/shared";
 
     let tenants = $derived(($page.data.tenants || []) as Tenant[]);
@@ -33,7 +34,7 @@
 
     async function createTenant() {
         if (!newName.trim() || !newSlug.trim()) {
-            errorMsg = "블로그 이름과 슬러그를 입력해 주세요.";
+            errorMsg = t("admin.tenant.error_empty", { default: "블로그 이름과 슬러그를 입력해 주세요." });
             return;
         }
         isSubmitting = true;
@@ -74,21 +75,21 @@
 
     {#if isOpen}
         <div class="tenant-dropdown">
-            <div class="tenant-dropdown-header">관리할 블로그 선택</div>
+            <div class="tenant-dropdown-header">{t("admin.tenant.select_header", { default: "관리할 블로그 선택" })}</div>
             <div class="tenant-list">
-                {#each tenants as t}
+                {#each tenants as tItem}
                     <button 
                         class="tenant-item" 
-                        class:active={t.id === currentTenant.id}
-                        onclick={() => switchTenant(t.id)}
+                        class:active={tItem.id === currentTenant.id}
+                        onclick={() => switchTenant(tItem.id)}
                     >
-                        <div class="tenant-item-title">{t.name}</div>
-                        <div class="tenant-item-sub">/@{t.slug} {t.customDomain ? `· ${t.customDomain}` : ''}</div>
+                        <div class="tenant-item-title">{tItem.name}</div>
+                        <div class="tenant-item-sub">/@{tItem.slug} {tItem.customDomain ? `· ${tItem.customDomain}` : ''}</div>
                     </button>
                 {/each}
             </div>
             <button class="add-tenant-btn" onclick={() => { isOpen = false; showModal = true; }}>
-                + 새 블로그 추가
+                {t("admin.tenant.add_btn", { default: "+ 새 블로그 추가" })}
             </button>
         </div>
     {/if}
@@ -97,33 +98,33 @@
 {#if showModal}
     <div class="modal-backdrop" onclick={() => (showModal = false)} role="presentation">
         <div class="modal-card" onclick={(e) => e.stopPropagation()} role="dialog">
-            <h3>새 블로그 개설</h3>
-            <p class="modal-desc">단 1초 만에 새로운 독립 블로그를 생성합니다.</p>
+            <h3>{t("admin.tenant.modal_title", { default: "새 블로그 개설" })}</h3>
+            <p class="modal-desc">{t("admin.tenant.modal_desc", { default: "단 1초 만에 새로운 독립 블로그를 생성합니다." })}</p>
 
             {#if errorMsg}
                 <div class="error-box">{errorMsg}</div>
             {/if}
 
             <div class="form-group">
-                <label for="tenant-name-input">블로그 이름</label>
-                <input id="tenant-name-input" type="text" bind:value={newName} placeholder="예: 개발 다이어리" />
+                <label for="tenant-name-input">{t("admin.tenant.name_label", { default: "블로그 이름" })}</label>
+                <input id="tenant-name-input" type="text" bind:value={newName} placeholder={t("admin.tenant.name_placeholder", { default: "예: 개발 다이어리" })} />
             </div>
 
             <div class="form-group">
-                <label for="tenant-slug-input">블로그 슬러그 (영문/숫자/하이픈)</label>
-                <input id="tenant-slug-input" type="text" bind:value={newSlug} placeholder="예: dev, tech, daily" />
-                <span class="input-hint">접속 주소: <code>/@{newSlug || 'slug'}</code> 또는 <code>{newSlug || 'slug'}.도메인</code></span>
+                <label for="tenant-slug-input">{t("admin.tenant.slug_label", { default: "블로그 슬러그 (영문/숫자/하이픈)" })}</label>
+                <input id="tenant-slug-input" type="text" bind:value={newSlug} placeholder={t("admin.tenant.slug_placeholder", { default: "예: dev, tech, daily" })} />
+                <span class="input-hint">{t("admin.tenant.slug_hint_prefix", { default: "접속 주소:" })} <code>/@{newSlug || 'slug'}</code> {t("admin.tenant.slug_hint_or", { default: "또는" })} <code>{newSlug || 'slug'}.domain</code></span>
             </div>
 
             <div class="form-group">
-                <label for="tenant-domain-input">독립 커스텀 도메인 (선택 사항)</label>
-                <input id="tenant-domain-input" type="text" bind:value={newDomain} placeholder="예: myblog.com" />
+                <label for="tenant-domain-input">{t("admin.tenant.domain_label", { default: "독립 커스텀 도메인 (선택 사항)" })}</label>
+                <input id="tenant-domain-input" type="text" bind:value={newDomain} placeholder={t("admin.tenant.domain_placeholder", { default: "예: myblog.com" })} />
             </div>
 
             <div class="modal-actions">
-                <button type="button" class="btn-cancel" onclick={() => (showModal = false)}>취소</button>
+                <button type="button" class="btn-cancel" onclick={() => (showModal = false)}>{t("admin.tenant.btn_cancel", { default: "취소" })}</button>
                 <button type="button" class="btn-submit" onclick={createTenant} disabled={isSubmitting}>
-                    {isSubmitting ? "생성 중..." : "블로그 생성하기"}
+                    {isSubmitting ? t("admin.tenant.btn_creating", { default: "생성 중..." }) : t("admin.tenant.btn_create", { default: "블로그 생성하기" })}
                 </button>
             </div>
         </div>
