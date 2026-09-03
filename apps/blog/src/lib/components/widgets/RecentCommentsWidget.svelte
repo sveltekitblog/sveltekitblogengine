@@ -18,7 +18,6 @@
 <script lang="ts">
     import { t } from "$lib/i18n";
     import { page } from "$app/stores";
-    import { buildLocalizedUrl } from "$lib/utils/url";
 
     let { comments = [] }: { comments: any[] } = $props();
 
@@ -33,9 +32,8 @@
         <ul class="widget-list">
             {#each comments as comment}
                 {@const langPrefix = lang === dbDefaultLang ? "" : `/${lang}`}
-                {@const postUrl = buildLocalizedUrl(`/${comment.post_category || 'all'}/${comment.post_slug}`, langPrefix, ($page.data.tenantPrefix || "") as string)}
                 <li class="widget-item">
-                    <a href={postUrl} class="widget-link" title={`${comment.user_name} ➔ ${comment.post_title}`}>
+                    <a href={`${langPrefix}/${comment.post_category || 'all'}/${comment.post_slug}`} class="widget-link" title={`${comment.user_name} ➔ ${comment.post_title}`}>
                         {$t("blog.widget.recent_comments_format", { author_name: comment.user_name, post_title: comment.post_title })}
                     </a>
                 </li>

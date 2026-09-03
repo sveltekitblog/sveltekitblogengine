@@ -17,14 +17,12 @@
 
 <script lang="ts">
     import { page } from "$app/stores";
-    import { buildLocalizedUrl } from "$lib/utils/url";
 
     let { tags, config = {}, cardFontSize }: { tags: string[]; config?: any; cardFontSize?: string } = $props();
 
     function getLocalizedUrl(path: string) {
-        const langPrefix = $page.params.lang ? `/${$page.params.lang}` : "";
-        const tenantPrefix = ($page.data.tenantPrefix || "") as string;
-        return buildLocalizedUrl(path, langPrefix, tenantPrefix);
+        const lang = $page.params.lang;
+        return lang ? `/${lang}${path}` : path;
     }
 
     let currentPage = $state(1);

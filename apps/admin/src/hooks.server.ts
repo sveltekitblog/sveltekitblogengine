@@ -16,7 +16,6 @@
  */
 
 import { redirect, type Handle } from '@sveltejs/kit';
-import type { Tenant } from '@blog/shared';
 
 export const handle: Handle = async ({ event, resolve }) => {
     // [IP 접근 제어] CFP 환경변수에 ALLOWED_IP가 설정되어 있으면 IP 체크
@@ -45,46 +44,6 @@ export const handle: Handle = async ({ event, resolve }) => {
     // D1 바인딩을 event.locals에 저장 (편의성)
     event.locals.blogDb = event.platform?.env?.BLOG_DB;
     event.locals.userDb = event.platform?.env?.USER_DB;
-
-    // 테넌트 목록 로드 및 활성 테넌트 식별
-    const blogDb = event.locals.blogDb;
-    let tenantList: Tenant[] = [];
-    let activeTenant: Tenant = {
-        id: 'default',
-        slug: 'default',
-        name: '메인 블로그',
-        customDomain: null,
-        ownerId: null,
-        status: 'active'
-    };
-
-    if (blogDb) {
-        try {
-            const { results } = await blogDb.prepare("SELECT * FROM tenants ORDER BY created_at ASC").all();
-            if (results && results.length > 0) {
-                tenantList = results as unknown as Tenant[];
-            } else {
-                // DB에 테넌트가 없을 경우 기본 테넌트 1건 보장 생성
-                await blogDb.prepare("INSERT OR IGNORE INTO tenants (id, slug, name, status) VALUES ('default', 'default', '메인 블로그', 'active')").run();
-                tenantList = [activeTenant];
-            }
-
-            // 쿠키에서 현재 활성화된 테넌트 확인
-            const cookieTenantId = event.cookies.get('active_tenant_id');
-            const matched = tenantList.find(t => t.id === cookieTenantId);
-            if (matched) {
-                activeTenant = matched;
-            } else {
-                activeTenant = tenantList[0] || activeTenant;
-            }
-        } catch (e) {
-            console.warn('[Admin Tenant Resolution Error]:', e);
-        }
-    }
-
-    event.locals.tenantId = activeTenant.id;
-    event.locals.tenant = activeTenant;
-    event.locals.tenants = tenantList;
 
     return resolve(event);
 };

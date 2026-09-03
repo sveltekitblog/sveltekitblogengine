@@ -26,7 +26,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     if (db) {
         try {
             // Fetch the UI dictionary to inject globally into all admin routes via page.data
-            const { results } = await db.prepare("SELECT value FROM blog_settings WHERE tenant_id = ? AND key = 'ui_dictionary'").bind(locals.tenantId).all();
+            const { results } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'ui_dictionary'").all();
             if (results && results.length > 0 && results[0].value) {
                 ui_dictionary = JSON.parse(results[0].value as string);
             }
@@ -46,13 +46,11 @@ export const load: LayoutServerLoad = async ({ locals }) => {
         ui_dictionary,
         languages,
         dbDefaultLang,
-        tenant: locals.tenant,
-        tenants: locals.tenants,
-        tenantId: locals.tenantId,
         i18n: {
             lang: dbDefaultLang,
             dbDefaultLang,
             dictionary: ui_dictionary
         }
     };
+
 };

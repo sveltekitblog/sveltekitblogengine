@@ -62,9 +62,13 @@ export const load: PageServerLoad = async ({ params, locals, url, parent }) => {
             url: `${cleanBase}${code === (dbDefaultLang || 'ko') ? '' : `/${code}`}/tags/${encodeURIComponent(tag)}`
         }));
 
+        const xDefaultUrl = `${cleanBase}/tags/${encodeURIComponent(tag)}`;
+
         return {
             tag,
             posts,
+            page: 1,
+            hasNextPage: false,
             seo: {
                 title: `#${tag} - ${siteTitle}`,
                 description: `#${tag} 태그와 관련된 포스트 목록입니다.`,

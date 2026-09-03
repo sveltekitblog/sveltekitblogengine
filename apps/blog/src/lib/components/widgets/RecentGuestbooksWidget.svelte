@@ -18,7 +18,6 @@
 <script lang="ts">
     import { t } from "$lib/i18n";
     import { page } from "$app/stores";
-    import { buildLocalizedUrl } from "$lib/utils/url";
 
     let { guestbooks = [] }: { guestbooks: any[] } = $props();
 
@@ -32,10 +31,8 @@
     {:else}
         <ul class="widget-list">
             {#each guestbooks as gb}
-                {@const langPrefix = lang === dbDefaultLang ? "" : `/${lang}`}
-                {@const gbUrl = buildLocalizedUrl('/guestbook', langPrefix, ($page.data.tenantPrefix || "") as string)}
                 <li class="widget-item">
-                    <a href={gbUrl} class="widget-link">
+                    <a href={`/${lang}/guestbook`} class="widget-link">
                         {#if gb.is_private}
                             {$t("blog.widget.recent_guestbooks_private_format")}
                         {:else}

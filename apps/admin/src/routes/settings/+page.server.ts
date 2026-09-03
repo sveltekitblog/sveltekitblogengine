@@ -25,7 +25,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
     try {
         const [{ results: settingsResults }, { results: languages }] = await Promise.all([
-            db.prepare('SELECT key, value FROM blog_settings WHERE tenant_id = ?').bind(locals.tenantId).all(),
+            db.prepare('SELECT key, value FROM blog_settings').all(),
             db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all()
         ]);
         
@@ -62,7 +62,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         let adminUser: { id: string; name: string; email: string } | null = null;
         if (userDb) {
             // blog_settings에서 저장된 관리자 ID를 가져옴
-            const adminIdRow = await db.prepare("SELECT value FROM blog_settings WHERE tenant_id = ? AND key = 'admin_user_id'").bind(locals.tenantId).first();
+            const adminIdRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'admin_user_id'").first();
             if (adminIdRow?.value) {
                 const adminRow = await userDb.prepare(
                     'SELECT id, name, email FROM user WHERE id = ?'
@@ -128,10 +128,10 @@ export const actions: Actions = {
                 }
 
                 await db.prepare(`
-                    INSERT INTO blog_settings (tenant_id, key, value, updated_at) 
-                    VALUES (?, ?, ?, ?) 
-                    ON CONFLICT(tenant_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
-                `).bind(locals.tenantId, key, value, updatedAt).run();
+                    INSERT INTO blog_settings (key, value, updated_at) 
+                    VALUES (?, ?, ?) 
+                    ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+                `).bind(key, value, updatedAt).run();
             }
 
             return { success: true };

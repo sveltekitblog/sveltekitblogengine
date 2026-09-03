@@ -27,7 +27,6 @@
     import ImageModal from "$lib/components/ImageModal.svelte";
     import CommentList from "$lib/components/comments/CommentList.svelte";
     import { formatDate } from "$lib/utils";
-    import { buildLocalizedUrl } from "$lib/utils/url";
     import SeoHead from "$lib/components/SeoHead.svelte";
     import { t } from "$lib/i18n";
 
@@ -361,7 +360,9 @@
                         </span>
                     {:else}
                         <a
-                            href={buildLocalizedUrl(`/${post.categorySlug}/${tr.slug}`, tr.lang === (data.dbDefaultLang || 'ko') ? '' : `/${tr.lang}`, (data.tenantPrefix || "") as string)}
+                            href="/{tr.lang === (data.dbDefaultLang || 'ko')
+                                ? ''
+                                : tr.lang + '/'}{post.categorySlug}/{tr.slug}"
                             class="ls-option link"
                             data-sveltekit-reload
                         >
@@ -407,7 +408,7 @@
         {#if post.tags && post.tags.length > 0}
             <div class="tags">
                 {#each post.tags as tag}
-                    <a href={buildLocalizedUrl(`/tags/${tag}`, data.langPrefix || '', (data.tenantPrefix || "") as string)} class="tag">#{tag}</a>
+                    <a href="/tags/{tag}" class="tag">#{tag}</a>
                 {/each}
             </div>
         {/if}

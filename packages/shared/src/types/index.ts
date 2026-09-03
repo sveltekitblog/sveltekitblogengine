@@ -23,20 +23,8 @@ export interface BlogSettings {
     [key: string]: any;
 }
 
-export interface Tenant {
-    id: string;
-    slug: string;
-    name: string;
-    customDomain?: string | null;
-    ownerId?: string | null;
-    status: string;
-    createdAt?: string;
-    updatedAt?: string;
-}
-
 export interface Post {
     id: string;
-    tenantId?: string;
     title: string;
     slug: string;
     content?: string;

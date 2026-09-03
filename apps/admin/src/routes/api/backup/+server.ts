@@ -25,21 +25,19 @@ const DESIGN_SETTING_KEYS = ['theme', 'header', 'footer', 'widget_shadow_global'
 const HEADER_TEXT_KEYS = ['loginLabel', 'profileLabel', 'menuItems'];
 const FOOTER_TEXT_KEYS = ['copyright', 'socialLinks', 'navLinks'];
 
-export const GET: RequestHandler = async ({ url, platform, locals }) => {
+export const GET: RequestHandler = async ({ url, platform }) => {
     if (!platform?.env?.BLOG_DB || !platform?.env?.USER_DB) {
         return json({ error: 'Database bindings (BLOG_DB or USER_DB) not found' }, { status: 500 });
     }
 
     const { BLOG_DB, USER_DB } = platform.env;
     const section = url.searchParams.get('section') || 'design';
-    const tenantId = locals.tenantId || 'default';
 
     try {
         let backupData: any = {
             timestamp: new Date().toISOString(),
             version: '3.0',
             backupType: section,
-            tenantId: tenantId,
             data: {}
         };
 
@@ -56,8 +54,8 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
 
         if (section === 'full' || section === 'content') {
             const [posts, categories] = await Promise.all([
-                BLOG_DB.prepare('SELECT * FROM posts WHERE tenant_id = ?').bind(tenantId).all(),
-                BLOG_DB.prepare('SELECT * FROM categories WHERE tenant_id = ?').bind(tenantId).all()
+                BLOG_DB.prepare('SELECT * FROM posts').all(),
+                BLOG_DB.prepare('SELECT * FROM categories').all()
             ]);
             
             const [entries, deleted_entries, post_views, post_likes, user, account] = await Promise.all([
@@ -81,9 +79,9 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
 
         if (section === 'full' || section === 'design') {
             const [blogSettings, layouts, widgets, layoutWidgets, languages] = await Promise.all([
-                BLOG_DB.prepare('SELECT * FROM blog_settings WHERE tenant_id = ?').bind(tenantId).all(),
-                BLOG_DB.prepare('SELECT * FROM layouts WHERE tenant_id = ?').bind(tenantId).all(),
-                BLOG_DB.prepare('SELECT * FROM widgets WHERE tenant_id = ?').bind(tenantId).all(),
+                BLOG_DB.prepare('SELECT * FROM blog_settings').all(),
+                BLOG_DB.prepare('SELECT * FROM layouts').all(),
+                BLOG_DB.prepare('SELECT * FROM widgets').all(),
                 BLOG_DB.prepare('SELECT * FROM layout_widgets').all(),
                 BLOG_DB.prepare('SELECT * FROM languages').all()
             ]);

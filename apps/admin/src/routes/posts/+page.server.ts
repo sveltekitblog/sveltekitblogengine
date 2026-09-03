@@ -29,8 +29,8 @@ export const load: PageServerLoad = async ({ locals, platform }) => {
         // Posts 목록 & Languages 목록 병렬 조회
         const [{ results: postsRaw }, langResult] = await Promise.all([
             db.prepare(`
-                SELECT * FROM posts WHERE tenant_id = ? ORDER BY created_at DESC
-            `).bind(locals.tenantId).all(),
+                SELECT * FROM posts ORDER BY created_at DESC
+            `).all(),
             db.prepare(`
                 SELECT * FROM languages ORDER BY sort_order ASC, code ASC
             `).all().catch((e: any) => {
@@ -171,7 +171,7 @@ export const actions: Actions = {
                 console.warn('Failed to disable foreign keys:', pragmaErr);
             }
 
-            await db.prepare('DELETE FROM posts WHERE id = ? AND tenant_id = ?').bind(id, locals.tenantId).run();
+            await db.prepare('DELETE FROM posts WHERE id = ?').bind(id).run();
 
             try {
                 const cacheRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'enable_cdn_cache'").first();

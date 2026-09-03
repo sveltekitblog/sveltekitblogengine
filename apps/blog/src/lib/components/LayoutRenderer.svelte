@@ -19,7 +19,6 @@
     import type { Layout, LayoutWidget } from "$lib/types";
     import { t } from "$lib/i18n";
     import { page } from "$app/stores";
-    import { onMount } from "svelte";
     import RecentPostsWidget from "./widgets/RecentPostsWidget.svelte";
     import CategoryList from "./widgets/CategoryList.svelte";
     import PopularPostsWidget from "./widgets/PopularPostsWidget.svelte";
@@ -69,24 +68,14 @@
         children: any;
     } = $props();
 
-    onMount(() => {
-        // 정적 컴포넌트 임포트 적용 완료로 인한 동적 로더 로직 제거
-        const media = window.matchMedia("(max-width: 768px)");
-        isMobile = media.matches;
-        const listener = (e: MediaQueryListEvent) => {
-            isMobile = e.matches;
-        };
-        media.addEventListener("change", listener);
-        return () => media.removeEventListener("change", listener);
-    });
-
-    let isMobile = $state(true); // SSR 기본값은 모바일(true)
-
     // ─── 데이터 처리 ──────────────────────────────────────────────────
     const dbDefaultLang = $derived($page.data.dbDefaultLang || "ko");
     const lang = $derived($page.params.lang || $page.data.lang || dbDefaultLang);
-    const dWidgets = $derived(desktopWidgets && desktopWidgets.length > 0 ? desktopWidgets : layoutWidgets);
-    const mWidgets = $derived(mobileWidgets && mobileWidgets.length > 0 ? mobileWidgets : []);
+    const allWidgets = $derived(
+        layoutWidgets && layoutWidgets.length > 0
+            ? layoutWidgets
+            : (desktopWidgets && desktopWidgets.length > 0 ? desktopWidgets : [])
+    );
 
     // PostContent widget config parsing to link TagCloud text size to the post card font size
     const defaultPcConfig = {
@@ -115,24 +104,19 @@
         return { ...defaultPcConfig, ...parsed };
     }
 
-    const dWidget = $derived((dWidgets || []).find(w => w.type === 'post_content' || w.type === 'PostContent'));
-    const mWidget = $derived((mWidgets || []).find(w => w.type === 'post_content' || w.type === 'PostContent'));
-
+    const dWidget = $derived((allWidgets || []).find(w => w.type === 'post_content' || w.type === 'PostContent'));
     const dParsed = $derived(parseWidgetConfig(dWidget?.config));
-    const mParsed = $derived(parseWidgetConfig(mWidget?.config));
-
     const desktopPcConfig = $derived(extractDeviceConfig(dParsed, "desktop"));
-    const mobilePcConfig = $derived(extractDeviceConfig(mParsed || dParsed, "mobile"));
-
     const desktopCardFontSize = $derived(desktopPcConfig.cardFontSize || "1rem");
-    const mobileCardFontSize = $derived(mobilePcConfig.cardFontSize || "1rem");
 
-    // 레이아웃에 '본문' 위젯이 있는지 확인
-    const hasPostContentWidget = $derived(dWidgets.some(w => w.type === 'post_content' || w.type === 'PostContent'));
-    
-    // 본문이 들어갈 기본 컬럼 (본문 위젯이 없을 경우 대비)
-    // 3단이면 1번(중앙), 그 외엔 0번 컬럼
-    const defaultMainColIdx = $derived((layout?.columnCount === 3) ? 1 : 0);
+    function isWidgetRenderable(w: any): boolean {
+        if (!w) return false;
+        if (w.type === 'HtmlWidget') {
+            const cfg = typeof w.config === 'string' ? JSON.parse(w.config || '{}') : (w.config || {});
+            if (!cfg.html || !cfg.html.trim()) return false;
+        }
+        return true;
+    }
 
     // 컬럼별 위젯 분류
     function getWidgetsByCol(allWidgets: any[], colCount: number) {
@@ -143,7 +127,7 @@
         });
     }
 
-    const dCols = $derived(getWidgetsByCol(dWidgets, layout?.columnCount || 1));
+    const dCols = $derived(getWidgetsByCol(allWidgets, layout?.columnCount || 1));
 
     function buildGrid(columnWidths: string | undefined | null, colCount: number): string {
         if (!columnWidths) return "repeat(" + (colCount || 1) + ", minmax(0, 1fr))";
@@ -235,18 +219,26 @@
 </script>
 
 <div class="layout-wrapper" style="--d-grid: {desktopGridTemplate}; {getGlobalWidgetStyles()}">
-    {#if isMobile}
-        <!-- Mobile Layout (SSR Default / Client Mobile) -->
-        <div class="mobile-only-layout">
-            {#if mWidgets && mWidgets.length > 0}
-                <!-- Use explicit mobile widgets if configured -->
-                {#each mWidgets as w}
+    {#each dCols as widgets, colIdx}
+        <div class="layout-column">
+            {#each widgets as w}
+                {#if isWidgetRenderable(w)}
                     {#if w.type === 'post_content' || w.type === 'PostContent'}
-                        <div class="main-content-block widget-item" style={getWidgetShadowStyle(w)}>
+                        <div 
+                            class="main-content-block widget-item" 
+                            class:desktop-only-widget={w.device === 'desktop'} 
+                            class:mobile-only-widget={w.device === 'mobile'} 
+                            style={getWidgetShadowStyle(w)}
+                        >
                             {@render children()}
                         </div>
                     {:else}
-                        <div class="widget-item" style={getWidgetShadowStyle(w)}>
+                        <div 
+                            class="widget-item" 
+                            class:desktop-only-widget={w.device === 'desktop'} 
+                            class:mobile-only-widget={w.device === 'mobile'} 
+                            style={getWidgetShadowStyle(w)}
+                        >
                             {#if (w.customTitle || w.name)}
                                 <h3 class="widget-title">{getWidgetTitle(w)}</h3>
                             {/if}
@@ -264,7 +256,7 @@
                                 {:else if w.type === "TagCloud" && widgetComponents["TagCloud"]}
                                     {@const rawCfg = w.config && typeof w.config === "string" ? JSON.parse(w.config) : w.config || {}}
                                     {@const Component = widgetComponents["TagCloud"]}
-                                    <Component {tags} config={rawCfg.mobile || rawCfg} cardFontSize={mobileCardFontSize} />
+                                    <Component {tags} config={rawCfg.desktop || rawCfg} cardFontSize={desktopCardFontSize} />
                                 {:else if w.type === "RecentComments" && widgetComponents["RecentComments"]}
                                     {@const Component = widgetComponents["RecentComments"]}
                                     <Component comments={recentComments.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
@@ -279,112 +271,10 @@
                             </div>
                         </div>
                     {/if}
-                {/each}
-                
-                <!-- Mobile Fallback for PostContent if not in mWidgets -->
-                {#if !mWidgets.some(w => w.type === 'post_content' || w.type === 'PostContent')}
-                    <div class="main-content-block widget-item">
-                        {@render children()}
-                    </div>
                 {/if}
-            {:else}
-                <!-- Fallback: Render dWidgets but flattened (Old behavior but cleaner) -->
-                {#each dWidgets as w}
-                     {#if w.type === 'post_content' || w.type === 'PostContent'}
-                        <div class="main-content-block widget-item" style={getWidgetShadowStyle(w)}>
-                            {@render children()}
-                        </div>
-                     {:else}
-                        <div class="widget-item" style={getWidgetShadowStyle(w)}>
-                            {#if (w.customTitle || w.name)}
-                                <h3 class="widget-title">{getWidgetTitle(w)}</h3>
-                            {/if}
-                            <div class="widget-body">
-                                {#if w.type === "RecentPosts" && widgetComponents["RecentPosts"]}
-                                    {@const Component = widgetComponents["RecentPosts"]}
-                                    <Component posts={recentPosts} />
-                                {:else if (w.type === "CategoryList" || w.type === "CategoryMenu" || w.type === "category_link") && widgetComponents["CategoryList"]}
-                                    {@const Component = widgetComponents["CategoryList"]}
-                                    {@const cfg = typeof w.config === "string" ? JSON.parse(w.config || "{}") : (w.config || {})}
-                                    <Component {categories} config={cfg} />
-                                {:else if w.type === "PopularPosts" && widgetComponents["PopularPosts"]}
-                                    {@const Component = widgetComponents["PopularPosts"]}
-                                    <Component posts={popularPosts} />
-                                {:else if w.type === "TagCloud" && widgetComponents["TagCloud"]}
-                                    {@const rawCfg = w.config && typeof w.config === "string" ? JSON.parse(w.config) : w.config || {}}
-                                    {@const Component = widgetComponents["TagCloud"]}
-                                    <Component {tags} config={rawCfg.mobile || rawCfg} cardFontSize={mobileCardFontSize} />
-                                {:else if w.type === "RecentComments" && widgetComponents["RecentComments"]}
-                                    {@const Component = widgetComponents["RecentComments"]}
-                                    <Component comments={recentComments} />
-                                {:else if w.type === "RecentGuestbooks" && widgetComponents["RecentGuestbooks"]}
-                                    {@const Component = widgetComponents["RecentGuestbooks"]}
-                                    <Component guestbooks={recentGuestbooks} />
-                                {:else if w.type === "HtmlWidget" && widgetComponents["HtmlWidget"]}
-                                    {@const Component = widgetComponents["HtmlWidget"]}
-                                    <Component html={w.config?.html || ""} />
-                                {/if}
-                            </div>
-                        </div>
-                     {/if}
-                {/each}
-            {/if}
-        </div>
-    {:else}
-        <!-- Desktop Layout (Client Desktop Only) -->
-        <div class="desktop-only-layout">
-            {#each dCols as widgets, colIdx}
-                <div class="layout-column">
-                    {#each widgets as w}
-                        {#if w.type === 'post_content' || w.type === 'PostContent'}
-                            <div class="main-content-block widget-item" style={getWidgetShadowStyle(w)}>
-                                {@render children()}
-                            </div>
-                        {:else}
-                            <div class="widget-item" style={getWidgetShadowStyle(w)}>
-                                {#if (w.customTitle || w.name)}
-                                    <h3 class="widget-title">{getWidgetTitle(w)}</h3>
-                                {/if}
-                                <div class="widget-body">
-                                    {#if w.type === "RecentPosts" && widgetComponents["RecentPosts"]}
-                                        {@const Component = widgetComponents["RecentPosts"]}
-                                        <Component posts={recentPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
-                                    {:else if (w.type === "CategoryList" || w.type === "CategoryMenu" || w.type === "category_link") && widgetComponents["CategoryList"]}
-                                        {@const Component = widgetComponents["CategoryList"]}
-                                        {@const cfg = typeof w.config === "string" ? JSON.parse(w.config || "{}") : (w.config || {})}
-                                        <Component {categories} config={cfg} />
-                                    {:else if w.type === "PopularPosts" && widgetComponents["PopularPosts"]}
-                                        {@const Component = widgetComponents["PopularPosts"]}
-                                        <Component posts={popularPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
-                                    {:else if w.type === "TagCloud" && widgetComponents["TagCloud"]}
-                                        {@const rawCfg = w.config && typeof w.config === "string" ? JSON.parse(w.config) : w.config || {}}
-                                        {@const Component = widgetComponents["TagCloud"]}
-                                        <Component {tags} config={rawCfg.desktop || rawCfg} cardFontSize={desktopCardFontSize} />
-                                    {:else if w.type === "RecentComments" && widgetComponents["RecentComments"]}
-                                        {@const Component = widgetComponents["RecentComments"]}
-                                        <Component comments={recentComments.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
-                                    {:else if w.type === "RecentGuestbooks" && widgetComponents["RecentGuestbooks"]}
-                                        {@const Component = widgetComponents["RecentGuestbooks"]}
-                                        <Component guestbooks={recentGuestbooks.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
-                                    {:else if w.type === "HtmlWidget" && widgetComponents["HtmlWidget"]}
-                                        {@const Component = widgetComponents["HtmlWidget"]}
-                                        {@const cfg = typeof w.config === 'string' ? JSON.parse(w.config || '{}') : (w.config || {})}
-                                        <Component html={cfg.html || ""} useShadowDom={cfg.useShadowDom ?? true} />
-                                    {/if}
-                                </div>
-                            </div>
-                        {/if}
-                    {/each}
-
-                    {#if !hasPostContentWidget && colIdx === defaultMainColIdx}
-                        <div class="main-content-block widget-item">
-                            {@render children()}
-                        </div>
-                    {/if}
-                </div>
             {/each}
         </div>
-    {/if}
+    {/each}
 </div>
 
 <style>
@@ -401,7 +291,7 @@
         display: flex;
         flex-direction: column;
         gap: 2rem;
-        min-width: 0; /* 중요: 컬럼 내부 콘텐츠가 넘치지 않게 함 */
+        min-width: 0;
     }
 
     .main-content-block {
@@ -443,17 +333,9 @@
         color: var(--widget-item-color);
     }
 
-    .main-content-block.widget-item {
-        /* 본문 위젯 내부 여백을 일반 위젯과 다르게 독립적으로 조절하고 싶을 경우 아래 주석을 해제하여 조절할 수 있습니다. */
-        /* padding: 2rem; */
-    }
-
-    .desktop-only-layout {
-        display: contents;
-    }
-
-    .mobile-only-layout {
-        display: none;
+    /* 기본(데스크탑): 모바일 전용 위젯 숨김 */
+    .mobile-only-widget {
+        display: none !important;
     }
 
     @media (max-width: 768px) {
@@ -465,16 +347,6 @@
             align-items: stretch;
         }
 
-        .desktop-only-layout {
-            display: none;
-        }
-
-        .mobile-only-layout {
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-        }
-
         .layout-column {
             display: contents; /* 모바일에서는 컬럼 구조를 해체하여 평면화 */
         }
@@ -482,6 +354,15 @@
         /* 모바일에서는 본문 블록을 최상단으로 올림 */
         .main-content-block {
             order: -1;
+        }
+
+        /* 모바일: 데스크탑 전용 위젯 숨기고 모바일 전용 위젯 표시 */
+        .desktop-only-widget {
+            display: none !important;
+        }
+
+        .mobile-only-widget {
+            display: block !important;
         }
     }
 </style>

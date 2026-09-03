@@ -36,7 +36,6 @@
         getBgValue,
         getBgStyle,
     } from "$lib/utils/background";
-    import { buildLocalizedUrl } from "$lib/utils/url";
     import { onMount, untrack } from "svelte";
 
     let {
@@ -166,10 +165,14 @@
     });
 
     let langPrefix = $derived($page.params.lang ? `/${$page.params.lang}` : "");
-    let tenantPrefix = $derived(($page.data.tenantPrefix || "") as string);
 
     function processUrl(url: string) {
-        return buildLocalizedUrl(url, langPrefix, tenantPrefix);
+        if (!url || url === "#") return url;
+        if (url.startsWith("http") || url.startsWith("mailto:")) return url;
+        if (url === "/") return langPrefix || "/";
+        return url.startsWith("/")
+            ? `${langPrefix}${url}`
+            : `${langPrefix}/${url}`;
     }
 
     function ensureMenuItemStructure(items: any) {
@@ -483,17 +486,12 @@
 
     const headerStaticHtml = $derived.by(() => {
         if (!rawHeaderStaticHtml) return "";
-        // 정적 캐시 HTML 내부의 모든 내부 상대경로를 현재 테넌트/언어 경로(processUrl)로 동적 치환
-        let processedHtml = rawHeaderStaticHtml.replace(/href="(\/[^"]*)"/g, (match, path) => {
-            return `href="${processUrl(path)}"`;
-        });
-
         const logoColor = header.logoColor || { type: "solid", value: "" };
         const freshLogoHtml = logoColor.type === "gradient"
             ? `<span style="background: ${logoColor.value}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; display: inline-block; padding-bottom: 0.2em; margin-bottom: -0.2em;">${logoText}</span>`
             : logoText;
         // DB 캐시 HTML 내부의 <a> 태그 속성(class 및 style)을 동적으로 안전 치환하여 효과 주입
-        return processedHtml.replace(
+        return rawHeaderStaticHtml.replace(
             /(<a\s+href="\/[^"]*"\s+class=")(logo)([^"]*"\s+style=")([^"]*)(")/i,
             (match, p1, p2, p3, p4, p5) => {
                 let hoverTransform = 'none';

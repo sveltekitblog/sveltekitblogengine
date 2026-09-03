@@ -133,13 +133,6 @@
                     label: ensureTranslationObj("Categories", "Categories"),
                     icon: "Menu",
                 },
-                {
-                    id: 2,
-                    type: "link",
-                    label: ensureTranslationObj({ ko: "방명록", en: "Guestbook", ja: "ゲストブック" }, "Guestbook"),
-                    url: "/guestbook",
-                    icon: "MessageSquare",
-                },
             ];
         }
 

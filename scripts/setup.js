@@ -512,6 +512,10 @@ async function main() {
             if (blogDbId) {
                 resources.d1.BLOG_DB = { name: blogDbName, id: blogDbId };
                 console.log(`  ✅ ${blogDbName} created: ${blogDbId}`);
+            } else {
+                console.error(`\n❌ Failed to create or parse D1 database '${blogDbName}'.`);
+                console.error(`   Output from wrangler:\n${blogDbOut}`);
+                process.exit(1);
             }
         }
 
@@ -528,6 +532,10 @@ async function main() {
             if (userDbId) {
                 resources.d1.USER_DB = { name: userDbName, id: userDbId };
                 console.log(`  ✅ ${userDbName} created: ${userDbId}`);
+            } else {
+                console.error(`\n❌ Failed to create or parse D1 database '${userDbName}'.`);
+                console.error(`   Output from wrangler:\n${userDbOut}`);
+                process.exit(1);
             }
         }
 

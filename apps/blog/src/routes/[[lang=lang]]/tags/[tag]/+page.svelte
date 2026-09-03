@@ -20,10 +20,10 @@
     import SeoHead from "$lib/components/SeoHead.svelte";
     import { t } from "$lib/i18n";
     let { data } = $props();
-    const { seo, settings, lang } = $derived(data);
+    const { seo, settings } = $derived(data);
 </script>
 
-<SeoHead {seo} {settings} {lang} />
+<SeoHead {seo} {settings} />
 
 
 <div class="tag-page">

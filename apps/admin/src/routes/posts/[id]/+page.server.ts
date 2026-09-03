@@ -60,7 +60,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
     try {
         // 1. Fetch current post to get translation_group_id
-        const currentPost = await db.prepare('SELECT translation_group_id, id FROM posts WHERE id = ? AND tenant_id = ?').bind(params.id, locals.tenantId).first();
+        const currentPost = await db.prepare('SELECT translation_group_id, id FROM posts WHERE id = ?').bind(params.id).first();
         if (!currentPost) throw error(404, 'Post not found');
 
         const groupId = (currentPost.translation_group_id as string) || currentPost.id;
@@ -69,14 +69,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         const { results: posts } = await db.prepare(`
             SELECT p.*, c.name as category_name
             FROM posts p
-            LEFT JOIN categories c ON p.category_slug = c.slug AND c.lang = p.lang AND c.tenant_id = ?
-            WHERE p.translation_group_id = ? AND p.tenant_id = ?
-        `).bind(locals.tenantId, groupId, locals.tenantId).all();
+            LEFT JOIN categories c ON p.category_slug = c.slug AND c.lang = p.lang
+            WHERE p.translation_group_id = ?
+        `).bind(groupId).all();
 
         // 3. Fetch all languages, categories and settings
         const { results: languages } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
-        const { results: categories } = await db.prepare('SELECT slug, name, lang FROM categories WHERE tenant_id = ? ORDER BY name ASC').bind(locals.tenantId).all();
-        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE tenant_id = ? AND key IN ('board_api_key', 'board_hub_url', 'board_auto_syndicate')").bind(locals.tenantId).all();
+        const { results: categories } = await db.prepare('SELECT slug, name, lang FROM categories ORDER BY name ASC').all();
+        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_api_key', 'board_hub_url', 'board_auto_syndicate')").all();
         const settingsMap = (settingsRows || []).reduce((acc: any, curr: any) => { acc[curr.key] = curr.value; return acc; }, {});
 
         // 4. Strip figure wrappers from post content for editor parsing compatibility
@@ -121,8 +121,8 @@ export const actions: Actions = {
 
         try {
             const adminIdRow = await db.prepare(
-                "SELECT value FROM blog_settings WHERE tenant_id = ? AND key = 'admin_user_id'"
-            ).bind(locals.tenantId).first();
+                "SELECT value FROM blog_settings WHERE key = 'admin_user_id'"
+            ).first();
             const defaultAuthorId = adminIdRow?.value as string || 'admin';
 
             for (const item of groupData) {
@@ -139,16 +139,16 @@ export const actions: Actions = {
                 if (contentType === 'markdown') {
                     // Extract body if Front-Matter is present
                     const parts = contentMarkdown.split(/^---\s*$/m);
-                    const mdBody = parts.length >= 3 ? parts.slice(2).join('---').trim() : contentMarkdown.trim();
-                    content = (await marked.parse(mdBody)) as string;
+                    const mdBody = parts.length >= 3 ? parts.slice(2).join("---").trim() : contentMarkdown.trim();
+                    content = marked.parse(mdBody);
                 }
 
                 // 저장 시점 파싱 (Save-Time Parsing) 적용
                 content = processContentHtml(content);
 
                 const excerpt = item.excerpt;
-                const category = item.category || item.categorySlug || item.category_slug || '';
-                const categoryName = item.categoryName || item.category_name || '';
+                const category = item.category;
+                const categoryName = item.categoryName;
                 const status = item.status || 'draft';
                 const type = item.type || 'post';
                 const author_id = item.authorId || item.author_id || defaultAuthorId;
@@ -156,23 +156,23 @@ export const actions: Actions = {
                 const tagsJson = Array.isArray(item.tags) ? JSON.stringify(item.tags) : JSON.stringify(item.tags ? item.tags.split(',').map((t:string)=>t.trim()) : []);
                 const featured_image = extractFirstImageSrc(content) || '';
                 const thumbnail_fit = item.thumbnailFit || item.thumbnail_fit || 'cover';
-                const groupId = item.translation_group_id || params.id;
+                const groupId = item.translation_group_id;
 
                 if (!title || !slug) continue; // Skip incomplete tabs
 
                 // 카테고리 정보 저장 (INSERT OR REPLACE: lang별 카테고리명 업데이트 허용)
                 if (category) {
                     await db.prepare(`
-                        INSERT OR REPLACE INTO categories (tenant_id, slug, name, lang, translation_group_id)
-                        VALUES (?, ?, ?, ?, ?)
-                    `).bind(locals.tenantId, category, categoryName || category, lang, category).run();
+                        INSERT OR REPLACE INTO categories (slug, name, lang, translation_group_id)
+                        VALUES (?, ?, ?, ?)
+                    `).bind(category, categoryName || category, lang, category).run();
                 }
 
                 const shouldPublishToHub = status === 'published' && (item.submitToBoard === true || item.submitToBoard === 'true');
                 const isSyndicatedVal = shouldPublishToHub ? 1 : 0;
 
                 // Check if exists
-                const existing = await db.prepare('SELECT id, is_syndicated, slug, category_slug, lang, published_at, created_at FROM posts WHERE id = ? AND tenant_id = ?').bind(id, locals.tenantId).first();
+                const existing = await db.prepare('SELECT id, is_syndicated, slug, category_slug, lang, published_at, created_at FROM posts WHERE id = ?').bind(id).first();
                 
                 if (existing) {
                     await db.prepare(`
@@ -185,18 +185,18 @@ export const actions: Actions = {
                                 WHEN ? = 'published' THEN COALESCE(published_at, datetime('now', '+9 hours'))
                                 ELSE NULL 
                             END
-                        WHERE id = ? AND tenant_id = ?
+                        WHERE id = ?
                     `).bind(
                         title, slug, content, excerpt || '', category || '일반', type,
-                        author_id, status, tagsJson, featured_image, lang, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status, id, locals.tenantId
+                        author_id, status, tagsJson, featured_image, lang, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status, id
                     ).run();
                 } else {
                     await db.prepare(`
-                        INSERT INTO posts (id, tenant_id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, is_syndicated, created_at, updated_at, published_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
+                        INSERT INTO posts (id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, is_syndicated, created_at, updated_at, published_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
                         CASE WHEN ? = 'published' THEN datetime('now', '+9 hours') ELSE NULL END)
                     `).bind(
-                        id, locals.tenantId, title, slug, content, excerpt || '', category || '일반', type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
+                        id, title, slug, content, excerpt || '', category || '일반', type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
                     ).run();
                 }
 
@@ -224,7 +224,7 @@ export const actions: Actions = {
 
                     if (shouldPublishToHub) {
                         // 1. 공개 발행/수정 -> 허브 카드 갱신
-                        const res = await publishPostToHub({
+                        await publishPostToHub({
                             title,
                             slug,
                             excerpt,
@@ -237,16 +237,6 @@ export const actions: Actions = {
                             url: currUrl,
                             publishedAt: originalPublishedAt
                         }, db);
-
-                        if (!res.success) {
-                            if (res.code === 'PROHIBITED_CONTENT_DETECTED') {
-                                console.warn(`[Hub Moderation Warning] Post '${title}' was rejected by hub moderation policy (PROHIBITED_CONTENT_DETECTED)`);
-                            } else {
-                                console.warn(`[Hub Sync Warning] Post '${title}' sync failed with code: ${res.code}`, res.error || res.reason);
-                            }
-                            // 허브 등록 거절/실패 시 DB의 is_syndicated 플래그를 0으로 보정
-                            await db.prepare('UPDATE posts SET is_syndicated = 0 WHERE id = ?').bind(id).run();
-                        }
                     } else if (existing && (existing as any).is_syndicated === 1) {
                         // 2. 이전에 허브에 발행되었으나 비공개(draft)로 전환되었거나 허브 체크가 해제된 경우 -> 허브 피드 숨김 (좋아요 보존)
                         await hidePostFromHub({

@@ -19,7 +19,6 @@
     import type { Post } from "$lib/types";
     import { formatDate } from "$lib/utils";
     import { page } from "$app/stores";
-    import { buildLocalizedUrl } from "$lib/utils/url";
     import { t } from "$lib/i18n";
 
     let { post, pcConfig = {}, index = 0 }: { post: Post; pcConfig?: any; index?: number } = $props();
@@ -78,9 +77,8 @@
     let optimalHeight = $derived(isHorizontal ? 135 : 270);
 
     function getLocalizedUrl(path: string) {
-        const langPrefix = $page.params.lang ? `/${$page.params.lang}` : "";
-        const tenantPrefix = ($page.data.tenantPrefix || "") as string;
-        return buildLocalizedUrl(path, langPrefix, tenantPrefix);
+        const lang = $page.params.lang;
+        return lang ? `/${lang}${path}` : path;
     }
 
     // Svelte 5 룬(derived)으로 LCP 대상 여부를 스크립트 단에서 안전하게 연산

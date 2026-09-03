@@ -24,24 +24,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     if (!db) throw error(500, 'Database not found');
 
     try {
-        let [{ results: languagesRaw }, { results: categories }, { results: dictQuery }] = await Promise.all([
+        const [{ results: languages }, { results: categories }, { results: dictQuery }] = await Promise.all([
             db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all(),
-            db.prepare('SELECT * FROM categories WHERE tenant_id = ? ORDER BY slug ASC, lang ASC').bind(locals.tenantId).all(),
-            db.prepare("SELECT value FROM blog_settings WHERE tenant_id = ? AND key = 'ui_dictionary'").bind(locals.tenantId).all()
+            db.prepare('SELECT * FROM categories ORDER BY slug ASC, lang ASC').all(),
+            db.prepare("SELECT value FROM blog_settings WHERE key = 'ui_dictionary'").all()
         ]);
         
-        let languages = languagesRaw || [];
-        if (languages.length === 0) {
-            await db.prepare(`
-                INSERT OR IGNORE INTO languages (code, name, is_default, is_active, sort_order, fallback_message) VALUES
-                ('ko', '한국어', 1, 1, 1, '이 포스트는 한국어로 작성되었습니다.'),
-                ('en', 'English', 0, 1, 2, 'This post is written in English.'),
-                ('ja', '日本語', 0, 1, 3, 'この投稿は日本語で書かれています。')
-            `).run();
-            const { results: reloaded } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
-            languages = reloaded || [];
-        }
-
         let ui_dictionary: Record<string, Record<string, string>> = {};
         let needsDbSync = false;
 
@@ -87,10 +75,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
         if (needsDbSync) {
             await db.prepare(`
-                INSERT INTO blog_settings (tenant_id, key, value, updated_at) 
-                VALUES (?, ?, ?, ?) 
-                ON CONFLICT(tenant_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
-            `).bind(locals.tenantId, 'ui_dictionary', JSON.stringify(ui_dictionary), new Date().toISOString()).run();
+                INSERT INTO blog_settings (key, value, updated_at) 
+                VALUES (?, ?, ?) 
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+            `).bind('ui_dictionary', JSON.stringify(ui_dictionary), new Date().toISOString()).run();
         }
 
         return {
@@ -171,10 +159,10 @@ export const actions: Actions = {
             JSON.parse(ui_dictionary_str);
 
             await db.prepare(`
-                INSERT INTO blog_settings (tenant_id, key, value, updated_at) 
-                VALUES (?, ?, ?, ?) 
-                ON CONFLICT(tenant_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
-            `).bind(locals.tenantId, 'ui_dictionary', ui_dictionary_str, new Date().toISOString()).run();
+                INSERT INTO blog_settings (key, value, updated_at) 
+                VALUES (?, ?, ?) 
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+            `).bind('ui_dictionary', ui_dictionary_str, new Date().toISOString()).run();
 
             return { success: true };
         } catch (err: any) {
@@ -186,7 +174,7 @@ export const actions: Actions = {
         if (!db) return fail(500, { error: 'Database not found' });
 
         try {
-            const { results } = await db.prepare("SELECT value FROM blog_settings WHERE tenant_id = ? AND key = 'ui_dictionary'").bind(locals.tenantId).all() as any;
+            const { results } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'ui_dictionary'").all() as any;
             let ui_dictionary: Record<string, Record<string, string>> = {};
 
             if (results && results.length > 0 && results[0].value) {
@@ -201,10 +189,10 @@ export const actions: Actions = {
             }
 
             await db.prepare(`
-                INSERT INTO blog_settings (tenant_id, key, value, updated_at) 
-                VALUES (?, ?, ?, ?) 
-                ON CONFLICT(tenant_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
-            `).bind(locals.tenantId, 'ui_dictionary', JSON.stringify(ui_dictionary), new Date().toISOString()).run();
+                INSERT INTO blog_settings (key, value, updated_at) 
+                VALUES (?, ?, ?) 
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+            `).bind('ui_dictionary', JSON.stringify(ui_dictionary), new Date().toISOString()).run();
 
             return { success: true };
         } catch (err: any) {
