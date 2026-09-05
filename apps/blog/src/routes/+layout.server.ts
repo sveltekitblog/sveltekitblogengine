@@ -47,7 +47,7 @@ const DEFAULT_SETTINGS = {
     }
 };
 
-export const load: LayoutServerLoad = async ({ locals, request }) => {
+export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
     const userAgent = request.headers.get('user-agent') || '';
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
 
@@ -55,28 +55,104 @@ export const load: LayoutServerLoad = async ({ locals, request }) => {
     if (!db) return { user: locals.user, isMobile, navIconSvgs: {} };
 
     try {
-        const [settings, activeLayout, categories] = await Promise.all([
+        const [settings, dbActiveLayout, categories] = await Promise.all([
             db.getSettings(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang),
             db.getActiveLayout(),
             db.getCategories(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang).catch((e: any) => { console.error('getCategories failed:', e); return []; }),
         ]);
 
-        let layoutWidgets: any[] = [];
-        let desktopWidgets: any[] = [];
-        let mobileWidgets: any[] = [];
-        let mobileLayout = { columnCount: 1, columnWidths: '1fr' };
+        // 안전한 파싱 헬퍼: DB에서 문자열로 가져온 JSON 데이터를 객체화
+        const safeParse = (val: any) => {
+            if (typeof val === 'string') {
+                try { return JSON.parse(val); } catch (e) { return val; }
+            }
+            return val;
+        };
+
+        // --- 다중 디자인 슬롯 (Slot 1, 2, 3) 및 랜덤/고정 노출 제어 ---
+        let activeLayout = dbActiveLayout;
         let allWidgets: any[] = [];
-        
-        if (activeLayout) {
-            allWidgets = await db.getLayoutWidgets(activeLayout.id as number, locals.lang || locals.dbDefaultLang, locals.dbDefaultLang);
-            layoutWidgets = allWidgets;
-            desktopWidgets = allWidgets.filter((w: any) => w.device !== 'mobile');
-            mobileWidgets = allWidgets.filter((w: any) => w.device !== 'desktop');
-            mobileLayout = {
-                columnCount: (activeLayout as any).mobileColumnCount || 1,
-                columnWidths: (activeLayout as any).mobileColumnWidths || '1fr',
-            };
+        let targetSlotId = '1';
+        let designMode = '1';
+
+        const designSlots = safeParse(settings?.design_slots);
+        let activeSlotData: any = null;
+
+        if (designSlots && designSlots.slots && typeof designSlots.slots === 'object') {
+            designMode = designSlots.active_mode || '1';
+            const availableSlotIds = Object.keys(designSlots.slots).filter(id => {
+                const s = designSlots.slots[id];
+                return s && (s.theme || s.layout || s.widgets);
+            });
+
+            if (designMode === 'random' && availableSlotIds.length > 0) {
+                const cookieSlot = cookies.get('skbe_design_slot');
+                if (cookieSlot && availableSlotIds.includes(cookieSlot)) {
+                    targetSlotId = cookieSlot;
+                } else {
+                    targetSlotId = availableSlotIds[Math.floor(Math.random() * availableSlotIds.length)];
+                    try {
+                        cookies.set('skbe_design_slot', targetSlotId, {
+                            path: '/',
+                            maxAge: 60 * 60 * 24 * 7, // 7일간 세션 안정 유지
+                            httpOnly: false,
+                            sameSite: 'lax'
+                        });
+                    } catch (e) {
+                        // 쿠키 저장 실패 시에도 fallback 안전 동작
+                    }
+                }
+            } else if (availableSlotIds.includes(designMode)) {
+                targetSlotId = designMode;
+            } else if (availableSlotIds.length > 0) {
+                targetSlotId = availableSlotIds[0];
+            }
+
+            activeSlotData = designSlots.slots[targetSlotId];
         }
+
+        // 슬롯 데이터가 존재할 경우 settings 및 layout 주입
+        if (activeSlotData) {
+            if (activeSlotData.theme) settings.theme = activeSlotData.theme;
+            if (activeSlotData.header) settings.header = activeSlotData.header;
+            if (activeSlotData.footer) settings.footer = activeSlotData.footer;
+            if (activeSlotData.widget_shadow_global) settings.widget_shadow_global = activeSlotData.widget_shadow_global;
+
+            if (activeSlotData.staticHtmls && typeof activeSlotData.staticHtmls === 'object') {
+                Object.assign(settings, activeSlotData.staticHtmls);
+            }
+
+            if (activeSlotData.layout || activeSlotData.widgets) {
+                activeLayout = {
+                    id: (dbActiveLayout as any)?.id || 1,
+                    name: activeSlotData.name || (dbActiveLayout as any)?.name || `Slot ${targetSlotId}`,
+                    columnCount: activeSlotData.layout?.columnCount ?? (dbActiveLayout as any)?.columnCount ?? 1,
+                    columnWidths: activeSlotData.layout?.columnWidths ?? (dbActiveLayout as any)?.columnWidths ?? '1fr',
+                    mobileColumnCount: activeSlotData.layout?.mobileColumnCount ?? (dbActiveLayout as any)?.mobileColumnCount ?? 1,
+                    mobileColumnWidths: activeSlotData.layout?.mobileColumnWidths ?? (dbActiveLayout as any)?.mobileColumnWidths ?? '1fr',
+                    isActive: true,
+                    createdAt: '',
+                    updatedAt: ''
+                };
+
+                if (Array.isArray(activeSlotData.widgets)) {
+                    allWidgets = activeSlotData.widgets;
+                }
+            }
+        }
+
+        // 슬롯 위젯이 지정되지 않은 경우 기존 DB 활성 레이아웃 위젯 로드 (완벽한 안전망)
+        if (allWidgets.length === 0 && activeLayout) {
+            allWidgets = await db.getLayoutWidgets(activeLayout.id as number, locals.lang || locals.dbDefaultLang, locals.dbDefaultLang);
+        }
+
+        let layoutWidgets = allWidgets;
+        let desktopWidgets = allWidgets.filter((w: any) => w.device !== 'mobile');
+        let mobileWidgets = allWidgets.filter((w: any) => w.device !== 'desktop');
+        let mobileLayout = {
+            columnCount: (activeLayout as any)?.mobileColumnCount || 1,
+            columnWidths: (activeLayout as any)?.mobileColumnWidths || '1fr',
+        };
 
         const getMaxLimitFor = (type: string): number | undefined => {
             const limits = allWidgets
@@ -95,14 +171,6 @@ export const load: LayoutServerLoad = async ({ locals, request }) => {
                 return { comments: [], guestbooks: [] };
             })
         ]);
-
-        // 안전한 파싱 헬퍼: DB에서 문자열로 가져온 JSON 데이터를 객체화
-        const safeParse = (val: any) => {
-            if (typeof val === 'string') {
-                try { return JSON.parse(val); } catch (e) { return val; }
-            }
-            return val;
-        };
 
         if (settings) {
             settings.widget_shadow_global = safeParse(settings.widget_shadow_global);
@@ -198,6 +266,8 @@ export const load: LayoutServerLoad = async ({ locals, request }) => {
             tags,
             recentComments: recentEntries?.comments || [],
             recentGuestbooks: recentEntries?.guestbooks || [],
+            activeSlotId: targetSlotId,
+            activeDesignMode: designMode,
             user: locals.user,
             lang: locals.lang,
             dbDefaultLang: locals.dbDefaultLang,
