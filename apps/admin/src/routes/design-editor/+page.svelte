@@ -692,6 +692,148 @@
     );
     let previewMode = $state("desktop"); // desktop, mobile
 
+    // --- Multi-Slot Design Management State ---
+    let designSlotsData = $state(
+        untrack(() => {
+            const raw = data.settings.design_slots;
+            if (typeof raw === "string") {
+                try {
+                    return JSON.parse(raw);
+                } catch (e) {
+                    return null;
+                }
+            }
+            return raw || null;
+        }),
+    );
+
+    let activeDesignMode = $state<string>(
+        untrack(() => designSlotsData?.active_mode || "1"),
+    );
+
+    let currentSlotId = $state<string>("1");
+
+    function getSnapshotOfCurrentSlot() {
+        return {
+            name: `디자인 슬롯 ${currentSlotId}`,
+            theme: JSON.parse(JSON.stringify(themeConfig)),
+            header: JSON.parse(JSON.stringify(headerConfig)),
+            footer: JSON.parse(JSON.stringify(footerConfig)),
+            site_title: JSON.parse(JSON.stringify(siteTitleConfig)),
+            widget_shadow_global: JSON.parse(JSON.stringify(widgetShadowGlobal)),
+            layout: {
+                id: currentLayout.id,
+                name: currentLayout.name,
+                columnCount: currentLayout.columnCount,
+                columnWidths: currentLayout.columnWidths.join(" "),
+                mobileColumnCount: mobileColumnCount,
+                mobileColumnWidths: mobileColumnWidths.join(" "),
+            },
+            widgets: [
+                ...columnWidgets
+                    .flat()
+                    .map((w: any) => ({ ...w, device: "desktop" })),
+                ...mobileColumnWidgets
+                    .flat()
+                    .map((w: any) => ({ ...w, device: "mobile" })),
+            ],
+            updatedAt: new Date().toISOString(),
+        };
+    }
+
+    let slots = $state<Record<string, any>>(
+        untrack(() => {
+            const existing = (designSlotsData?.slots && typeof designSlotsData.slots === "object")
+                ? { ...designSlotsData.slots }
+                : {};
+
+            // 슬롯 1이 비어있으면 현재 에디터에 로드된 설정으로 자동 초기화 (하위 호환 100%)
+            if (!existing["1"]) {
+                existing["1"] = getSnapshotOfCurrentSlot();
+            }
+            return existing;
+        }),
+    );
+
+    function applySlotSnapshot(slotData: any) {
+        if (!slotData) return;
+        try {
+            if (slotData.theme) {
+                themeConfig = JSON.parse(JSON.stringify(slotData.theme));
+            }
+            if (slotData.header) {
+                headerConfig = JSON.parse(JSON.stringify(slotData.header));
+            }
+            if (slotData.footer) {
+                footerConfig = JSON.parse(JSON.stringify(slotData.footer));
+            }
+            if (slotData.site_title) {
+                siteTitleConfig = JSON.parse(JSON.stringify(slotData.site_title));
+            }
+            if (slotData.widget_shadow_global) {
+                widgetShadowGlobal = JSON.parse(
+                    JSON.stringify(slotData.widget_shadow_global),
+                );
+            }
+            if (slotData.layout) {
+                currentLayout.columnCount = slotData.layout.columnCount || 1;
+                currentLayout.columnWidths = (
+                    typeof slotData.layout.columnWidths === "string"
+                        ? slotData.layout.columnWidths.split(" ")
+                        : slotData.layout.columnWidths
+                ) || ["1fr"];
+                mobileColumnCount = slotData.layout.mobileColumnCount || 1;
+                mobileColumnWidths = (
+                    typeof slotData.layout.mobileColumnWidths === "string"
+                        ? slotData.layout.mobileColumnWidths.split(" ")
+                        : slotData.layout.mobileColumnWidths
+                ) || ["1fr"];
+            }
+            if (Array.isArray(slotData.widgets)) {
+                const colCount = currentLayout.columnCount || 1;
+                const dWidgets = slotData.widgets.filter(
+                    (w: any) => w.device !== "mobile",
+                );
+                columnWidgets = Array.from({ length: colCount }, (_, i) =>
+                    dWidgets
+                        .filter((w: any) => w.column_index === i)
+                        .sort((a: any, b: any) => a.sort_order - b.sort_order),
+                );
+
+                const mColCount = mobileColumnCount || 1;
+                const mWidgets = slotData.widgets.filter(
+                    (w: any) => w.device !== "desktop",
+                );
+                mobileColumnWidgets = Array.from({ length: mColCount }, (_, i) =>
+                    mWidgets
+                        .filter((w: any) => w.column_index === i)
+                        .sort((a: any, b: any) => a.sort_order - b.sort_order),
+                );
+            }
+        } catch (e) {
+            console.error("Failed to apply slot snapshot:", e);
+        }
+    }
+
+    function switchSlot(newSlotId: string) {
+        if (newSlotId === currentSlotId) return;
+
+        // 현재 작업 중인 슬롯의 상태를 메모리에 보관
+        slots[currentSlotId] = getSnapshotOfCurrentSlot();
+
+        currentSlotId = newSlotId;
+        if (slots[newSlotId]) {
+            applySlotSnapshot(slots[newSlotId]);
+        } else {
+            // 아직 저장된 적 없는 슬롯이면 현재 설정을 기본 복사본으로 생성
+            slots[newSlotId] = {
+                ...getSnapshotOfCurrentSlot(),
+                name: `디자인 슬롯 ${newSlotId}`,
+            };
+            applySlotSnapshot(slots[newSlotId]);
+        }
+    }
+
     // Style Helper: Convert background config to CSS string
     function getBgStyle(config: { type: string; value: string }) {
         if (!config || config.type === "inherit")
@@ -2181,8 +2323,11 @@ header.blog-header.scrolled .header-inner {
             ];
 
             // Add all language-specific compiled htmls
+            const currentSlotStaticHtmls: Record<string, string> = {};
             languages.forEach((langObj) => {
                 const code = langObj.code;
+                currentSlotStaticHtmls[`header_static_html_${code}`] = compiledHeaderHtmls[code];
+                currentSlotStaticHtmls[`footer_static_html_${code}`] = compiledFooterHtmls[code];
                 settingsToSave.push({
                     key: `header_static_html_${code}`,
                     value: compiledHeaderHtmls[code],
@@ -2191,6 +2336,20 @@ header.blog-header.scrolled .header-inner {
                     key: `footer_static_html_${code}`,
                     value: compiledFooterHtmls[code],
                 });
+            });
+
+            // 1.5 Update and save multi-slot design data
+            const currentSnapshot = getSnapshotOfCurrentSlot();
+            currentSnapshot.staticHtmls = currentSlotStaticHtmls;
+            slots[currentSlotId] = currentSnapshot;
+
+            const designSlotsPayload = {
+                active_mode: activeDesignMode,
+                slots: slots,
+            };
+            settingsToSave.push({
+                key: "design_slots",
+                value: JSON.stringify(designSlotsPayload),
             });
 
             for (const s of settingsToSave) {
@@ -2300,6 +2459,35 @@ header.blog-header.scrolled .header-inner {
             <span>{t("admin.theme.editor_title")}</span>
         </div>
         <div class="controls">
+            <!-- 다중 디자인 슬롯 전환 탭 -->
+            <div class="slot-selector-group">
+                <span class="slot-label">디자인 슬롯:</span>
+                <div class="slot-buttons">
+                    {#each ["1", "2", "3"] as slotId}
+                        <button
+                            type="button"
+                            class="slot-btn"
+                            class:active={currentSlotId === slotId}
+                            onclick={() => switchSlot(slotId)}
+                            title={`디자인 슬롯 ${slotId} 편집`}
+                        >
+                            슬롯 {slotId}
+                        </button>
+                    {/each}
+                </div>
+            </div>
+
+            <!-- 노출 방식 선택기 -->
+            <div class="mode-selector-group">
+                <span class="mode-label">노출 모드:</span>
+                <select class="mode-select" bind:value={activeDesignMode}>
+                    <option value="1">📌 슬롯 1 고정</option>
+                    <option value="2">📌 슬롯 2 고정</option>
+                    <option value="3">📌 슬롯 3 고정</option>
+                    <option value="random">🎲 랜덤 노출 (세션 유지)</option>
+                </select>
+            </div>
+
             <div class="device-toggles">
                 <button
                     class:active={previewMode === "desktop"}
@@ -7990,6 +8178,87 @@ header.blog-header.scrolled .header-inner {
         justify-content: space-between;
         align-items: center;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .slot-selector-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #f8fafc;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.5rem;
+        border: 1px solid #e2e8f0;
+    }
+
+    .slot-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748b;
+        white-space: nowrap;
+    }
+
+    .slot-buttons {
+        display: flex;
+        gap: 0.25rem;
+    }
+
+    .slot-btn {
+        padding: 0.25rem 0.625rem;
+        border-radius: 0.375rem;
+        border: 1px solid transparent;
+        background: transparent;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #475569;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+    }
+
+    .slot-btn:hover {
+        color: #0f172a;
+        background: #e2e8f0;
+    }
+
+    .slot-btn.active {
+        background: #3b82f6;
+        color: #ffffff;
+        border-color: #3b82f6;
+        box-shadow: 0 1px 2px rgba(59, 130, 246, 0.25);
+    }
+
+    .mode-selector-group {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        background: #f8fafc;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.5rem;
+        border: 1px solid #e2e8f0;
+    }
+
+    .mode-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748b;
+        white-space: nowrap;
+    }
+
+    .mode-select {
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #1e293b;
+        cursor: pointer;
+        outline: none;
+        transition: border-color 0.15s ease;
+    }
+
+    .mode-select:focus {
+        border-color: #3b82f6;
     }
 
     .logo {
