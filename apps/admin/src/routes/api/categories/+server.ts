@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -17,6 +17,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { syncCategoryPostCounts } from '$lib/server/categorySync';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     const db = locals.blogDb;
@@ -50,6 +51,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             
             if (statements.length > 0) {
                 await db.batch(statements);
+                await syncCategoryPostCounts(db);
             }
 
             return json({ success: true });
@@ -70,6 +72,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             await db.prepare('UPDATE categories SET slug = ? WHERE slug = ?').bind(newSlug, oldSlug).run();
             // We should also update posts using this category!
             await db.prepare('UPDATE posts SET category_slug = ? WHERE category_slug = ?').bind(newSlug, oldSlug).run();
+            await syncCategoryPostCounts(db);
             
             return json({ success: true });
         }

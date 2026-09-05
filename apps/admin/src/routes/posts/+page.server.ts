@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -17,19 +17,22 @@
 
 import type { PageServerLoad, Actions } from './$types';
 import { error, fail } from '@sveltejs/kit';
+import { syncCategoryPostCounts } from '$lib/server/categorySync';
 
-export const load: PageServerLoad = async ({ locals, platform }) => {
+export const load: PageServerLoad = async ({ locals }) => {
     const db = locals.blogDb;
     if (!db) throw error(500, 'Database not found');
 
-    // Get USER_DB for view counts
-    const userDb = platform?.env?.USER_DB;
-
     try {
         // Posts 목록 & Languages 목록 병렬 조회
+        // content, content_markdown 등의 대형 본문 컬럼은 목록 뷰에서 제외하여 D1 읽기량과 대역폭을 획기적으로 최적화
         const [{ results: postsRaw }, langResult] = await Promise.all([
             db.prepare(`
-                SELECT * FROM posts ORDER BY created_at DESC
+                SELECT id, title, slug, category_slug, type, status, author_id, featured_image,
+                       lang, translation_group_id, thumbnail_fit, is_syndicated, view_count, like_count,
+                       created_at, published_at
+                FROM posts 
+                ORDER BY created_at DESC
             `).all(),
             db.prepare(`
                 SELECT * FROM languages ORDER BY sort_order ASC, code ASC
@@ -40,26 +43,10 @@ export const load: PageServerLoad = async ({ locals, platform }) => {
         ]);
         const languages = (langResult as any)?.results || [];
 
-        // Aggregate view counts from USER_DB
-        let viewCountMap: Record<string, number> = {};
-        if (userDb) {
-            try {
-                const { results: viewResults } = await userDb.prepare(`
-                    SELECT post_id, SUM(views) as total_views FROM post_views GROUP BY post_id
-                `).all();
-
-                for (const row of viewResults as any[]) {
-                    viewCountMap[row.post_id] = row.total_views || 0;
-                }
-            } catch (e) {
-                console.warn('Failed to load view counts:', e);
-            }
-        }
-
-        const posts = postsRaw.map((p: any) => ({
+        const posts = (postsRaw || []).map((p: any) => ({
             ...p,
             author_name: 'Admin',
-            view_count: viewCountMap[p.id] || 0
+            view_count: p.view_count || 0
         }));
 
         return {
@@ -189,7 +176,7 @@ export const actions: Actions = {
                 console.error('[Purge Error]', e);
             }
 
-            // 2.5. Cleanup orphaned categories
+            // 2.5. Cleanup orphaned categories & sync post counts
             try {
                 await db.prepare(`
                     DELETE FROM categories 
@@ -199,8 +186,9 @@ export const actions: Actions = {
                         WHERE category_slug IS NOT NULL
                     )
                 `).run();
+                await syncCategoryPostCounts(db);
             } catch (catErr) {
-                console.warn('Failed to cleanup categories:', catErr);
+                console.warn('Failed to cleanup categories or sync counts:', catErr);
             }
 
             // 3. Delete from USER_DB (post_views) safely

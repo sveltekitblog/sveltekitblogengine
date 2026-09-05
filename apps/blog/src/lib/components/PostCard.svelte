@@ -1,5 +1,5 @@
 <!--
- Copyright (C) 2026 kimteamjang
+ Copyright (C) 2026 SvelteKit Blog Engine
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU Affero General Public License as published by
@@ -21,7 +21,29 @@
     import { page } from "$app/stores";
     import { t } from "$lib/i18n";
 
-    let { post, pcConfig = {}, index = 0 }: { post: Post; pcConfig?: any; index?: number } = $props();
+    let {
+        post,
+        pcConfig = {},
+        desktopPcConfig,
+        mobilePcConfig,
+        index = 0
+    }: {
+        post: Post;
+        pcConfig?: any;
+        desktopPcConfig?: any;
+        mobilePcConfig?: any;
+        index?: number
+    } = $props();
+
+    const dConfig = $derived(desktopPcConfig || pcConfig || {});
+    const mConfig = $derived(mobilePcConfig || dConfig);
+
+    const dLayout = $derived(dConfig.layout || "horizontal");
+    const mLayout = $derived(mConfig.layout || "vertical");
+
+    const dImageRatio = $derived(dConfig.imageRatio || (dLayout === "horizontal" ? 40 : 50));
+    const mImageRatio = $derived(mConfig.imageRatio || (mLayout === "horizontal" ? 40 : 50));
+
     const dbDefaultLang = $derived($page.data.dbDefaultLang || "ko");
     let category = $derived(post.categorySlug || "all");
     let otherTranslations = $derived(
@@ -31,27 +53,25 @@
     );
 
     let cardHoverEffect = $derived.by(() => {
-        const hover = pcConfig.hoverEffect || "default";
+        const hover = dConfig.hoverEffect || "default";
         if (hover === "lift") return "hover-lift";
         if (hover === "zoom") return "hover-zoom group";
         if (hover === "glow") return "hover-glow";
         return "hover-default";
     });
 
-    let isHorizontal = $derived(pcConfig.layout === "horizontal");
-    let imageRatio = $derived(pcConfig.imageRatio || (isHorizontal ? 40 : 50));
     let cardHeightStyle = $derived.by(() => {
-        if (pcConfig.cardHeight && pcConfig.cardHeight.trim() !== "") {
-            return `height: ${pcConfig.cardHeight};`;
+        if (dConfig.cardHeight && dConfig.cardHeight.trim() !== "") {
+            return `height: ${dConfig.cardHeight};`;
         }
         return "height: 100%;";
     });
 
     let mobileVars = $derived.by(() => {
-        if (pcConfig.cardHeight && pcConfig.cardHeight.trim() !== "") {
+        if (mConfig.cardHeight && mConfig.cardHeight.trim() !== "") {
             return `
-                --pc-mobile-card-height: ${pcConfig.cardHeight};
-                --pc-mobile-image-height: ${imageRatio}%;
+                --pc-mobile-card-height: ${mConfig.cardHeight};
+                --pc-mobile-image-height: ${mImageRatio}%;
                 --pc-mobile-content-height: unset;
                 --pc-mobile-content-overflow: hidden;
             `;
@@ -65,7 +85,7 @@
         const img = post.featuredImage.replace("maxresdefault.jpg", "hqdefault.jpg");
         const desktopUrl = img.replace("/mobile/", "/desktop/").replace("/thumbnail/", "/desktop/");
         
-        if (isHorizontal) {
+        if (dLayout === "horizontal" && mLayout === "horizontal") {
             return desktopUrl.replace("/desktop/", "/thumbnail/"); // 240px
         } else {
             return desktopUrl.replace("/desktop/", "/mobile/"); // 480px
@@ -73,8 +93,9 @@
     });
 
     // 레이아웃에 따른 동적 크기 힌트 (Lighthouse 경고 방지 및 CLS 예방)
-    let optimalWidth = $derived(isHorizontal ? 240 : 480);
-    let optimalHeight = $derived(isHorizontal ? 135 : 270);
+    // 16:9 비율을 유지하는 고정 크기 힌트 제공
+    let optimalWidth = 480;
+    let optimalHeight = 270;
 
     function getLocalizedUrl(path: string) {
         const lang = $page.params.lang;
@@ -82,25 +103,27 @@
     }
 
     // Svelte 5 룬(derived)으로 LCP 대상 여부를 스크립트 단에서 안전하게 연산
-    const columns = $derived(Number(pcConfig.columns) || 3);
+    const columns = $derived(Number(dConfig.columns) || 3);
     const isLcpTarget = $derived(
         index < 4 ||
-        (isHorizontal 
+        (dLayout === "horizontal" 
             ? false 
-            : (pcConfig.layout === "horizontal" ? false : index < columns))
+            : index < columns)
     );
 </script>
 
 <article
-    class="post-card {cardHoverEffect} {isHorizontal
-        ? 'horizontal'
-        : 'vertical'}"
+    class="post-card {cardHoverEffect} layout-d-{dLayout} layout-m-{mLayout}"
     style="
     background: var(--pc-card-bg, #ffffff);
     color: var(--pc-card-text, #333);
     font-size: var(--pc-card-font-size, 1rem);
-    --pc-date-color: {pcConfig.dateColor || '#767676'};
-    --pc-glow-color: {pcConfig.glowColor || 'rgba(59, 130, 246, 0.5)'};
+    --pc-date-color: {dConfig.dateColor || '#767676'};
+    --pc-glow-color: {dConfig.glowColor || 'rgba(59, 130, 246, 0.5)'};
+    --pc-d-img-ratio: {dImageRatio}%;
+    --pc-m-img-ratio: {mImageRatio}%;
+    --pc-d-content-width: {100 - dImageRatio}%;
+    --pc-m-content-width: {100 - mImageRatio}%;
     {cardHeightStyle}
     {mobileVars}
 "
@@ -109,17 +132,9 @@
         <a 
             href={getLocalizedUrl(`/${category}/${post.slug}`)} 
             class="image-link"
-            style="
-                {isHorizontal
-                    ? `width: ${imageRatio}%`
-                    : pcConfig.cardHeight && pcConfig.cardHeight.trim() !== ""
-                      ? `height: ${imageRatio}%`
-                      : `aspect-ratio: ${isHorizontal ? 'auto' : '16/9'}; height: auto;`}
-            "
         >
             <div
                 class="image-wrapper {post.thumbnailFit === 'contain' ? 'fit-contain' : 'fit-cover'}"
-                style="width: 100%; height: 100%;"
             >
                 {#if post.featuredImage}
                     <img
@@ -145,10 +160,7 @@
                 {/if}
             </div>
         </a>
-        <div
-            class="content"
-            style={isHorizontal ? `width: ${100 - imageRatio}%` : undefined}
-        >
+        <div class="content">
             <a href={getLocalizedUrl(`/${category}/${post.slug}`)} class="title-link">
                 <h2 class="title">{post.title}</h2>
             </a>
@@ -158,7 +170,7 @@
                     {#if category !== "all"}
                         <a
                             href={getLocalizedUrl(`/${category}`)}
-                            class="category-tag {pcConfig.badgeOpacity
+                            class="category-tag {dConfig.badgeOpacity
                                 ? 'with-opacity'
                                 : ''}"
                             style="background: var(--pc-badge-bg, var(--primary-color)); color: var(--pc-badge-color, white);"
@@ -214,14 +226,14 @@
                         </span>
                     </div>
                     <time
-                        class="post-date desktop-only {pcConfig.metaOpacity === false
+                        class="post-date desktop-only {dConfig.metaOpacity === false
                             ? ''
                             : 'with-opacity'}"
                         style="color: var(--pc-date-color);"
                         >{formatDate(post.displayDate || post.createdAt, $page.data.settings?.timezone || 'Asia/Seoul')}</time
                     >
                     <time
-                        class="post-date mobile-only {pcConfig.metaOpacity === false
+                        class="post-date mobile-only {dConfig.metaOpacity === false
                             ? ''
                             : 'with-opacity'}"
                         style="color: var(--pc-date-color);"
@@ -257,13 +269,6 @@
         height: 100%;
         width: 100%;
     }
-    .post-card.vertical .card-inner {
-        flex-direction: column;
-    }
-    .post-card.horizontal .card-inner {
-        flex-direction: row;
-        align-items: stretch;
-    }
     .image-link {
         display: block;
         flex-shrink: 0;
@@ -296,13 +301,15 @@
 
     .image-wrapper {
         aspect-ratio: 16/9;
+        width: 100%;
+        height: 100%;
         overflow: hidden;
         background: #f0f0f0;
         flex-shrink: 0;
     }
 
     .image-wrapper.fit-contain {
-        background: #f8fafc; /* 부드러운 중성 회색 배경 */
+        background: #f8fafc;
     }
 
     .image-wrapper.fit-contain img {
@@ -331,10 +338,6 @@
         flex-direction: column;
         overflow: hidden;
     }
-    .post-card.horizontal .content {
-        justify-content: center;
-        gap: 0.75rem;
-    }
     .title {
         margin: 0 0 0.75rem 0;
         font-size: 1.25em;
@@ -357,9 +360,6 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-    }
-    .post-card.horizontal .meta {
-        margin-top: 0;
     }
     .meta-row1 {
         display: contents; /* transparent wrapper: children go into .meta flex */
@@ -410,11 +410,11 @@
         gap: 0.25rem;
     }
     .category-tag {
-        padding: 0.15rem 0.4rem; /* 다국어 배지와 크기 완벽 통일 */
+        padding: 0.15rem 0.4rem;
         border-radius: 4px;
         font-weight: 600;
-        font-size: 0.8em;        /* 메타 영역 기본 폰트 크기로 축소 및 통일 */
-        line-height: 1.2;        /* 높이 정렬 통일 */
+        font-size: 0.8em;
+        line-height: 1.2;
         text-transform: uppercase;
         white-space: nowrap;
         overflow: hidden;
@@ -437,52 +437,111 @@
         opacity: 0.8;
     }
 
-    /* Language badges */
-    .lang-badges {
-        display: flex;
-        gap: 0.25rem; /* 배지 간 조밀한 일관성 부여 */
-        align-items: center;
-    }
-    .lang-badge {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0.15rem 0.4rem;  /* 카테고리 태그와 패딩 통일 */
-        border-radius: 4px;
-        font-size: 0.8em;         /* 카테고리 태그와 글자 크기 완벽 통일 */
-        font-weight: 700;
-        font-family: inherit;
-        background: #e0e7ff;
-        color: #3730a3;
-        letter-spacing: 0.03em;
-        line-height: 1.2;         /* 카테고리 태그와 line-height 통일 */
+    /* ───────── 데스크탑 레이아웃 (769px 이상) ───────── */
+    @media (min-width: 769px) {
+        /* 데스크탑 가로형 (Horizontal) */
+        .post-card.layout-d-horizontal .card-inner,
+        .post-card.horizontal:not([class*="layout-d-"]) .card-inner {
+            flex-direction: row;
+            align-items: stretch;
+        }
+        .post-card.layout-d-horizontal .image-link,
+        .post-card.horizontal:not([class*="layout-d-"]) .image-link {
+            width: var(--pc-d-img-ratio, 40%);
+            height: auto;
+        }
+        .post-card.layout-d-horizontal .content,
+        .post-card.horizontal:not([class*="layout-d-"]) .content {
+            width: var(--pc-d-content-width, 60%);
+            justify-content: center;
+            gap: 0.75rem;
+        }
+        .post-card.layout-d-horizontal .meta,
+        .post-card.horizontal:not([class*="layout-d-"]) .meta {
+            margin-top: 0;
+        }
+
+        /* 데스크탑 세로형 (Vertical) */
+        .post-card.layout-d-vertical .card-inner,
+        .post-card.vertical:not([class*="layout-d-"]) .card-inner {
+            flex-direction: column;
+        }
+        .post-card.layout-d-vertical .image-link,
+        .post-card.vertical:not([class*="layout-d-"]) .image-link {
+            width: 100%;
+            height: auto;
+        }
+        .post-card.layout-d-vertical .content,
+        .post-card.vertical:not([class*="layout-d-"]) .content {
+            width: 100%;
+            justify-content: flex-start;
+            gap: 0;
+        }
+        .post-card.layout-d-vertical .meta,
+        .post-card.vertical:not([class*="layout-d-"]) .meta {
+            margin-top: auto;
+        }
     }
 
+    /* ───────── 모바일 레이아웃 (768px 이하): CLS 0.000 방어 ───────── */
     @media (max-width: 768px) {
-        /* Mobile horizontal: keep horizontal but adapt sizing */
-        .post-card.horizontal .image-wrapper {
+        /* 모바일 세로형 (Vertical - 기본값) */
+        .post-card.layout-m-vertical .card-inner,
+        .post-card:not(.layout-m-horizontal) .card-inner {
+            flex-direction: column !important;
+            height: auto !important;
+        }
+        .post-card.layout-m-vertical .image-link,
+        .post-card:not(.layout-m-horizontal) .image-link {
+            width: 100% !important;
+            height: auto !important;
+        }
+        .post-card.layout-m-vertical .image-wrapper,
+        .post-card:not(.layout-m-horizontal) .image-wrapper {
+            width: 100% !important;
+            height: auto !important;
+            aspect-ratio: 16/9 !important;
+        }
+        .post-card.layout-m-vertical .content,
+        .post-card:not(.layout-m-horizontal) .content {
+            width: 100% !important;
+            justify-content: flex-start !important;
+            gap: 0 !important;
+        }
+        .post-card.layout-m-vertical .meta,
+        .post-card:not(.layout-m-horizontal) .meta {
+            margin-top: auto !important;
+        }
+
+        /* 모바일 가로형 (Horizontal - 만약 모바일에서도 가로형으로 설정한 경우) */
+        .post-card.layout-m-horizontal .card-inner {
+            flex-direction: row !important;
+            align-items: stretch !important;
+        }
+        .post-card.layout-m-horizontal .image-link {
+            width: var(--pc-m-img-ratio, 40%) !important;
+            height: auto !important;
+        }
+        .post-card.layout-m-horizontal .image-wrapper {
             max-height: 180px;
         }
-        .post-card.horizontal .content {
-            padding: 0.8rem;
+        .post-card.layout-m-horizontal .content {
+            width: var(--pc-m-content-width, 60%) !important;
+            padding: 0.8rem !important;
+            justify-content: center !important;
+            gap: 0.75rem !important;
+        }
+        .post-card.layout-m-horizontal .meta {
+            margin-top: 0 !important;
         }
 
-        /* Prevent cardHeight from clipping text on mobile */
+        /* 카드 높이 및 여백 모바일 최적화 */
         .post-card {
             height: var(--pc-mobile-card-height, auto) !important;
         }
         .card-inner {
             height: var(--pc-mobile-card-height, auto) !important;
         }
-
-        /* Image: fixed height so text always has space below */
-        .post-card.vertical .image-wrapper {
-            height: var(--pc-mobile-image-height, 200px) !important;
-            flex-shrink: 0;
-            /* aspect-ratio를 강제 해제(unset)하지 않고 HTML 변수를 보존하여 사전 공간 레이아웃 예약을 정상 수행시킴 */
-        }
-
-        /* Content: full padding, no clipping */
         .content {
             height: var(--pc-mobile-content-height, auto) !important;
             overflow: var(--pc-mobile-content-overflow, visible);
@@ -508,25 +567,22 @@
         .lang-badges {
             display: none !important;
         }
-        /* Row1: badge left, stats pushed right via margin-left:auto */
         .meta-row1 {
             display: flex;
             align-items: center;
             gap: 0.4rem;
-            /* NO space-between: avoids overflow past card edge */
         }
         .meta-row1 .stats {
-            margin-left: auto; /* push stats to right within safe bounds */
+            margin-left: auto;
             flex-shrink: 0;
         }
-        /* Row2: date left-aligned, truncated */
         .post-date {
             display: block;
             text-align: left;
             max-width: 100%;
             overflow: hidden;
             text-overflow: ellipsis;
-            margin-left: 0; /* reset desktop margin-left:auto */
+            margin-left: 0;
         }
         .desktop-only {
             display: none !important;

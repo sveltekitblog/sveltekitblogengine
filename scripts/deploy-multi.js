@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * Multi-Account Cloudflare Pages Deployment Runner
  * (Atomic Config Swap, Global Isolation & Complete Cache Clean Mode)

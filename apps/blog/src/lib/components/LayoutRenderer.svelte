@@ -1,5 +1,5 @@
 <!--
- Copyright (C) 2026 kimteamjang
+ Copyright (C) 2026 SvelteKit Blog Engine
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU Affero General Public License as published by
@@ -118,16 +118,21 @@
         return true;
     }
 
-    // 컬럼별 위젯 분류
+    // 컬럼별 위젯 분류 (camelCase 및 snake_case 속성 완벽 지원)
     function getWidgetsByCol(allWidgets: any[], colCount: number) {
         return Array.from({ length: colCount }, (_, i) => {
             return allWidgets
-                .filter((w) => w.columnIndex === i)
-                .sort((a, b) => a.sortOrder - b.sortOrder);
+                .filter((w) => Number(w.columnIndex ?? w.column_index ?? 0) === i)
+                .sort((a, b) => Number(a.sortOrder ?? a.sort_order ?? 0) - Number(b.sortOrder ?? b.sort_order ?? 0));
         });
     }
 
     const dCols = $derived(getWidgetsByCol(allWidgets, layout?.columnCount || 1));
+
+    // 본문 위젯 존재 여부 감지 (누락 시에도 children fallback 렌더링)
+    const hasPostContentWidget = $derived(
+        (allWidgets || []).some((w) => w.type === 'post_content' || w.type === 'PostContent')
+    );
 
     function buildGrid(columnWidths: string | undefined | null, colCount: number): string {
         if (!columnWidths) return "repeat(" + (colCount || 1) + ", minmax(0, 1fr))";
@@ -142,8 +147,11 @@
 
     // ─── 헬퍼 함수 ────────────────────────────────────────────────────
     function getWidgetTitle(w: any) {
-        let title = typeof w.customTitle === 'string' ? w.customTitle.trim() : w.customTitle;
-        if (title && title.startsWith("{")) {
+        let title = typeof w.customTitle === 'string' ? w.customTitle.trim() : (w.customTitle ?? w.custom_title);
+        if (title && typeof title === 'object') {
+            title = title[lang] || title[dbDefaultLang] || Object.values(title)[0] || '';
+        }
+        if (title && typeof title === 'string' && title.startsWith("{")) {
             try {
                 const parsed = JSON.parse(title);
                 title = parsed[lang] || parsed[dbDefaultLang] || Object.values(parsed)[0] || title;
@@ -219,8 +227,20 @@
 </script>
 
 <div class="layout-wrapper" style="--d-grid: {desktopGridTemplate}; {getGlobalWidgetStyles()}">
+    {#if dCols.length === 0}
+        <div class="layout-column">
+            <div class="main-content-block widget-item">
+                {@render children()}
+            </div>
+        </div>
+    {/if}
     {#each dCols as widgets, colIdx}
         <div class="layout-column">
+            {#if colIdx === 0 && !hasPostContentWidget}
+                <div class="main-content-block widget-item">
+                    {@render children()}
+                </div>
+            {/if}
             {#each widgets as w}
                 {#if isWidgetRenderable(w)}
                     {#if w.type === 'post_content' || w.type === 'PostContent'}

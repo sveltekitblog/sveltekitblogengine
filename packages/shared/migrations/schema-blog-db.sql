@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS categories (
     updated_at TEXT DEFAULT (datetime('now', '+9 hours')),
     lang TEXT DEFAULT 'ko',
     translation_group_id TEXT,
+    post_count INTEGER DEFAULT 0,
     PRIMARY KEY (slug, lang)
 );
 
@@ -45,11 +46,16 @@ CREATE TABLE IF NOT EXISTS posts (
     content_markdown TEXT,
     thumbnail_fit TEXT DEFAULT 'cover',
     is_syndicated INTEGER DEFAULT 0,
+    view_count INTEGER DEFAULT 0,
+    like_count INTEGER DEFAULT 0,
     UNIQUE(lang, slug)
 );
 CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
 CREATE INDEX IF NOT EXISTS idx_posts_status_published ON posts(status, published_at);
 CREATE INDEX IF NOT EXISTS idx_posts_translation_group ON posts(translation_group_id);
+CREATE INDEX IF NOT EXISTS idx_posts_cat_lang_status ON posts(category_slug, lang, status, type);
+CREATE INDEX IF NOT EXISTS idx_posts_popular ON posts(status, lang, view_count);
+CREATE INDEX IF NOT EXISTS idx_categories_lang ON categories(lang);
 
 -- 4. Layouts
 CREATE TABLE IF NOT EXISTS layouts (

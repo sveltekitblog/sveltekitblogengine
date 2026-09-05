@@ -1,5 +1,5 @@
 <!--
- Copyright (C) 2026 kimteamjang
+ Copyright (C) 2026 SvelteKit Blog Engine
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU Affero General Public License as published by
@@ -21,6 +21,7 @@
     import Footer from "$lib/components/Footer.svelte";
     import LayoutRenderer from "$lib/components/LayoutRenderer.svelte";
     import DynamicBgRenderer from "$lib/components/DynamicBgRenderer.svelte";
+    import DesignSlotSwitcher from "$lib/components/DesignSlotSwitcher.svelte";
     import { t } from "$lib/i18n";
     import { normalizeBackground, getBgValue } from "$lib/utils/background";
     import { onMount, untrack } from "svelte";
@@ -39,12 +40,52 @@
         return () => media.removeEventListener("change", listener);
     });
 
-    const settings = $derived(data.settings || {});
+    // 방문자가 선택한 디자인 슬롯 ID 동기화 (localStorage)
+    let selectedSlotId = $state<string>(untrack(() => {
+        if (typeof window !== "undefined") {
+            try {
+                const stored = localStorage.getItem("skbe_design_slot");
+                const available = data.designSlotInfo?.availableSlots?.map((s: any) => s.id) || ['1'];
+                if (data.designSlotInfo?.allowVisitorSelection && stored && available.includes(stored)) {
+                    return stored;
+                }
+            } catch (e) {}
+        }
+        return data.activeSlotId || "1";
+    }));
+
+    // 만약 사용자가 선택한 슬롯이 서버 기본 슬롯과 다르고 해당 슬롯 데이터가 존재할 경우
+    const activeSlotBundle = $derived.by(() => {
+        if (
+            data.designSlotInfo?.allowVisitorSelection &&
+            selectedSlotId !== data.activeSlotId &&
+            data.designSlotInfo?.slots?.[selectedSlotId]
+        ) {
+            return data.designSlotInfo.slots[selectedSlotId];
+        }
+        return null;
+    });
+
+    const settings = $derived.by(() => {
+        const base = data.settings || {};
+        if (!activeSlotBundle) return base;
+        return {
+            ...base,
+            theme: activeSlotBundle.theme || base.theme || {},
+            header: activeSlotBundle.header || base.header || {},
+            footer: activeSlotBundle.footer || base.footer || {},
+            // 다른 슬롯으로 전환 시 1번 슬롯의 사전 컴파일 정적 헤더를 무효화하여
+            // 선택된 슬롯의 고유 헤더(색상, 높이 등)가 정상 렌더링되도록 처리
+            headerStaticHtml: activeSlotBundle.staticHtmls?.headerStaticHtml || ""
+        };
+    });
+
     // Pure Svelte 5: Reactive proxy to current page data
     const seo = $derived(page.data.seo || {});
     const theme = $derived(settings.theme || {});
     const headerConfig = $derived(settings.header || {});
     const layoutConfig = $derived(
+        activeSlotBundle?.layout ||
         data.activeLayout || {
             id: 0,
             name: "Default",
@@ -52,7 +93,25 @@
             columnWidths: "1fr",
         },
     );
-    const layoutWidgets = $derived(data.layoutWidgets || []);
+    const layoutWidgets = $derived(activeSlotBundle?.widgets || data.layoutWidgets || []);
+    const effectiveDesktopWidgets = $derived(
+        activeSlotBundle
+            ? layoutWidgets.filter((w: any) => w.device !== "mobile")
+            : (data.desktopWidgets || [])
+    );
+    const effectiveMobileWidgets = $derived(
+        activeSlotBundle
+            ? layoutWidgets.filter((w: any) => w.device !== "desktop")
+            : (data.mobileWidgets || [])
+    );
+    const effectiveMobileLayout = $derived(
+        activeSlotBundle?.layout
+            ? {
+                columnCount: activeSlotBundle.layout.mobileColumnCount || 1,
+                columnWidths: activeSlotBundle.layout.mobileColumnWidths || "1fr"
+              }
+            : (data.mobileLayout || { columnCount: 1, columnWidths: "1fr" })
+    );
     const footerConfig = $derived(settings.footer || {});
     const globalCss = $derived(settings.global_css || "");
     const headCode = $derived(settings.head_code || "");
@@ -204,24 +263,14 @@
 
     {#if data.googleFonts && data.googleFonts.length > 0}
         {#each data.googleFonts as fontName}
-            <link
-                rel="stylesheet"
-                href="/api/font-css?name={fontName}"
-            />
+            {@html `<link rel="preload" as="style" href="/api/font-css?name=${fontName}" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="/api/font-css?name=${fontName}"></noscript>`}
         {/each}
     {:else}
-        <link
-            rel="stylesheet"
-            href="/api/font-css?name=Inter"
-        />
+        {@html `<link rel="preload" as="style" href="/api/font-css?name=Inter" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="/api/font-css?name=Inter"></noscript>`}
     {/if}
 
     {#if fontFamily.includes("Pretendard")}
-        <link
-            rel="stylesheet"
-            crossorigin
-            href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"
-        />
+        {@html `<link rel="preload" as="style" crossorigin="anonymous" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" crossorigin="anonymous" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"></noscript>`}
     {/if}
 
     {#if headCode}
@@ -313,12 +362,9 @@
             <LayoutRenderer
                 layout={layoutConfig}
                 {layoutWidgets}
-                desktopWidgets={data.desktopWidgets || []}
-                mobileWidgets={data.mobileWidgets || []}
-                mobileLayout={data.mobileLayout || {
-                    columnCount: 1,
-                    columnWidths: "1fr",
-                }}
+                desktopWidgets={effectiveDesktopWidgets}
+                mobileWidgets={effectiveMobileWidgets}
+                mobileLayout={effectiveMobileLayout}
                 categories={data.categories || []}
                 recentPosts={data.recentPosts || []}
                 popularPosts={data.popularPosts || []}
@@ -333,6 +379,7 @@
     </main>
 
     <Footer {settings} />
+    <DesignSlotSwitcher designSlotInfo={data.designSlotInfo} />
 </div>
 
 <style>

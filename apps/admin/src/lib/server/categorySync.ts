@@ -15,25 +15,24 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-
-export const load: PageServerLoad = async ({ locals }) => {
-    const db = locals.userDb;
-    if (!db) throw error(500, 'User Database not found');
-
+/**
+ * Synchronizes post_count in the categories table based on actual published posts.
+ * Runs atomically in a single statement using idx_posts_cat_lang_status.
+ */
+export async function syncCategoryPostCounts(db: any): Promise<void> {
     try {
-        const { results } = await db.prepare(`
-            SELECT id, name, email, image, role, banned, ban_reason, ban_expires, created_at 
-            FROM user 
-            ORDER BY created_at DESC
-        `).all();
-
-        return {
-            users: Array.from(results || [])
-        };
+        await db.prepare(`
+            UPDATE categories 
+            SET post_count = (
+                SELECT COUNT(*) 
+                FROM posts 
+                WHERE posts.category_slug = categories.slug 
+                  AND posts.lang = categories.lang 
+                  AND posts.status = 'published' 
+                  AND posts.type = 'post'
+            )
+        `).run();
     } catch (err) {
-        console.error('Failed to load users:', err);
-        return { users: [], error: 'Failed to fetch users' };
+        console.warn('[CategorySync] Failed to sync category post counts:', err);
     }
-};
+}

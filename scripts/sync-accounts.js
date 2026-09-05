@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * Smart Multi-Account Config Synchronizer
  * Automatically scans wrangler.backup*.json files and syncs with .deploy-accounts.json

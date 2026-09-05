@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -37,16 +37,21 @@ export const load: PageServerLoad = async ({ locals }) => {
         const { results: widgets } = await db.prepare('SELECT * FROM widgets').all();
         const { results: languages } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
         const { results: categories } = await db.prepare(`
-            SELECT c.slug, c.name, c.lang, COUNT(p.id) as postCount
+            SELECT c.slug, c.name, c.lang, COALESCE(c.post_count, 0) as postCount
             FROM categories c
-            LEFT JOIN posts p ON c.slug = p.category_slug AND c.lang = p.lang AND p.status = 'published' AND p.type = 'post'
-            GROUP BY c.slug, c.lang
-        `).all();
+        `).all().catch(async () => {
+            return await db.prepare(`
+                SELECT c.slug, c.name, c.lang, COUNT(p.id) as postCount
+                FROM categories c
+                LEFT JOIN posts p ON c.slug = p.category_slug AND c.lang = p.lang AND p.status = 'published' AND p.type = 'post'
+                GROUP BY c.slug, c.lang
+            `).all();
+        });
 
         // Active layout and its widgets
-        const activeLayout = layouts.find((l: any) => l.is_active === 1) || layouts[0];
+        const activeLayout = layouts.find((l: any) => l.is_active === 1) || layouts[0] || null;
         let layoutWidgets = [];
-        if (activeLayout) {
+        if (activeLayout && activeLayout.id) {
             const { results } = await db.prepare(`
                 SELECT lw.*, w.name as widget_name, w.type as widget_type, w.config as widget_config, lw.custom_title
                 FROM layout_widgets lw
@@ -80,7 +85,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         };
     } catch (err) {
         console.error('Failed to load theme editor data:', err);
-        throw error(500, 'Failed to load theme editor data');
+        throw error(500, `Failed to load theme editor data: ${(err as any)?.message || String(err)}`);
     }
 };
 

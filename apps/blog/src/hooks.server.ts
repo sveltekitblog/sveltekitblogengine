@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -22,38 +22,46 @@ import { userDb } from "@blog/shared/db";
 import type { Handle } from "@sveltejs/kit";
 import { building } from "$app/environment";
 import '$lib/server/storageAdapter';
+import { getOrSetCache } from '$lib/server/cache';
 
 export const handle: Handle = async ({ event, resolve }) => {
     const user_d1 = event.platform?.env.USER_DB;
     const blog_d1 = event.platform?.env.BLOG_DB;
 
-    // Globally enforce IP logging setting
+    // Globally enforce IP logging setting (cached for 180s)
     let enableIpLogging = false;
     if (blog_d1) {
         try {
-            const { results } = await blog_d1.prepare("SELECT value FROM blog_settings WHERE key = 'enable_ip_logging'").all();
-            if (results && results[0] && results[0].value === 'true') {
-                enableIpLogging = true;
-            }
+            enableIpLogging = await getOrSetCache('hook:enable_ip_logging', 180, async () => {
+                const { results } = await blog_d1.prepare("SELECT value FROM blog_settings WHERE key = 'enable_ip_logging'").all();
+                return !!(results && results[0] && results[0].value === 'true');
+            });
         } catch (e) { }
     }
 
-    // Read auth settings
+    // Read auth settings (cached for 180s)
     let enabledProviders: string[] = [];
     let enableEmailLogin = true;
     if (blog_d1) {
         try {
-            const { results } = await blog_d1.prepare("SELECT key, value FROM blog_settings WHERE key IN ('auth_providers', 'enable_email_login')").all();
-            if (results) {
-                const providersRow = results.find((r: any) => r.key === 'auth_providers');
-                if (providersRow && providersRow.value) {
-                    enabledProviders = JSON.parse(providersRow.value as string);
+            const authConfig = await getOrSetCache('hook:auth_settings', 180, async () => {
+                const { results } = await blog_d1.prepare("SELECT key, value FROM blog_settings WHERE key IN ('auth_providers', 'enable_email_login')").all();
+                let providers: string[] = [];
+                let email = true;
+                if (results) {
+                    const providersRow = results.find((r: any) => r.key === 'auth_providers');
+                    if (providersRow && providersRow.value) {
+                        try { providers = JSON.parse(providersRow.value as string); } catch(e) {}
+                    }
+                    const emailRow = results.find((r: any) => r.key === 'enable_email_login');
+                    if (emailRow && emailRow.value !== undefined) {
+                        email = emailRow.value !== 'false';
+                    }
                 }
-                const emailRow = results.find((r: any) => r.key === 'enable_email_login');
-                if (emailRow && emailRow.value !== undefined) {
-                    enableEmailLogin = emailRow.value !== 'false';
-                }
-            }
+                return { enabledProviders: providers, enableEmailLogin: email };
+            });
+            enabledProviders = authConfig.enabledProviders;
+            enableEmailLogin = authConfig.enableEmailLogin;
         } catch (e) { }
     }
 
@@ -102,9 +110,11 @@ export const handle: Handle = async ({ event, resolve }) => {
         let dbDefaultLang = 'ko';
 
         try {
-            const { results } = await blog_d1.prepare('SELECT * FROM languages ORDER BY sort_order ASC').all();
-            if (results && results.length > 0) {
-                allLangs = results as any[];
+            allLangs = await getOrSetCache('hook:languages', 300, async () => {
+                const { results } = await blog_d1.prepare('SELECT * FROM languages ORDER BY sort_order ASC').all();
+                return (results && results.length > 0 ? results : []) as any[];
+            });
+            if (allLangs.length > 0) {
                 dbDefaultLang = allLangs.find(l => l.is_default === 1)?.code || allLangs[0].code || 'ko';
                 const potentialLang = pathSegments[0];
                 if (potentialLang && allLangs.some(l => l.code === potentialLang)) {

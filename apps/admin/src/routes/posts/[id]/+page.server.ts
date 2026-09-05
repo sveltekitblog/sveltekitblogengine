@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -19,6 +19,7 @@ import type { PageServerLoad, Actions } from './$types';
 import { error, fail, redirect } from '@sveltejs/kit';
 import { marked } from 'marked';
 import { processContentHtml } from '$lib/utils/contentProcessor';
+import { syncCategoryPostCounts } from '$lib/server/categorySync';
 
 // Configure marked
 marked.setOptions({
@@ -255,6 +256,9 @@ export const actions: Actions = {
                     console.error('[Hub Sync/Hide Error]', e);
                 }
             }
+
+            // Sync category post_counts
+            await syncCategoryPostCounts(db);
 
             try {
                 const cacheRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'enable_cdn_cache'").first();

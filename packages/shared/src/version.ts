@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -15,6 +15,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-export const APP_VERSION = 'v1.0.0.11';
+export const APP_VERSION = 'v1.0.0.12';
 export const ENGINE_NAME = 'SKBE';
 export const FULL_VERSION = `${ENGINE_NAME} ${APP_VERSION}`;

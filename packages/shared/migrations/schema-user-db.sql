@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS post_views (
     lang TEXT,
     PRIMARY KEY (post_id, date)
 );
+CREATE INDEX IF NOT EXISTS idx_post_views_lang_post_id ON post_views(lang, post_id, views);
 
 CREATE TABLE IF NOT EXISTS post_likes (
     post_id TEXT NOT NULL,

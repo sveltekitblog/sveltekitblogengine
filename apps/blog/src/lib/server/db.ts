@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -21,6 +21,8 @@ import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '@blog/shared/db/blog-schema';
 import * as userSchema from '@blog/shared/db/user-schema';
 import { eq, desc, asc, and, or, sql, inArray } from 'drizzle-orm';
+import { getOrSetCache } from './cache';
+import { recordView, getPendingViews } from './viewBuffer';
 
 export class BlogDB {
     private db;
@@ -49,76 +51,82 @@ export class BlogDB {
 
     // BLOG_DB 데이터 (설정, 레이아웃, 포스트)
     async getSettings(lang: string = 'ko', dbDefaultLang: string = 'ko'): Promise<Record<string, any>> {
-        const results = await this.db.query.blogSettings.findMany();
-        
-        // Define fields that are expected to be multilingual objects
-        const multiLangFields = ['site_title', 'description', 'authorName'];
+        return getOrSetCache(`settings:${lang}:${dbDefaultLang}`, 120, async () => {
+            const results = await this.db.query.blogSettings.findMany();
+            
+            // Define fields that are expected to be multilingual objects
+            const multiLangFields = ['site_title', 'description', 'authorName'];
 
-        return results.reduce((acc: any, curr: any) => {
-            let parsedVal;
-            try {
-                parsedVal = JSON.parse(curr.value);
-            } catch {
-                parsedVal = curr.value;
-            }
+            return results.reduce((acc: any, curr: any) => {
+                let parsedVal;
+                try {
+                    parsedVal = JSON.parse(curr.value);
+                } catch {
+                    parsedVal = curr.value;
+                }
 
-            if (multiLangFields.includes(curr.key) && typeof parsedVal === 'object' && parsedVal !== null) {
-                acc[curr.key] = parsedVal[lang] || parsedVal[dbDefaultLang] || Object.values(parsedVal)[0] || '';
-            } else {
-                acc[curr.key] = parsedVal;
-            }
+                if (multiLangFields.includes(curr.key) && typeof parsedVal === 'object' && parsedVal !== null) {
+                    acc[curr.key] = parsedVal[lang] || parsedVal[dbDefaultLang] || Object.values(parsedVal)[0] || '';
+                } else {
+                    acc[curr.key] = parsedVal;
+                }
 
-            return acc;
-        }, {});
+                return acc;
+            }, {});
+        });
     }
 
     async getActiveLayout(): Promise<Layout | null> {
-        const result = await this.db.query.layouts.findFirst({
-            where: eq(schema.layouts.isActive, true)
+        return getOrSetCache('active_layout', 120, async () => {
+            const result = await this.db.query.layouts.findFirst({
+                where: eq(schema.layouts.isActive, true)
+            });
+            if (!result) return null;
+            return {
+                id: result.id,
+                name: result.name,
+                columnCount: result.columnCount || 1,
+                columnWidths: result.columnWidths || "1fr",
+                isActive: !!result.isActive,
+                createdAt: result.createdAt || "",
+                updatedAt: result.updatedAt || ""
+            };
         });
-        if (!result) return null;
-        return {
-            id: result.id,
-            name: result.name,
-            columnCount: result.columnCount || 1,
-            columnWidths: result.columnWidths || "1fr",
-            isActive: !!result.isActive,
-            createdAt: result.createdAt || "",
-            updatedAt: result.updatedAt || ""
-        };
     }
 
     async getLayoutWidgets(layoutId: number, lang: string = 'ko', dbDefaultLang: string = 'ko') {
-        const results = await this.db.select({
-            id: schema.layoutWidgets.id,
-            layoutId: schema.layoutWidgets.layoutId,
-            widgetId: schema.layoutWidgets.widgetId,
-            columnIndex: schema.layoutWidgets.columnIndex,
-            sortOrder: schema.layoutWidgets.sortOrder,
-            customTitle: schema.layoutWidgets.customTitle,
-            device: schema.layoutWidgets.device,
-            name: schema.widgets.name,
-            type: schema.widgets.type,
-            config: schema.widgets.config
-        })
-            .from(schema.layoutWidgets)
-            .leftJoin(schema.widgets, eq(schema.layoutWidgets.widgetId, schema.widgets.id))
-            .where(eq(schema.layoutWidgets.layoutId, layoutId))
-            .orderBy(schema.layoutWidgets.columnIndex, schema.layoutWidgets.sortOrder);
+        return getOrSetCache(`layout_widgets:${layoutId}:${lang}`, 120, async () => {
+            const results = await this.db.select({
+                id: schema.layoutWidgets.id,
+                layoutId: schema.layoutWidgets.layoutId,
+                widgetId: schema.layoutWidgets.widgetId,
+                columnIndex: schema.layoutWidgets.columnIndex,
+                sortOrder: schema.layoutWidgets.sortOrder,
+                customTitle: schema.layoutWidgets.customTitle,
+                device: schema.layoutWidgets.device,
+                name: schema.widgets.name,
+                type: schema.widgets.type,
+                config: schema.widgets.config
+            })
+                .from(schema.layoutWidgets)
+                .leftJoin(schema.widgets, eq(schema.layoutWidgets.widgetId, schema.widgets.id))
+                .where(eq(schema.layoutWidgets.layoutId, layoutId))
+                .orderBy(schema.layoutWidgets.columnIndex, schema.layoutWidgets.sortOrder);
 
-        return results.map(r => {
-            let resolvedCustomTitle = r.customTitle;
-            if (resolvedCustomTitle && typeof resolvedCustomTitle === 'string' && resolvedCustomTitle.startsWith('{')) {
-                try {
-                    const parsed = JSON.parse(resolvedCustomTitle);
-                    resolvedCustomTitle = parsed[lang] || parsed[dbDefaultLang] || resolvedCustomTitle;
-                } catch(e) {}
-            }
-            return {
-                ...r,
-                customTitle: resolvedCustomTitle,
-                config: typeof r.config === 'string' ? JSON.parse(r.config) : (r.config || {})
-            };
+            return results.map(r => {
+                let resolvedCustomTitle = r.customTitle;
+                if (resolvedCustomTitle && typeof resolvedCustomTitle === 'string' && resolvedCustomTitle.startsWith('{')) {
+                    try {
+                        const parsed = JSON.parse(resolvedCustomTitle);
+                        resolvedCustomTitle = parsed[lang] || parsed[dbDefaultLang] || resolvedCustomTitle;
+                    } catch(e) {}
+                }
+                return {
+                    ...r,
+                    customTitle: resolvedCustomTitle,
+                    config: typeof r.config === 'string' ? JSON.parse(r.config) : (r.config || {})
+                };
+            });
         });
     }
 
@@ -139,6 +147,8 @@ export class BlogDB {
             lang: schema.posts.lang,
             translationGroupId: schema.posts.translationGroupId,
             thumbnailFit: schema.posts.thumbnailFit,
+            viewCount: schema.posts.viewCount,
+            likeCount: schema.posts.likeCount,
             // 정렬용 필드: publishedAt이 있으면 우선, 없으면 createdAt (Unix-timestamp vs String 호환 처리)
             displayDate: sql`COALESCE(${schema.posts.publishedAt}, ${schema.posts.createdAt})`.as('display_date')
         })
@@ -158,39 +168,6 @@ export class BlogDB {
             .orderBy(desc(sql`display_date`))
             .limit(limit)
             .offset(offsetAmt);
-
-        // Fetch likes and views from USER_DB
-        const postIds = results.map(r => r.id);
-        let viewsMap = new Map<string, number>();
-        let likesMap = new Map<string, number>();
-
-        if (postIds.length > 0) {
-            try {
-                // Get views
-                const viewsData = await this.userDb.select({
-                    postId: userSchema.postViews.postId,
-                    totalViews: sql<number>`SUM(${userSchema.postViews.views})`
-                })
-                    .from(userSchema.postViews)
-                    .where(inArray(userSchema.postViews.postId, postIds))
-                    .groupBy(userSchema.postViews.postId);
-
-                viewsData.forEach(v => viewsMap.set(v.postId, v.totalViews || 0));
-
-                // Get likes
-                const likesData = await this.userDb.select({
-                    postId: userSchema.postLikes.postId,
-                    totalLikes: sql<number>`COUNT(${userSchema.postLikes.userId})`
-                })
-                    .from(userSchema.postLikes)
-                    .where(inArray(userSchema.postLikes.postId, postIds))
-                    .groupBy(userSchema.postLikes.postId);
-
-                likesData.forEach(l => likesMap.set(l.postId, l.totalLikes || 0));
-            } catch (e) {
-                console.error("Failed to fetch views/likes in getRecentPosts", e);
-            }
-        }
 
         // Batch fetch translations for posts that have translationGroupId
         const groupIds = results
@@ -226,38 +203,34 @@ export class BlogDB {
         return results.map(r => ({
             ...r,
             tags: this.safeParseTags(r.tags),
-            view_count: viewsMap.get(r.id) || 0,
-            like_count: likesMap.get(r.id) || 0,
+            view_count: (r.viewCount || 0) + getPendingViews(r.id),
+            like_count: r.likeCount || 0,
             translations: r.translationGroupId ? (translationsMap.get(r.translationGroupId) || []) : []
         })) as any[];
     }
 
     async getCategories(lang: string = 'ko', dbDefaultLang: string = 'ko') {
-        const results = await this.db.select({
-            slug: schema.categories.slug,
-            name: schema.categories.name,
-            count: sql<number>`count(${schema.posts.id})`.as('post_count')
-        })
-            .from(schema.categories)
-            .leftJoin(schema.posts, and(
-                eq(schema.categories.slug, schema.posts.categorySlug),
-                eq(schema.posts.lang, schema.categories.lang),
-                eq(schema.posts.status, 'published'),
-                eq(schema.posts.type, 'post')
-            ))
-            .where(eq(schema.categories.lang, lang))
-            .groupBy(schema.categories.slug)
-            .orderBy(desc(sql`post_count`));
+        return getOrSetCache(`categories:${lang}`, 120, async () => {
+            const results = await this.db.select({
+                slug: schema.categories.slug,
+                name: schema.categories.name,
+                postCount: schema.categories.postCount
+            })
+                .from(schema.categories)
+                .where(and(
+                    eq(schema.categories.lang, lang),
+                    sql`${schema.categories.postCount} > 0`
+                ))
+                .orderBy(desc(schema.categories.postCount));
 
-        return results
-            .filter(r => r.count > 0)
-            .map(r => ({
+            return results.map(r => ({
                 id: r.slug,
                 slug: r.slug,
                 name: r.name,
-                count: r.count,
-                postCount: r.count
+                count: r.postCount || 0,
+                postCount: r.postCount || 0
             }));
+        });
     }
 
     /**
@@ -339,6 +312,8 @@ export class BlogDB {
             lang: schema.posts.lang,
             translationGroupId: schema.posts.translationGroupId,
             thumbnailFit: schema.posts.thumbnailFit,
+            viewCount: schema.posts.viewCount,
+            likeCount: schema.posts.likeCount,
             displayDate: sql`COALESCE(${schema.posts.publishedAt}, ${schema.posts.createdAt})`.as('display_date')
         })
             .from(schema.posts)
@@ -379,113 +354,57 @@ export class BlogDB {
                 ));
         }
 
-        let view_count = 0;
-        let like_count = 0;
-        try {
-            const viewsData = await this.userDb.select({
-                totalViews: sql<number>`SUM(${userSchema.postViews.views})`
-            })
-                .from(userSchema.postViews)
-                .where(eq(userSchema.postViews.postId, post.id));
-            view_count = viewsData[0]?.totalViews || 0;
-
-            const likesData = await this.userDb.select({
-                totalLikes: sql<number>`COUNT(${userSchema.postLikes.userId})`
-            })
-                .from(userSchema.postLikes)
-                .where(eq(userSchema.postLikes.postId, post.id));
-            like_count = likesData[0]?.totalLikes || 0;
-        } catch (e) {
-            console.error("Failed to fetch views/likes for single post", e);
-        }
-
         return {
             ...post,
             tags: this.safeParseTags(post.tags),
             isFallback,
             translations,
-            view_count,
-            like_count
+            view_count: (post.viewCount || 0) + getPendingViews(post.id),
+            like_count: post.likeCount || 0
         };
     }
 
     async getPopularPosts(limit = 5, lang: string = 'ko', dbDefaultLang: string = 'ko'): Promise<Post[]> {
-        try {
-            // 1. Get top viewed post IDs from USER_DB
-            const langCondition = lang === dbDefaultLang
-                ? or(eq(userSchema.postViews.lang, lang), sql`${userSchema.postViews.lang} IS NULL`)
-                : eq(userSchema.postViews.lang, lang);
+        return getOrSetCache(`popular_posts:${lang}:${limit}`, 180, async () => {
+            try {
+                const results = await this.db.select({
+                    id: schema.posts.id,
+                    title: schema.posts.title,
+                    slug: schema.posts.slug,
+                    excerpt: schema.posts.excerpt,
+                    featuredImage: schema.posts.featuredImage,
+                    categorySlug: schema.posts.categorySlug,
+                    categoryName: schema.categories.name,
+                    status: schema.posts.status,
+                    createdAt: schema.posts.createdAt,
+                    publishedAt: schema.posts.publishedAt,
+                    tags: schema.posts.tags,
+                    thumbnailFit: schema.posts.thumbnailFit,
+                    viewCount: schema.posts.viewCount,
+                    likeCount: schema.posts.likeCount,
+                    displayDate: sql`COALESCE(${schema.posts.publishedAt}, ${schema.posts.createdAt})`.as('display_date')
+                })
+                    .from(schema.posts)
+                    .leftJoin(schema.categories, and(eq(schema.posts.categorySlug, schema.categories.slug), eq(schema.categories.lang, schema.posts.lang)))
+                    .where(and(
+                        eq(schema.posts.status, 'published'),
+                        eq(schema.posts.type, 'post'),
+                        eq(schema.posts.lang, lang)
+                    ))
+                    .orderBy(desc(schema.posts.viewCount))
+                    .limit(limit);
 
-            const topViews = await this.userDb.select({
-                postId: userSchema.postViews.postId,
-                totalViews: sql<number>`SUM(${userSchema.postViews.views})`.as('total_views')
-            })
-                .from(userSchema.postViews)
-                .where(langCondition)
-                .groupBy(userSchema.postViews.postId)
-                .orderBy(desc(sql`total_views`))
-                .limit(limit);
-
-            if (topViews.length === 0) {
-                // If no views data, fallback to recent posts
+                return results.map(post => ({
+                    ...post,
+                    view_count: (post.viewCount || 0) + getPendingViews(post.id),
+                    like_count: post.likeCount || 0,
+                    tags: this.safeParseTags(post.tags)
+                })) as any[];
+            } catch (e) {
+                console.error("Failed to get popular posts:", e);
                 return this.getRecentPosts(limit, undefined, 1, undefined, lang, dbDefaultLang);
             }
-
-            const postIds = topViews.map(v => v.postId);
-
-            // 2. Fetch posts from BLOG_DB
-            // Use 'inArray' if possible, or mapping. Drizzle supports inArray.
-            const results = await this.db.select({
-                id: schema.posts.id,
-                title: schema.posts.title,
-                slug: schema.posts.slug,
-                excerpt: schema.posts.excerpt,
-                featuredImage: schema.posts.featuredImage,
-                categorySlug: schema.posts.categorySlug,
-                categoryName: schema.categories.name,
-                status: schema.posts.status,
-                createdAt: schema.posts.createdAt,
-                publishedAt: schema.posts.publishedAt,
-                tags: schema.posts.tags,
-                thumbnailFit: schema.posts.thumbnailFit,
-                displayDate: sql`COALESCE(${schema.posts.publishedAt}, ${schema.posts.createdAt})`.as('display_date')
-            })
-                .from(schema.posts)
-                .leftJoin(schema.categories, and(eq(schema.posts.categorySlug, schema.categories.slug), eq(schema.categories.lang, schema.posts.lang)))
-                .where(and(
-                    eq(schema.posts.status, 'published'),
-                    eq(schema.posts.type, 'post'),
-                    eq(schema.posts.lang, lang),
-                    inArray(schema.posts.id, postIds)
-                ));
-
-            // 3. Merge and Sort (restore order from topViews)
-            const postsMap = new Map(results.map(r => [r.id, r]));
-            const sortedPosts: any[] = [];
-
-            for (const view of topViews) {
-                const post = postsMap.get(view.postId);
-                if (post) {
-                    sortedPosts.push({
-                        ...post,
-                        view_count: view.totalViews,
-                        tags: this.safeParseTags(post.tags)
-                    });
-                }
-            }
-
-            // If we found fewer posts than limit (e.g. some popular posts were deleted), fill with recent
-            if (sortedPosts.length < limit) {
-                // This logic can be complex, for now let's just return what we have
-                // or separate recent posts call could be made.
-            }
-
-            return sortedPosts;
-
-        } catch (e) {
-            console.error("Failed to get popular posts:", e);
-            return this.getRecentPosts(limit, undefined, 1, undefined, lang, dbDefaultLang);
-        }
+        });
     }
 
     async incrementViewCount(slug: string, lang: string = 'ko', ip?: string) {
@@ -497,41 +416,18 @@ export class BlogDB {
 
         if (!post) return;
 
-        const date = new Date().toISOString().split('T')[0];
-
-        // UPSERT view count
-        // D1 (SQLite) supports UPSERT via ON CONFLICT
-        await this.userDb.insert(userSchema.postViews)
-            .values({
-                postId: post.id,
-                date: date,
-                views: 1,
-                lang: post.lang
-            })
-            .onConflictDoUpdate({
-                target: [userSchema.postViews.postId, userSchema.postViews.date],
-                set: { 
-                    views: sql`${userSchema.postViews.views} + 1`,
-                    lang: post.lang
-                }
-            });
+        await recordView(this.blogD1, this.userD1, post.id, post.lang || lang);
     }
 
     async getViewCount(slug: string, lang: string = 'ko'): Promise<number> {
         const post = await this.db.query.posts.findFirst({
             where: and(eq(schema.posts.slug, slug), eq(schema.posts.lang, lang)),
-            columns: { id: true }
+            columns: { id: true, viewCount: true }
         });
 
         if (!post) return 0;
 
-        const result = await this.userDb.select({
-            totalViews: sql<number>`SUM(${userSchema.postViews.views})`
-        })
-            .from(userSchema.postViews)
-            .where(eq(userSchema.postViews.postId, post.id));
-
-        return result[0]?.totalViews || 0;
+        return (post.viewCount || 0) + getPendingViews(post.id);
     }
 
     async getPostsByTag(tag: string, lang: string = 'ko', dbDefaultLang: string = 'ko'): Promise<Post[]> {
@@ -549,6 +445,8 @@ export class BlogDB {
             publishedAt: schema.posts.publishedAt,
             tags: schema.posts.tags,
             thumbnailFit: schema.posts.thumbnailFit,
+            viewCount: schema.posts.viewCount,
+            likeCount: schema.posts.likeCount,
             displayDate: sql`COALESCE(${schema.posts.publishedAt}, ${schema.posts.createdAt})`.as('display_date')
         })
             .from(schema.posts)
@@ -561,65 +459,36 @@ export class BlogDB {
             return parsedTags.includes(tag);
         });
 
-        // Fetch likes and views for filtered tags
-        const postIds = filtered.map(r => r.id);
-        let viewsMap = new Map<string, number>();
-        let likesMap = new Map<string, number>();
-
-        if (postIds.length > 0) {
-            try {
-                const viewsData = await this.userDb.select({
-                    postId: userSchema.postViews.postId,
-                    totalViews: sql<number>`SUM(${userSchema.postViews.views})`
-                })
-                    .from(userSchema.postViews)
-                    .where(inArray(userSchema.postViews.postId, postIds))
-                    .groupBy(userSchema.postViews.postId);
-
-                viewsData.forEach(v => viewsMap.set(v.postId, v.totalViews || 0));
-
-                const likesData = await this.userDb.select({
-                    postId: userSchema.postLikes.postId,
-                    totalLikes: sql<number>`COUNT(${userSchema.postLikes.userId})`
-                })
-                    .from(userSchema.postLikes)
-                    .where(inArray(userSchema.postLikes.postId, postIds))
-                    .groupBy(userSchema.postLikes.postId);
-
-                likesData.forEach(l => likesMap.set(l.postId, l.totalLikes || 0));
-            } catch (e) {
-                console.error("Failed to fetch views/likes in getPostsByTag", e);
-            }
-        }
-
         return filtered.map(r => ({
             ...r,
             tags: this.safeParseTags(r.tags),
-            view_count: viewsMap.get(r.id) || 0,
-            like_count: likesMap.get(r.id) || 0
+            view_count: (r.viewCount || 0) + getPendingViews(r.id),
+            like_count: r.likeCount || 0
         })) as any[];
     }
 
     async getAllTags(lang: string = 'ko', dbDefaultLang: string = 'ko'): Promise<string[]> {
-        try {
-            const results = await this.db.select({
-                tags: schema.posts.tags
-            })
-                .from(schema.posts)
-                .where(and(eq(schema.posts.status, 'published'), eq(schema.posts.type, 'post'), eq(schema.posts.lang, lang)));
+        return getOrSetCache(`all_tags:${lang}`, 300, async () => {
+            try {
+                const results = await this.db.select({
+                    tags: schema.posts.tags
+                })
+                    .from(schema.posts)
+                    .where(and(eq(schema.posts.status, 'published'), eq(schema.posts.type, 'post'), eq(schema.posts.lang, lang)));
 
-            const tagsSet = new Set<string>();
-            results.forEach(r => {
-                const parsed = this.safeParseTags(r.tags);
-                parsed.forEach(t => {
-                    if (t) tagsSet.add(t.trim());
+                const tagsSet = new Set<string>();
+                results.forEach(r => {
+                    const parsed = this.safeParseTags(r.tags);
+                    parsed.forEach(t => {
+                        if (t) tagsSet.add(t.trim());
+                    });
                 });
-            });
-            return Array.from(tagsSet).sort();
-        } catch (error) {
-            console.error('Error in getAllTags:', error);
-            return [];
-        }
+                return Array.from(tagsSet).sort();
+            } catch (error) {
+                console.error('Error in getAllTags:', error);
+                return [];
+            }
+        });
     }
 
     // USER_DB 데이터 (댓글, 방명록) - Drizzle drizzle(userD1) 필요시 추가

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -19,6 +19,7 @@ import type { LayoutServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import fs from 'fs';
 import path from 'path';
+import { fallbackDictionary } from '@blog/shared/i18n';
 
 // Lucide 아이콘 원본 SVG 로딩 헬퍼 함수
 function getLucideSvg(iconName: string): string {
@@ -55,10 +56,9 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
     if (!db) return { user: locals.user, isMobile, navIconSvgs: {} };
 
     try {
-        const [settings, dbActiveLayout, categories] = await Promise.all([
+        const [settings, dbActiveLayout] = await Promise.all([
             db.getSettings(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang),
-            db.getActiveLayout(),
-            db.getCategories(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang).catch((e: any) => { console.error('getCategories failed:', e); return []; }),
+            db.getActiveLayout()
         ]);
 
         // 안전한 파싱 헬퍼: DB에서 문자열로 가져온 JSON 데이터를 객체화
@@ -69,7 +69,7 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
             return val;
         };
 
-        // --- 다중 디자인 슬롯 (Slot 1, 2, 3) 및 랜덤/고정 노출 제어 ---
+        // --- 다중 디자인 슬롯 (Slot 1, 2, 3) 및 방문자 선택/랜덤/고정 노출 제어 ---
         let activeLayout = dbActiveLayout;
         let allWidgets: any[] = [];
         let targetSlotId = '1';
@@ -77,38 +77,99 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
 
         const designSlots = safeParse(settings?.design_slots);
         let activeSlotData: any = null;
+        let allowVisitorSelection = false;
+        let availableSlots: Array<{ id: string; name: string }> = [];
+        let availableSlotBundles: Record<string, any> = {};
+
+        // 위젯 정규화 헬퍼 (camelCase와 snake_case 동시 보장)
+        const normalizeWidgetList = (rawWidgets: any[]) => {
+            if (!Array.isArray(rawWidgets)) return [];
+            return rawWidgets.map((w: any) => {
+                let resolvedCustomTitle = w.customTitle ?? w.custom_title;
+                if (resolvedCustomTitle && typeof resolvedCustomTitle === 'string' && resolvedCustomTitle.startsWith('{')) {
+                    try {
+                        const parsed = JSON.parse(resolvedCustomTitle);
+                        resolvedCustomTitle = parsed[locals.lang || locals.dbDefaultLang] || parsed[locals.dbDefaultLang] || resolvedCustomTitle;
+                    } catch(e) {}
+                } else if (resolvedCustomTitle && typeof resolvedCustomTitle === 'object' && resolvedCustomTitle !== null) {
+                    resolvedCustomTitle = resolvedCustomTitle[locals.lang || locals.dbDefaultLang] || resolvedCustomTitle[locals.dbDefaultLang] || Object.values(resolvedCustomTitle)[0] || '';
+                }
+
+                const columnIndex = Number(w.columnIndex ?? w.column_index ?? 0);
+                const sortOrder = Number(w.sortOrder ?? w.sort_order ?? 0);
+                const config = typeof w.config === 'string' ? JSON.parse(w.config || '{}') : (w.config || {});
+
+                return {
+                    ...w,
+                    columnIndex,
+                    column_index: columnIndex,
+                    sortOrder,
+                    sort_order: sortOrder,
+                    customTitle: resolvedCustomTitle,
+                    custom_title: resolvedCustomTitle,
+                    config
+                };
+            });
+        };
 
         if (designSlots && designSlots.slots && typeof designSlots.slots === 'object') {
+            allowVisitorSelection = Boolean(designSlots.allow_visitor_selection);
             designMode = designSlots.active_mode || '1';
-            const availableSlotIds = Object.keys(designSlots.slots).filter(id => {
+
+            // 슬롯 노출 규칙:
+            // - 슬롯 1은 항상 기본 활성
+            // - 슬롯 2, 3은 관리자가 명시적으로 enabled: true로 활성화한 경우에만 노출
+            const availableSlotIds = ['1', '2', '3'].filter(id => {
                 const s = designSlots.slots[id];
-                return s && (s.theme || s.layout || s.widgets);
+                if (!s) return id === '1';
+                if (id === '1') return true;
+                return Boolean(s.enabled);
             });
 
-            if (designMode === 'random' && availableSlotIds.length > 0) {
-                const cookieSlot = cookies.get('skbe_design_slot');
-                if (cookieSlot && availableSlotIds.includes(cookieSlot)) {
-                    targetSlotId = cookieSlot;
-                } else {
-                    targetSlotId = availableSlotIds[Math.floor(Math.random() * availableSlotIds.length)];
-                    try {
-                        cookies.set('skbe_design_slot', targetSlotId, {
-                            path: '/',
-                            maxAge: 60 * 60 * 24 * 7, // 7일간 세션 안정 유지
-                            httpOnly: false,
-                            sameSite: 'lax'
-                        });
-                    } catch (e) {
-                        // 쿠키 저장 실패 시에도 fallback 안전 동작
-                    }
-                }
-            } else if (availableSlotIds.includes(designMode)) {
+            availableSlots = availableSlotIds.map(id => ({
+                id,
+                name: designSlots.slots[id]?.name || (id === '1' ? '디자인 1' : (id === '2' ? '미니멀 1열' : '다크 모던'))
+            }));
+
+            // [CDN 캐시 보존 및 SEO 무결성 원칙]
+            // 서버 렌더링(SSR)은 항상 관리자가 지정한 기본 활성 슬롯(기본 1번)으로 일관되게 렌더링합니다.
+            // 쿠키로 서버 응답을 분기하지 않아야 Cloudflare CDN 엣지가 단일 HTML을 100% 캐시(HIT)할 수 있습니다.
+            if (availableSlotIds.includes(designMode)) {
                 targetSlotId = designMode;
             } else if (availableSlotIds.length > 0) {
                 targetSlotId = availableSlotIds[0];
+            } else {
+                targetSlotId = '1';
             }
 
             activeSlotData = designSlots.slots[targetSlotId];
+
+            // [조건부 번들링] 어드민에서 다중 디자인 선택을 허용하고 공개 슬롯이 2개 이상일 때만 다른 슬롯 데이터 포함
+            if (allowVisitorSelection && availableSlots.length > 1) {
+                for (const slotId of availableSlotIds) {
+                    const slot = designSlots.slots[slotId];
+                    if (slot) {
+                        availableSlotBundles[slotId] = {
+                            id: slotId,
+                            name: slot.name || (slotId === '1' ? '디자인 1' : (slotId === '2' ? '미니멀 1열' : '다크 모던')),
+                            theme: slot.theme || {},
+                            header: slot.header || {},
+                            footer: slot.footer || {},
+                            layout: slot.layout || {
+                                columnCount: 1,
+                                columnWidths: '1fr',
+                                mobileColumnCount: 1,
+                                mobileColumnWidths: '1fr'
+                            },
+                            widgets: normalizeWidgetList(slot.widgets || []),
+                            widget_shadow_global: slot.widget_shadow_global || null,
+                            staticHtmls: slot.staticHtmls || null
+                        };
+                    }
+                }
+            }
+        } else {
+            availableSlots = [{ id: '1', name: '디자인 1' }];
         }
 
         // 슬롯 데이터가 존재할 경우 settings 및 layout 주입
@@ -136,7 +197,32 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
                 };
 
                 if (Array.isArray(activeSlotData.widgets)) {
-                    allWidgets = activeSlotData.widgets;
+                    allWidgets = activeSlotData.widgets.map((w: any) => {
+                        let resolvedCustomTitle = w.customTitle ?? w.custom_title;
+                        if (resolvedCustomTitle && typeof resolvedCustomTitle === 'string' && resolvedCustomTitle.startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(resolvedCustomTitle);
+                                resolvedCustomTitle = parsed[locals.lang || locals.dbDefaultLang] || parsed[locals.dbDefaultLang] || resolvedCustomTitle;
+                            } catch(e) {}
+                        } else if (resolvedCustomTitle && typeof resolvedCustomTitle === 'object' && resolvedCustomTitle !== null) {
+                            resolvedCustomTitle = resolvedCustomTitle[locals.lang || locals.dbDefaultLang] || resolvedCustomTitle[locals.dbDefaultLang] || Object.values(resolvedCustomTitle)[0] || '';
+                        }
+
+                        const columnIndex = Number(w.columnIndex ?? w.column_index ?? 0);
+                        const sortOrder = Number(w.sortOrder ?? w.sort_order ?? 0);
+                        const config = typeof w.config === 'string' ? JSON.parse(w.config || '{}') : (w.config || {});
+
+                        return {
+                            ...w,
+                            columnIndex,
+                            column_index: columnIndex,
+                            sortOrder,
+                            sort_order: sortOrder,
+                            customTitle: resolvedCustomTitle,
+                            custom_title: resolvedCustomTitle,
+                            config
+                        };
+                    });
                 }
             }
         }
@@ -162,15 +248,73 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
             return limits.length > 0 ? Math.max(...limits) : undefined;
         };
 
-        const [recentPosts, popularPosts, tags, recentEntries] = await Promise.all([
-            db.getRecentPosts(getMaxLimitFor("RecentPosts"), undefined, 1, undefined, locals.lang || locals.dbDefaultLang, locals.dbDefaultLang),
-            db.getPopularPosts(getMaxLimitFor("PopularPosts"), locals.lang || locals.dbDefaultLang, locals.dbDefaultLang),
-            db.getAllTags(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang),
-            db.getRecentEntries(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang, getMaxLimitFor("RecentComments"), getMaxLimitFor("RecentGuestbooks")).catch((e: any) => {
-                console.error('getRecentEntries failed:', e);
-                return { comments: [], guestbooks: [] };
-            })
+        const hasWidget = (types: string | string[]) => {
+            const arr = Array.isArray(types) ? types : [types];
+            return allWidgets.some((w: any) => arr.includes(w.type));
+        };
+
+        const currentLang = locals.lang || locals.dbDefaultLang || 'ko';
+        const defaultLang = locals.dbDefaultLang || 'ko';
+
+        const [categories, recentPosts, popularPosts, tags, recentEntries] = await Promise.all([
+            db.getCategories(currentLang, defaultLang).catch((e: any) => { console.error('getCategories failed:', e); return []; }),
+            hasWidget("RecentPosts")
+                ? db.getRecentPosts(getMaxLimitFor("RecentPosts"), undefined, 1, undefined, currentLang, defaultLang)
+                : Promise.resolve([]),
+            hasWidget("PopularPosts")
+                ? db.getPopularPosts(getMaxLimitFor("PopularPosts"), currentLang, defaultLang)
+                : Promise.resolve([]),
+            hasWidget(["TagCloud", "Tags"])
+                ? db.getAllTags(currentLang, defaultLang)
+                : Promise.resolve([]),
+            hasWidget(["RecentComments", "RecentGuestbooks"])
+                ? db.getRecentEntries(currentLang, defaultLang, getMaxLimitFor("RecentComments"), getMaxLimitFor("RecentGuestbooks")).catch((e: any) => {
+                    console.error('getRecentEntries failed:', e);
+                    return { comments: [], guestbooks: [] };
+                })
+                : Promise.resolve({ comments: [], guestbooks: [] })
         ]);
+
+        // [HTML 페이로드 다이어트: UI 사전 단일 언어 평탄화]
+        // 관리자 전용(admin.*) 900+ 키를 배제하고 블로그/공통(blog.*, common.*) 키만 선별한 뒤,
+        // 현재 활성 언어(currentLang) 단일 문자열로 즉시 평탄화하여 HTML 전송량을 극적으로 감축합니다.
+        const rawDictionary = safeParse(settings?.ui_dictionary) || {};
+        const blogDictionary: Record<string, string> = {};
+
+        // 1. 기본 fallbackDictionary 중 blog.*, common.* 키를 현재 활성 언어로 평탄화
+        for (const [key, val] of Object.entries(fallbackDictionary)) {
+            if (key.startsWith('blog.') || key.startsWith('common.')) {
+                if (typeof val === 'object' && val !== null) {
+                    blogDictionary[key] = (val as Record<string, string>)[currentLang] || (val as Record<string, string>)[defaultLang] || Object.values(val)[0] || '';
+                } else if (typeof val === 'string') {
+                    blogDictionary[key] = val;
+                }
+            }
+        }
+
+        // 2. DB 사용자 정의 ui_dictionary 값으로 덮어쓰기 (현재 언어에 맞게 평탄화)
+        for (const [key, val] of Object.entries(rawDictionary)) {
+            if (key.startsWith('blog.') || key.startsWith('common.')) {
+                let resolved = '';
+                if (typeof val === 'object' && val !== null) {
+                    resolved = (val as any)[currentLang] || (val as any)[defaultLang] || Object.values(val)[0] || '';
+                } else if (typeof val === 'string') {
+                    if (val.startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(val);
+                            resolved = parsed[currentLang] || parsed[defaultLang] || Object.values(parsed)[0] || val;
+                        } catch {
+                            resolved = val;
+                        }
+                    } else {
+                        resolved = val;
+                    }
+                }
+                if (resolved) {
+                    blogDictionary[key] = String(resolved);
+                }
+            }
+        }
 
         if (settings) {
             settings.widget_shadow_global = safeParse(settings.widget_shadow_global);
@@ -197,7 +341,6 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
                 settings.head_code = optimizeHeadScripts(settings.head_code);
             }
 
-
             // 메뉴 아이콘의 SVG 문자열을 서버 단에서 로딩 및 바인딩
             const navIconSvgs: Record<string, string> = {};
             if (settings.header) {
@@ -212,6 +355,21 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
                 });
             }
             (locals as any).navIconSvgs = navIconSvgs;
+
+            settings.ui_dictionary = blogDictionary;
+
+            // 브라우저 클라이언트에 불필요한 서버 전용/미사용 필드 제거 (HTML 페이로드 다이어트)
+            delete settings.board_api_key;
+            delete settings.deploy_config;
+            delete settings.robots_txt;
+            delete settings.ads_txt;
+            delete settings.design_slots;
+            delete settings.header_static_html_ko;
+            delete settings.header_static_html_en;
+            delete settings.header_static_html_ja;
+            delete settings.footer_static_html_ko;
+            delete settings.footer_static_html_en;
+            delete settings.footer_static_html_ja;
         }
 
         // Collect all unique fonts to load from Google Fonts
@@ -246,6 +404,17 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
             addFont(settings.header.logoFont);
         }
 
+        // [폰트 사전 로딩] 다중 디자인 전환 시 글꼴 지연/깨짐을 방지하기 위해 사용 가능한 모든 슬롯의 폰트도 함께 수집
+        if (allowVisitorSelection) {
+            for (const s of Object.values(availableSlotBundles)) {
+                if (s.theme?.googleFontName) addFont(s.theme.googleFontName);
+                if (s.theme?.fontFamily) addFont(s.theme.fontFamily);
+                if (s.theme?.widgetItemStyle?.fontFamily) addFont(s.theme.widgetItemStyle.fontFamily);
+                if (s.theme?.widgetTitleStyle?.fontFamily) addFont(s.theme.widgetTitleStyle.fontFamily);
+                if (s.header?.logoFont) addFont(s.header.logoFont);
+            }
+        }
+
         const googleFonts = Array.from(uniqueFonts).map(f => f.replace(/\s+/g, '+'));
         const navIconSvgs = (locals as any).navIconSvgs || {};
 
@@ -268,6 +437,13 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
             recentGuestbooks: recentEntries?.guestbooks || [],
             activeSlotId: targetSlotId,
             activeDesignMode: designMode,
+            designSlotInfo: {
+                allowVisitorSelection,
+                currentSlotId: targetSlotId,
+                activeMode: designMode,
+                availableSlots,
+                slots: availableSlotBundles
+            },
             user: locals.user,
             lang: locals.lang,
             dbDefaultLang: locals.dbDefaultLang,
@@ -276,7 +452,7 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
             i18n: {
                 lang: locals.lang,
                 dbDefaultLang: locals.dbDefaultLang,
-                dictionary: settings?.ui_dictionary || {},
+                dictionary: blogDictionary,
                 fallbackMsg: locals.langData?.fallback_message
             }
         };
@@ -298,6 +474,15 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
             tags: [],
             recentComments: [],
             recentGuestbooks: [],
+            activeSlotId: '1',
+            activeDesignMode: '1',
+            designSlotInfo: {
+                allowVisitorSelection: false,
+                currentSlotId: '1',
+                activeMode: '1',
+                availableSlots: [{ id: '1', name: '디자인 1' }],
+                slots: {}
+            },
             user: locals.user,
             lang: locals.lang,
             dbDefaultLang: locals.dbDefaultLang,

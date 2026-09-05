@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -64,6 +64,12 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "blog.widget.tags": { "ko": "인기 태그", "en": "Popular Tags", "ja": "人気のタグ" },
     "blog.widget.popular_posts": { "ko": "인기 포스트", "en": "Popular Posts", "ja": "人気の投稿" },
     "blog.widget.recent_posts": { "ko": "최신 포스트", "en": "Recent Posts", "ja": "最新の投稿" },
+    "blog.design.trigger": { "ko": "디자인", "en": "Theme", "ja": "デザイン" },
+    "blog.design.title": { "ko": "디자인 스타일 선택", "en": "Select Design Style", "ja": "デザインスタイルの選択" },
+    "blog.design.random": { "ko": "🎲 랜덤 디자인", "en": "🎲 Random Design", "ja": "🎲 ランダムデザイン" },
+    "blog.design.active_badge": { "ko": "적용 중", "en": "Active", "ja": "適用中" },
+    "blog.design.slot_prefix": { "ko": "슬롯", "en": "Slot", "ja": "スロット" },
+    "blog.design.aria_change": { "ko": "디자인 테마 변경", "en": "Change design theme", "ja": "デザインテーマの変更" },
     "blog.guestbook.title": { "ko": "방명록", "en": "Guestbook", "ja": "ゲストブック" },
     "blog.guestbook.seo_desc": { "ko": "블로그 방명록입니다. 자유롭게 이야기를 남겨주세요.", "en": "Blog guestbook. Feel free to leave a message.", "ja": "ブログのゲストブックです。お気軽にメッセージを残してください。" },
     "blog.guestbook.desc": { "ko": "방문해 주셔서 감사합니다! 자유롭게 흔적을 남겨주세요.", "en": "Thanks for visiting! Feel free to leave a trace.", "ja": "ご訪問ありがとうございます！お気軽に足跡を残してください。" },
@@ -412,6 +418,26 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.theme.save_draft_btn": { "ko": "현재 설정 저장", "en": "Save Current Settings", "ja": "現在の設定を保存" },
     "admin.theme.publish_btn": { "ko": "블로그에 적용", "en": "Apply to Blog", "ja": "ブログに適用" },
     "admin.theme.saved_alert": { "ko": "모든 변경사항이 저장되었습니다.", "en": "All changes have been saved.", "ja": "すべての変更が保存されました。" },
+    "admin.theme.slot": { "ko": "슬롯:", "en": "Slot:", "ja": "スロット:" },
+    "admin.theme.slot_n": { "ko": "슬롯 {n}", "en": "Slot {n}", "ja": "スロット {n}" },
+    "admin.theme.slot_active_state": { "ko": "활성 상태", "en": "Active", "ja": "有効" },
+    "admin.theme.slot_inactive_state": { "ko": "비활성 상태", "en": "Inactive", "ja": "無効" },
+    "admin.theme.slot_name_placeholder": { "ko": "슬롯 {n} 이름", "en": "Slot {n} Name", "ja": "スロット {n} 名" },
+    "admin.theme.slot_name_title": { "ko": "슬롯 표시 이름 변경", "en": "Change slot display name", "ja": "スロット表示名の変更" },
+    "admin.theme.slot_publish_enable": { "ko": "공개 활성", "en": "Enable Public", "ja": "公開有効" },
+    "admin.theme.slot_publish_enable_hint": { "ko": "체크 시 블로그 방문자에게 노출되거나 랜덤 노출 대상에 포함됩니다.", "en": "When checked, it is visible to blog visitors or included in random rotation.", "ja": "チェックするとブログ訪問者に公開されるか、ランダム表示の対象に含まれます。" },
+    "admin.theme.slot_copy_from_slot1": { "ko": "슬롯1 복제", "en": "Copy Slot 1", "ja": "スロット1複製" },
+    "admin.theme.slot_copy_from_slot1_hint": { "ko": "슬롯 1의 비주얼 스타일과 레이아웃을 현재 슬롯으로 복사합니다.", "en": "Copy visual styles and layout from Slot 1 to this slot.", "ja": "スロット1のビジュアルスタイルとレイアウトをこのスロットにコピーします。" },
+    "admin.theme.slot_copy_confirm": { "ko": "슬롯 1의 비주얼 스타일과 레이아웃을 현재 '{name}'(으)로 복사하시겠습니까?", "en": "Are you sure you want to copy the visual styles and layout from Slot 1 to '{name}'?", "ja": "スロット1のビジュアルスタイルとレイアウトを現在の「{name}」にコピーしますか？" },
+    "admin.theme.visitor_selection": { "ko": "방문자 선택", "en": "Visitor Selection", "ja": "訪問者選択" },
+    "admin.theme.visitor_selection_hint": { "ko": "블로그 방문자가 플로팅 스위처를 통해 활성화된 디자인 슬롯을 직접 선택할 수 있도록 허용합니다.", "en": "Allow blog visitors to choose active design slots via the floating switcher.", "ja": "ブログ訪問者がフローティングスイッチャーを通じて有効なデザインスロットを直接選択できるようにします。" },
+    "admin.theme.mode_label": { "ko": "모드:", "en": "Mode:", "ja": "モード:" },
+    "admin.theme.mode_slot_fixed": { "ko": "📌 {name} (고정)", "en": "📌 {name} (Fixed)", "ja": "📌 {name} (固定)" },
+    "admin.theme.mode_slot_default": { "ko": "📌 {name} (기본)", "en": "📌 {name} (Default)", "ja": "📌 {name} (デフォルト)" },
+    "admin.theme.mode_random": { "ko": "🎲 랜덤 노출 (활성 슬롯)", "en": "🎲 Random Rotation (Active Slots)", "ja": "🎲 ランダム表示 (有効スロット)" },
+    "admin.theme.slot1_default_name": { "ko": "디자인 슬롯 1", "en": "Design Slot 1", "ja": "デザインスロット 1" },
+    "admin.theme.slot2_default_name": { "ko": "미니멀 1열", "en": "Minimal 1-Col", "ja": "ミニマル 1列" },
+    "admin.theme.slot3_default_name": { "ko": "다크 모던", "en": "Dark Modern", "ja": "ダークモダン" },
     "admin.theme.tab_theme": { "ko": "테마\n설정", "en": "Theme\nSettings", "ja": "テーマ\n設定" },
     "admin.theme.tab_background": { "ko": "배경\n설정", "en": "Background\nSettings", "ja": "背景\n設定" },
     "admin.theme.tab_layout": { "ko": "블로그\n구조", "en": "Layout", "ja": "ブログ\n構造" },

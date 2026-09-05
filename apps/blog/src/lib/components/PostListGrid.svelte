@@ -1,5 +1,5 @@
 <!--
- Copyright (C) 2026 kimteamjang
+ Copyright (C) 2026 SvelteKit Blog Engine
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU Affero General Public License as published by
@@ -128,16 +128,29 @@
     <div
         class="posts-list"
         style="
-        --pc-badge-bg: {isMobile ? mobilePcConfig.badgeBg : desktopPcConfig.badgeBg || '#e2e8f0'};
-        --pc-badge-color: {isMobile ? mobilePcConfig.badgeColor : desktopPcConfig.badgeColor || '#475569'};
-        --pc-card-bg: {isMobile ? mobilePcConfig.cardBg : desktopPcConfig.cardBg || '#ffffff'};
-        --pc-card-text: {isMobile ? mobilePcConfig.cardTextColor : desktopPcConfig.cardTextColor || '#1e293b'};
-        --pc-card-font-size: {isMobile ? mobilePcConfig.cardFontSize : desktopPcConfig.cardFontSize || '1rem'};
+        --pc-d-badge-bg: {desktopPcConfig.badgeBg || '#e2e8f0'};
+        --pc-d-badge-color: {desktopPcConfig.badgeColor || '#475569'};
+        --pc-d-card-bg: {desktopPcConfig.cardBg || '#ffffff'};
+        --pc-d-card-text: {desktopPcConfig.cardTextColor || '#1e293b'};
+        --pc-d-card-font-size: {desktopPcConfig.cardFontSize || '1rem'};
+        --pc-m-badge-bg: {mobilePcConfig.badgeBg || desktopPcConfig.badgeBg || '#e2e8f0'};
+        --pc-m-badge-color: {mobilePcConfig.badgeColor || desktopPcConfig.badgeColor || '#475569'};
+        --pc-m-card-bg: {mobilePcConfig.cardBg || desktopPcConfig.cardBg || '#ffffff'};
+        --pc-m-card-text: {mobilePcConfig.cardTextColor || desktopPcConfig.cardTextColor || '#1e293b'};
+        --pc-m-card-font-size: {mobilePcConfig.cardFontSize || desktopPcConfig.cardFontSize || '1rem'};
+        --grid-cols-desktop: {desktopGridCols};
+        --grid-cols-mobile: {mobileGridCols};
     "
     >
-        <div class="grid" class:mobile-grid={isMobile} style="--grid-cols: {isMobile ? mobileGridCols : desktopGridCols}">
+        <div class="grid">
             {#each posts.slice(0, pcConfig.itemsPerPage) as post, i}
-                <PostCard {post} pcConfig={isMobile ? mobilePcConfig : desktopPcConfig} index={i} />
+                <PostCard
+                    {post}
+                    {desktopPcConfig}
+                    {mobilePcConfig}
+                    pcConfig={desktopPcConfig}
+                    index={i}
+                />
             {/each}
         </div>
     </div>
@@ -169,25 +182,33 @@
 {/if}
 
 <style>
-
+    .posts-list {
+        --pc-badge-bg: var(--pc-d-badge-bg);
+        --pc-badge-color: var(--pc-d-badge-color);
+        --pc-card-bg: var(--pc-d-card-bg);
+        --pc-card-text: var(--pc-d-card-text);
+        --pc-card-font-size: var(--pc-d-card-font-size);
+    }
 
     .grid {
         display: grid;
-        grid-template-columns: 1fr;
-        gap: 1.5rem;
+        grid-template-columns: repeat(var(--grid-cols-desktop, 3), 1fr);
+        gap: 2rem;
     }
 
-    @media (min-width: 769px) {
-        .grid:not(.mobile-grid) {
-            grid-template-columns: repeat(var(--grid-cols, 3), 1fr);
-            gap: 2rem;
+    @media (max-width: 768px) {
+        .posts-list {
+            --pc-badge-bg: var(--pc-m-badge-bg);
+            --pc-badge-color: var(--pc-m-badge-color);
+            --pc-card-bg: var(--pc-m-card-bg);
+            --pc-card-text: var(--pc-m-card-text);
+            --pc-card-font-size: var(--pc-m-card-font-size);
         }
-    }
 
-    /* Mobile grid: always use its own --grid-cols */
-    .mobile-grid {
-        grid-template-columns: repeat(var(--grid-cols, 1), 1fr);
-        gap: 1.2rem;
+        .grid {
+            grid-template-columns: repeat(var(--grid-cols-mobile, 1), 1fr) !important;
+            gap: 1.2rem !important;
+        }
     }
 
     /* Pagination Styles */

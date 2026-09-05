@@ -1,5 +1,5 @@
 <!--
- Copyright (C) 2026 kimteamjang
+ Copyright (C) 2026 SvelteKit Blog Engine
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU Affero General Public License as published by
@@ -1257,12 +1257,17 @@
         box-shadow: var(--header-shadow);
     }
 
-    /* 모바일 기기(768px 이하) 성능 최적화: 유체형 레이아웃 변형 제거 */
+    /* 모바일 기기(768px 이하) 성능 최적화: 유체형 레이아웃 변형 제거 및 CLS 0.000 방어 */
     @media (max-width: 768px) {
+        .blog-header {
+            --logo-font-size: var(--mobile-logo-font-size, 1.3rem) !important;
+            --min-header-height: var(--mobile-header-height, 60px) !important;
+        }
         .blog-header,
         .blog-header.scrolled {
-            min-height: max(50px, var(--min-header-height, 50px));
-            height: var(--mobile-header-height, var(--header-height, auto)) !important;
+            min-height: var(--mobile-header-height, 60px) !important;
+            height: var(--mobile-header-height, 60px) !important;
+            max-height: var(--mobile-header-height, 60px) !important;
             transition: none !important;
             position: sticky !important;
             top: 0 !important;
@@ -1281,8 +1286,9 @@
         }
         .header-inner,
         header.blog-header.scrolled .header-inner {
-            min-height: 50px;
-            height: var(--mobile-header-height, var(--header-height, auto)) !important;
+            min-height: var(--mobile-header-height, 60px) !important;
+            height: var(--mobile-header-height, 60px) !important;
+            max-height: var(--mobile-header-height, 60px) !important;
             transition: none !important;
             align-items: center !important;
             padding: 8px clamp(12px, var(--side-margin), 24px) !important;
@@ -1292,6 +1298,7 @@
             margin: var(--safe-top-margin-mobile, 0px) auto 0 !important;
         }
         :global(.logo) {
+            font-size: var(--mobile-logo-font-size, 1.3rem) !important;
             padding-top: var(--mobile-logo-padding-top) !important;
             padding-right: var(--mobile-logo-padding-right) !important;
             padding-bottom: var(--mobile-logo-padding-bottom) !important;
@@ -1307,6 +1314,7 @@
             transition: none !important;
         }
         .logo {
+            font-size: var(--mobile-logo-font-size, 1.3rem) !important;
             align-self: center !important;
             margin-bottom: 3px !important;
             padding-top: var(--mobile-logo-padding-top) !important;

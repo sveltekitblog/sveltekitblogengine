@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -34,8 +34,10 @@ export const categories = sqliteTable("categories", {
     updatedAt: text("updated_at").default(sql`(datetime('now'))`),
     lang: text("lang").default('ko'),
     translationGroupId: text("translation_group_id"),
+    postCount: integer("post_count").default(0),
 }, (table) => [
-    primaryKey({ columns: [table.slug, table.lang] })
+    primaryKey({ columns: [table.slug, table.lang] }),
+    index("idx_categories_lang").on(table.lang)
 ]);
 
 // 3. Posts
@@ -59,10 +61,14 @@ export const posts = sqliteTable("posts", {
     contentType: text("content_type").default('html'),
     contentMarkdown: text("content_markdown"),
     thumbnailFit: text("thumbnail_fit").default('cover'),
+    viewCount: integer("view_count").default(0),
+    likeCount: integer("like_count").default(0),
 }, (table) => [
     index("idx_posts_slug").on(table.slug),
     index("idx_posts_status_published").on(table.status, table.publishedAt),
-    index("idx_posts_translation_group").on(table.translationGroupId)
+    index("idx_posts_translation_group").on(table.translationGroupId),
+    index("idx_posts_cat_lang_status").on(table.categorySlug, table.lang, table.status, table.type),
+    index("idx_posts_popular").on(table.status, table.lang, table.viewCount)
 ]);
 
 // 4. Layouts

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2026 kimteamjang
+ * Copyright (C) 2026 SvelteKit Blog Engine
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -162,7 +162,8 @@ export const postViews = sqliteTable("post_views", {
     views: integer("views").default(0),
     lang: text("lang"),
 }, (table) => [
-    primaryKey({ columns: [table.postId, table.date] })
+    primaryKey({ columns: [table.postId, table.date] }),
+    index("idx_post_views_lang_post_id").on(table.lang, table.postId, table.views)
 ]);
 
 export const postLikes = sqliteTable("post_likes", {
