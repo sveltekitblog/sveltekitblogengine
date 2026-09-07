@@ -23,6 +23,12 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
     const parentData = await parent();
     const { layoutWidgets, settings, categories, isMobile, languages, dbDefaultLang } = parentData;
 
+    const siteUrl = settings?.siteUrl || url.origin;
+    const cleanBase = siteUrl.endsWith('/') ? siteUrl.slice(0, -1) : siteUrl;
+    const isDefaultLang = (locals.lang || locals.dbDefaultLang) === (dbDefaultLang || 'ko');
+    const langPrefix = isDefaultLang ? '' : `/${locals.lang || dbDefaultLang}`;
+    const canonicalUrl = `${cleanBase}${langPrefix}/${category}`;
+
     const enableCdnCache = settings?.enable_cdn_cache === 'true' || settings?.enable_cdn_cache === true;
     const cdnCacheTtl = Number(settings?.cdn_cache_ttl) || 120;
 
@@ -65,7 +71,7 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
             const seo = {
                 title: `${pageTitle} - ${getTrans(settings?.site_title) || 'Blog'}`,
                 description: getTrans(cmsPage.excerpt) || pageTitle,
-                url: url.href,
+                url: canonicalUrl,
                 image: cmsPage.featured_image || settings?.logo || ''
             };
             return { type: 'cms_page', page: cmsPage, layoutWidgets, category, seo };
@@ -85,7 +91,7 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
                 const seo = {
                     title: `${label} - ${getTrans(settings?.site_title) || 'Blog'}`,
                     description: `${label} 페이지입니다.`,
-                    url: url.href,
+                    url: canonicalUrl,
                     image: settings?.logo || ''
                 };
                 return { type: 'custom_page', page: customPage, layoutWidgets, category, seo };
@@ -118,8 +124,6 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
     const posts = rawPosts.slice(0, limit);
 
     const siteTitle = getTrans(settings?.site_title) || 'Blog';
-    const siteUrl = settings?.siteUrl || url.origin;
-    const cleanUrl = `${url.origin}${url.pathname}`;
 
     const jsonLd = {
         "@context": "https://schema.org",
@@ -129,13 +133,13 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
                 "@type": "ListItem",
                 "position": 1,
                 "name": "Home",
-                "item": `${siteUrl}/`
+                "item": `${cleanBase}/`
             },
             {
                 "@type": "ListItem",
                 "position": 2,
                 "name": category,
-                "item": cleanUrl
+                "item": canonicalUrl
             }
         ]
     };
@@ -149,15 +153,15 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
 
     const alternates = activeLangs.map((code: string) => ({
         lang: code,
-        url: `${siteUrl}${code === (dbDefaultLang || 'ko') ? '' : `/${code}`}/${category}`
+        url: `${cleanBase}${code === (dbDefaultLang || 'ko') ? '' : `/${code}`}/${category}`
     }));
 
-    const xDefaultUrl = `${siteUrl}/${category}`;
+    const xDefaultUrl = `${cleanBase}/${category}`;
 
     let seo = {
         title: `${category} - ${siteTitle}`,
         description: `${category} 카테고리의 포스트 목록입니다. ${getTrans(settings?.description)}`,
-        url: cleanUrl,
+        url: canonicalUrl,
         image: settings?.logo || '',
         jsonLd: JSON.stringify(jsonLd),
         alternates,

@@ -17,7 +17,7 @@
 
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, parent, setHeaders }) => {
+export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) => {
     const { languages, dbDefaultLang } = await parent();
     const settings = await locals.db.getSettings(locals.lang || locals.dbDefaultLang, locals.dbDefaultLang);
     
@@ -61,7 +61,8 @@ export const load: PageServerLoad = async ({ locals, parent, setHeaders }) => {
         ? languages.map((l: any) => l.code)
         : [locals.dbDefaultLang || 'ko'];
 
-    const siteUrl = settings?.siteUrl || '';
+    const rawSiteUrl = settings?.siteUrl || url.origin;
+    const siteUrl = rawSiteUrl.endsWith('/') ? rawSiteUrl.slice(0, -1) : rawSiteUrl;
     const alternates = activeLangs.map((code: string) => ({
         lang: code,
         url: `${siteUrl}${code === (dbDefaultLang || 'ko') ? '' : `/${code}`}/guestbook`

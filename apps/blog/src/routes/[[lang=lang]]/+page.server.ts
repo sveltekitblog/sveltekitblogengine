@@ -75,9 +75,10 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
     const siteTitle = getTrans(settings?.header?.logoText) || getTrans(settings?.site_title) || 'Blog';
     const siteDescription = getTrans(settings?.description) || 'Welcome to my blog';
 
-    const cleanUrl = `${url.origin}${url.pathname}`;
     const siteUrl = settings?.siteUrl || url.origin;
     const cleanBase = siteUrl.endsWith('/') ? siteUrl.slice(0, -1) : siteUrl;
+    const isDefaultLang = (locals.lang || locals.dbDefaultLang) === (dbDefaultLang || 'ko');
+    const canonicalUrl = `${cleanBase}${isDefaultLang ? '' : `/${locals.lang || dbDefaultLang}`}/`;
 
     let lcpImage = "";
     if (posts && posts.length > 0) {
@@ -99,7 +100,7 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
         "@context": "https://schema.org",
         "@type": "WebSite",
         "name": siteTitle,
-        "url": siteUrl,
+        "url": canonicalUrl,
         "description": siteDescription,
         "publisher": {
             "@type": "Organization",
@@ -128,7 +129,7 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
     const seo = {
         title: siteTitle,
         description: siteDescription,
-        url: cleanUrl,
+        url: canonicalUrl,
         image: settings?.logo || '',
         jsonLd: JSON.stringify(jsonLd),
         alternates,

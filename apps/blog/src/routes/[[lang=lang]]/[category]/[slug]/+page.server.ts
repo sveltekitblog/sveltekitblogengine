@@ -18,7 +18,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, locals, setHeaders }) => {
+export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) => {
     if (!locals.db) {
         throw error(500, "Database not available");
     }
@@ -81,7 +81,8 @@ export const load: PageServerLoad = async ({ params, locals, setHeaders }) => {
         });
     }
 
-    const siteUrl = settings?.siteUrl || '';
+    const rawSiteUrl = settings?.siteUrl || url.origin;
+    const siteUrl = rawSiteUrl.endsWith('/') ? rawSiteUrl.slice(0, -1) : rawSiteUrl;
     
     // Helper to get translated string from potentially localized object/string
     const getTrans = (val: any) => {
