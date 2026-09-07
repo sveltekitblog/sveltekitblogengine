@@ -2,167 +2,405 @@
 
 🌐 **[한국어](./README.kr.md) | [日本語](./README.ja.md)**
 
-A lightning-fast, open-source blog and admin management system built using SvelteKit, Cloudflare Pages, D1 SQL Database, and KV Store. This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+**A self-hosted, open-source blog engine built for developers who want to own their blog, data, and infrastructure.**
 
-> 💡 **You can find detailed deployment guides, manuals, and a live demo running this repository's codebase at the official website: [sveltekitblog.com](https://sveltekitblog.com)!**
->
-> * **Zero Cost Infrastructure:** Excluding domain registration, the entire infrastructure (Cloudflare Pages, D1 SQL Database, KV Store) is hosted on **Cloudflare's Free Tier**, incurring exactly $0 in ongoing server maintenance costs.
-> * **Analytics & Monetization Integrated:** The live demo is fully integrated with **Google Search Console** and **Google Analytics 4 (GA4)** (visible in the admin dashboard), with a **Google AdSense** application currently under review.
+> **A blog you can deploy, own, customize, and leave running without a monthly server bill.**
 
-> ⚠️ **Important:** Due to the nature of Cloudflare D1, running and testing the database entirely in a local-only environment is not recommended. The system is designed to integrate and run actively on the live Cloudflare platform. Therefore, this guide focuses on creating resources and deploying directly to the remote Cloudflare environment.
+Built with **SvelteKit + Cloudflare Pages + D1 + KV**.
+
+[![Live Design Editor Demo](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)
+
+*Click the GIF to watch the full design editor demo on YouTube.*
+
+### Why this project?
+
+- 💸 **$0 ongoing server cost** within Cloudflare's applicable Free Tier limits
+- 🏠 **Your data stays in your Cloudflare account**
+- ⚡ **Fast by design**, running on Cloudflare's edge infrastructure
+- 🎨 **Change the design without rebuilding or redeploying**
+- 💾 **Backup & Restore** for safer updates and testing
+- 🌍 **Multilingual** — Korean, English, Japanese included, with support for adding your own languages
+- 📡 **RSS support** for content distribution and feed readers
+- 🚀 **One-command deployment** with `npm run setup`
+- 🔓 **Open source under AGPL-3.0**
+
+> **Your blog. Your data. Your infrastructure.**
+
+### 🌐 Live Demo
+
+**[sveltekitblog.com](https://sveltekitblog.com)**
+
+The live website is running the actual codebase from this repository.
+
+Want to check the performance?
+
+**[Test it yourself with Google PageSpeed Insights](https://pagespeed.web.dev/)**
 
 ---
 
 ## 📋 Table of Contents
+
 1. [Project Overview](#-project-overview)
-2. [Installing Dependencies](#-installing-dependencies)
-3. [Cloudflare Infrastructure & Initial Deployment (npm run setup)](#-cloudflare-infrastructure--initial-deployment-npm-run-setup)
-4. [Environment Variables & Secret Synchronization (.dev.vars)](#-environment-variables--secret-synchronization-devvars)
-5. [Individual Build & Deployment Commands](#-individual-build--deployment-commands)
-6. [License](#-license)
-7. [Support](#-support)
+2. [Who Is This For?](#-who-is-this-for)
+3. [Why I Built This](#-why-i-built-this)
+4. [Zero Ongoing Infrastructure Cost](#-zero-ongoing-infrastructure-cost)
+5. [Own Your Data](#-own-your-data)
+6. [Key Features](#-key-features)
+7. [Installing & Deploying](#-installing--deploying)
+8. [Backup & Restore](#-backup--restore)
+9. [Design System](#-design-system)
+10. [Multilingual Support](#-multilingual-support)
+11. [SEO, Analytics & AdSense](#-seo-analytics--adsense)
+12. [Performance](#-performance)
+13. [Content Hub](#-content-hub)
+14. [Found a Problem?](#-found-a-problem)
+15. [License](#-license)
+16. [Support](#-support)
 
 ---
 
 ## 🔍 Project Overview
 
-[![Live Design Editor Demo (Watch full video on YouTube)](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)
-*💡 Click the image above to watch the full feature demo video on YouTube.*
+SvelteKit Blog Engine is a monorepo containing both the public blog and its administration dashboard.
 
-This project is a monorepo that manages both the blog front-end and the admin dashboard within a single Git repository, fully integrated with Cloudflare's edge-native services.
+```text
+apps/
+├── blog/       # Public blog
+└── admin/      # Administration dashboard
 
-- **apps/blog**: SvelteKit-powered blog front-end where anyone can read posts, register/login via email or OAuth, and write comments or guestbook entries.
-- **apps/admin**: SvelteKit-powered admin dashboard for composing posts, viewing Google Analytics (GA4)/AdSense stats, and customizing layout/themes.
-- **packages/shared**: Shared packages containing Drizzle ORM schemas, database structure definitions, utility functions, and internationalization (i18n) configs.
+packages/
+└── shared/     # Shared schemas, utilities & i18n
+```
+
+The blog and Admin are designed to be deployed separately.
+
+The public blog handles content and visitors, while the Admin dashboard handles posts, settings, design customization, analytics, and other management features.
+
+The project uses:
+
+- **SvelteKit**
+- **Cloudflare Pages**
+- **Cloudflare D1**
+- **Cloudflare KV**
+- **Drizzle ORM**
 
 ---
 
-## 🛠️ Installing Dependencies
+## 🎯 Who Is This For?
 
-Run the following command in the root directory to link and install all dependencies in the monorepo:
+This project is primarily for **developers and technically-oriented users**.
+
+It's a good fit if you:
+
+- Are comfortable with a terminal
+- Want to self-host your own blog
+- Want to own your data
+- Already use Cloudflare or don't mind learning it
+- Want a full blogging system rather than a simple static site
+- Don't want a monthly VPS bill for a personal project
+
+It is **not intended to be a no-code blogging service**.
+
+If `npm run setup` looks like alien language, this probably isn't the easiest blogging platform for you.
+
+And that's intentional.
+
+---
+
+## 🧭 Why I Built This
+
+This started as a blog I wanted to build for myself.
+
+I didn't want another blog that required:
+
+- A VPS
+- Monthly hosting fees
+- Manual server maintenance
+- Giving my data to a third-party platform
+
+I wanted something I could deploy, customize, back up, and basically leave alone.
+
+The project eventually became much larger than the original plan, so I decided to release it as open source.
+
+The bigger idea is simple:
+
+> **Build a blog you actually own.**
+
+---
+
+## 💸 Zero Ongoing Infrastructure Cost
+
+One of the main design goals was keeping infrastructure costs as close to zero as possible.
+
+For a small personal blog that stays within Cloudflare's applicable Free Tier limits:
+
+> **The ongoing server cost can be $0.**
+
+You still need a domain, and Cloudflare's usage limits and policies apply.
+
+This isn't about claiming that hosting is magically free forever.
+
+It's about this:
+
+> **If you stop updating your blog for a while, it shouldn't keep costing you money.**
+
+Even if you leave your blog untouched for a while, it shouldn't keep generating a monthly server bill.
+
+### 💳 No Surprise Bills
+
+Cloudflare's Free Tier does not require a credit card to get started.
+
+Just sign up with your email and you're ready to go. Since you don't have to add a payment method, there's no risk of accidentally getting charged just because you used too much.
+
+Start for free and use it without worrying about unexpected bills.
+
+If your blog grows enough to go beyond the Free Tier and starts costing money, that's fine. Pay for it then.
+
+If your blog has grown that much, that's actually a good thing.
+
+> **Start for free. If your blog grows enough to cost money, that's a good problem to have.**
+
+---
+
+## 🏠 Own Your Data
+
+Your blog runs on **your own Cloudflare account**.
+
+You control:
+
+- Your blog
+- Your database
+- Your media
+- Your configuration
+- Your backups
+- Your domain
+- Your deployment
+
+There is no central server operated by this project that your blog depends on for normal operation.
+
+**Your data stays yours.**
+
+---
+
+## ✨ Key Features
+
+### 🚀 Simple Deployment
+
+After cloning the repository:
+
+```bash
+npm install
+npm run setup
+```
+
+The setup process provisions the required Cloudflare resources and deploys the application.
+
+For users who want more control, an interactive setup mode is also available.
+
+```bash
+npm run setup:select
+```
+
+---
+
+### 🎨 Dynamic Design
+
+The blog design is configuration-driven.
+
+You can change the appearance from the Admin dashboard without rebuilding and redeploying the application for every design change.
+
+Change it in Admin → save → the public blog uses the new configuration.
+
+---
+
+### 💾 Backup & Restore
+
+Backup and restore isn't only for disaster recovery.
+
+It can also be used to safely test updates.
+
+A practical workflow is:
+
+```text
+Production Blog
+      ↓
+   Backup
+      ↓
+   Test Blog
+      ↓
+Restore Data
+      ↓
+Test New Release
+      ↓
+Deploy to Production
+```
+
+You can keep a separate test deployment, restore your production data into it, test a new version, and only then update the production blog.
+
+---
+
+### 🎨 Design Sharing
+
+Design configurations can be shared between installations.
+
+Create a design on one blog → export it → import it into another installation.
+
+This makes it possible to reuse and share blog designs without rebuilding them from scratch.
+
+---
+
+### 📡 RSS
+
+The blog supports **RSS feeds**, allowing readers to subscribe to your content using their preferred feed reader.
+
+---
+
+## 🌍 Multilingual Support
+
+The project currently includes:
+
+- 🇰🇷 Korean
+- 🇺🇸 English
+- 🇯🇵 Japanese
+
+But the engine is **not limited to these languages**.
+
+Each installation can add its own languages through the built-in i18n system.
+
+---
+
+## 📊 SEO, Analytics & AdSense
+
+The engine includes support for common SEO features and integrations such as:
+
+- SEO metadata
+- Canonical URLs
+- Multilingual SEO
+- Sitemap
+- RSS
+- Social metadata
+- Google Search Console
+- Google Analytics 4
+- Google AdSense
+
+Third-party services are optional and subject to their own policies and requirements.
+
+---
+
+## ⚡ Performance
+
+Performance was one of the reasons for choosing SvelteKit and Cloudflare.
+
+Rather than asking you to trust a benchmark number in this README:
+
+**Test the live site yourself.**
+
+### 🌐 Live Demo
+
+**[https://sveltekitblog.com](https://sveltekitblog.com)**
+
+### 📈 PageSpeed Insights
+
+**[Test sveltekitblog.com on Google PageSpeed Insights](https://pagespeed.web.dev/)**
+
+Performance can vary depending on device, network, cache state, third-party scripts, advertising, and other conditions.
+
+So don't take a score in this README as a guarantee.
+
+**Go test it yourself.**
+
+---
+
+## 🌐 Content Hub
+
+The project also includes a content hub designed around independently-owned blogs.
+
+The idea is simple:
+
+> **Help people discover real blogs written by real people.**
+
+The goal isn't to create another collection of automatically generated, low-quality content.
+
+The Hub is intended to connect independently hosted blogs and their authors with readers.
+
+---
+
+## 🛠️ Installing & Deploying
+
+### Install dependencies
+
 ```bash
 npm install
 npm audit fix
 ```
 
----
-
-## ☁️ Cloudflare Infrastructure & Initial Deployment (npm run setup)
-
-[![npm run setup Execution Demo (Watch full video on YouTube)](./GIFs/npm_run_setup.gif)](https://www.youtube.com/watch?v=eJvG-4fZGsA)
-*💡 Click the image above to watch the full setup and deployment run on YouTube.*
-
-This project uses Cloudflare D1 (SQL Database) and KV (Key-Value) namespaces for data persistence. On first use, run the one-click setup script to **automatically provision resources in your remote Cloudflare account and deploy the project**.
-
-> **Tip:** If you wish to restore configurations (`wrangler.backup.json`, etc.) from a backup without resetting existing infrastructure data, run the script in restore mode via `npm run restore`.
+### Initial setup
 
 ```bash
-# Default Mode (Select default language and run a full auto, one-stop build/deployment)
 npm run setup
+```
 
-# Interactive Mode (Step-by-step custom setup: choose project names, DB names, etc.)
+Or use interactive setup:
+
+```bash
 npm run setup:select
 ```
 
-### ⚙️ What `npm run setup` does:
-1. **Interactive Setup Mode:** Immediately prompts you to select the default blog language (ko/en/ja), then asks whether you want to run the remaining configuration in **Full Auto** or **Custom Interactive** mode.
-2. **Cloudflare Authentication:** Logs into your Cloudflare account using Wrangler CLI (`wrangler login`). This step is automatically skipped if an active session already exists.
-3. **Resource Provisioning:** Provisions remote D1 databases (`blog-db-*`, `user-db-*`) and a KV namespace (`blog-images-kv-*`) on Cloudflare. (In Auto mode, default resource names are assigned instantly.)
-4. **Remote Schema Migrations:** Sets up database tables and seeds initial data according to your chosen default language. (During Auto setup, it is recognized as a fresh installation, and the translation dictionary interactive prompt is automatically skipped.)
-5. **Secure Environment Setup & Deploy:** Automatically uploads your local `.dev.vars` secrets as Pages Secrets, builds the apps, and publishes them to Cloudflare Pages. (Since the Pages projects are pre-created remotely before building, secrets will sync on the first deployment without skipping.)
-
----
-
-## 🔐 Environment Variables & Secret Synchronization (.dev.vars)
-
-Secrets required for running the application (OAuth keys, API credentials, etc.) are provided as templates in each app's `.dev.vars.example` file. **The `.dev.vars` files containing actual production keys are excluded from Git tracking. Therefore, you must copy the `.dev.vars.example` files to create `.dev.vars` in each app directory and enter your credentials before deployment.**
-
-### ⚙️ Setup Instructions:
-1. Copy `apps/blog/.dev.vars.example` to `apps/blog/.dev.vars`.
-2. Copy `apps/admin/.dev.vars.example` to `apps/admin/.dev.vars`.
-3. Open the newly created `.dev.vars` files and fill in the required keys.
-
-> 💡 **Secret Synchronization Details:**
-> Since the `npm run setup` script pre-creates the Cloudflare Pages projects remotely before deployment, the secrets configured in your `.dev.vars` files will be successfully uploaded to Pages Secrets during the initial run. If you need to modify credentials or codebase later, run the respective deploy command (e.g., `npm run deploy:blog`) to sync changes.
-
----
-
-### 1. `apps/blog/.dev.vars` (Blog OAuth & Authentication Secrets)
-
-* 🔴 **Must-have Key**:
-  * `BETTER_AUTH_SECRET`: A random secret key (minimum 32 characters recommended) for encrypting session tokens and cookies. Without this key, authentication features will not work.
-* 🟢 **Dummy Allowed Keys**:
-  * `GITHUB_*`, `GOOGLE_*`: OAuth keys for social login. If you only plan to use email/password authentication, you can leave these as dummy values (`dummy_*`) without impacting site launch.
+Before deployment, create the required `.dev.vars` files from the provided examples and configure your credentials.
 
 ```text
-# [Required] Secret key for encryption and signing
-BETTER_AUTH_SECRET=your_random_secret_string (minimum 32 characters recommended)
-
-# [Optional] Social login integration (keep dummy values if unused)
-GITHUB_CLIENT_ID=dummy_github_id
-GITHUB_CLIENT_SECRET=dummy_github_secret
-GOOGLE_CLIENT_ID=dummy_google_id
-GOOGLE_CLIENT_SECRET=dummy_google_secret
+apps/blog/.dev.vars.example
+apps/admin/.dev.vars.example
 ```
+
+### Deploy Blog
+
+```bash
+npm run deploy:blog
+```
+
+### Deploy Admin
+
+```bash
+npm run deploy:admin
+```
+
+For detailed deployment instructions, configuration guides, and troubleshooting:
+
+**[Visit the official website → sveltekitblog.com](https://sveltekitblog.com)**
 
 ---
 
-### 2. `apps/admin/.dev.vars` (Admin Credentials & Google API Secrets)
+## 🐛 Found a Problem?
 
-* 🔴 **Must-have Key**:
-  * `ADMIN_PASSWORD`: The password required to log in to the admin dashboard. Do not leave this as a dummy value in production.
-* 🟢 **Dummy Allowed Keys**:
-  * `GA4_*` (Analytics), `ADSENSE_*` (AdSense): Google reporting keys. If you don't use these features yet, leaving them as dummy values (`dummy_*`) is completely fine; the dashboard widgets will simply display empty states.
+This project is currently maintained by me.
 
-> 💡 **GA4_PRIVATE_KEY** must be written in a single line enclosed in double quotes (`"`) with literal newlines (`\n`) as shown below.
+If you find a bug, security issue, SEO problem, deployment problem, or documentation error, please let me know through GitHub Issues.
 
-```text
-# [Required] Password for admin dashboard access
-ADMIN_PASSWORD=your_actual_admin_password
+You don't need to submit a pull request.
 
-# [Optional] Google Analytics 4 integration (keep dummy values if unused)
-GA4_PROPERTY_ID=dummy_ga4_property_id
-GA4_CLIENT_EMAIL=dummy-email@iam.gserviceaccount.com
-GA4_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\ndummy_private_key_string\n-----END PRIVATE KEY-----\n"
-
-# [Optional] Google AdSense integration (keep dummy values if unused)
-ADSENSE_ACCOUNT_ID=accounts/pub-dummy
-ADSENSE_CLIENT_ID=dummy_adsense_client_id.apps.googleusercontent.com
-ADSENSE_CLIENT_SECRET=dummy_adsense_secret
-ADSENSE_REFRESH_TOKEN=dummy_refresh_token
-```
-
-### 🔒 IP Whitelisting (`ALLOWED_IP`) for Admin Protection
-* You do not need to configure allowed IPs manually.
-* The deploy script runs `sync-secrets.js` which **automatically detects your current public IP address** and injects it into `apps/admin/.dev.vars`, uploading it automatically as a remote Pages Secret.
-* Note: Only the IP address registered during deployment will be allowed to access the admin panel. If your IP changes, you will need to redeploy or manually update the IP value in the database.
-
----
-
-## 🚀 Individual Build & Deployment Commands
-
-Once the infrastructure resources are provisioned via `setup`, use the following commands to rebuild and redeploy individual services:
-
-* **Deploy Blog Service:**
-  ```bash
-  npm run deploy:blog
-  ```
-* **Deploy Admin Dashboard:**
-  ```bash
-  npm run deploy:admin
-  ```
+**Found a problem? Tell me. I'll take a look.**
 
 ---
 
 ## 📄 License
 
-This project is open-source and distributed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. For details, refer to the [LICENSE](LICENSE) file in the root directory.
-Under AGPL-3.0, if you modify this software or run it as a network service, you must make your modified source code available to your users.
+This project is open-source and distributed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+See the [LICENSE](LICENSE) file for the complete license text.
 
 ---
 
 ## ☕ Support
 
-This project is an open-source initiative licensed under AGPL-3.0 and is maintained for free. If this project has been helpful to you, or if you'd like to support its ongoing development, feel free to buy the developer a coffee! Thank you for your support!
+This project is maintained as a free open-source project.
+
+If you find it useful and would like to support its development, you can buy the developer a coffee.
 
 <a href="https://buymeacoffee.com/sveltekitblogengine" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
+Thank you for your support!
+
+---
+
+> **Your blog. Your data. Your infrastructure.**
