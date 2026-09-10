@@ -329,6 +329,8 @@
         --safe-top-margin-mobile: {safeTopMarginMobile};
         --body-overlay-color: {normalizedBodyBg.overlayColor};
         --body-overlay-opacity: {normalizedBodyBg.overlayOpacity};
+        --header-height: {headerConfig.height || '64px'};
+        --mobile-header-height: {headerConfig.mobile?.height || headerConfig.height || '64px'};
     "
 >
     <div class="body-background-wrapper">
@@ -387,10 +389,11 @@
         box-sizing: border-box;
     }
 
-    :global(body) {
+    :global(html, body) {
         margin: 0;
         padding: 0;
         transition: color 0.3s ease;
+        overflow-x: clip; /* sticky 헤더를 깨뜨리지 않고 가로 넘침 방어 */
     }
 
     .body-background-wrapper {
@@ -444,7 +447,6 @@
         display: flex;
         flex-direction: column;
         background: var(--bg-value, transparent);
-        background-attachment: fixed;
         background-size: cover;
         background-position: center;
         transition: background 0.3s ease;
@@ -453,6 +455,7 @@
         font-size: var(--base-font-size, 16px);
         position: relative;
         isolation: isolate;
+        overflow-x: clip;
     }
 
     main {

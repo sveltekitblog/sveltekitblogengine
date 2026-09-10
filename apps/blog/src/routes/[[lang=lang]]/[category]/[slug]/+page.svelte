@@ -750,13 +750,18 @@
         word-break: break-word;
     }
 
-    /* Force font inheritance for post content children elements */
+    /* Force font inheritance for post content children elements & provide sticky header scroll offset */
     :global(
             .post-content p,
             .post-content span,
             .post-content div,
             .post-content li,
-            .post-content a,
+            .post-content a
+        ) {
+        font-family: inherit;
+        font-size: inherit;
+    }
+    :global(
             .post-content h1,
             .post-content h2,
             .post-content h3,
@@ -765,15 +770,7 @@
             .post-content h6
         ) {
         font-family: inherit;
-    }
-    :global(
-            .post-content p,
-            .post-content span,
-            .post-content div,
-            .post-content li,
-            .post-content a
-        ) {
-        font-size: inherit;
+        scroll-margin-top: calc(var(--header-height, 80px) + 24px);
     }
 
     /* Global styles for images inside post-content */
@@ -942,6 +939,16 @@
         .action-icon-btn svg {
             width: 17px;
             height: 17px;
+        }
+        :global(
+                .post-content h1,
+                .post-content h2,
+                .post-content h3,
+                .post-content h4,
+                .post-content h5,
+                .post-content h6
+            ) {
+            scroll-margin-top: calc(var(--mobile-header-height, 60px) + 16px);
         }
     }
 

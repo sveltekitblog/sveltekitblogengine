@@ -501,6 +501,7 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
 /**
  * headCode 내에 실제 애드센스나 GA4 스크립트 도메인이 감지될 때만 
  * 브라우저 사전 연결(preconnect) 링크 태그를 동적으로 상단에 병합해 주는 안전 헬퍼 함수
+ * (이미 사전 연결 태그가 존재할 경우 중복 삽입을 엄격히 방어)
  */
 function optimizeHeadScripts(headCode: string): string {
     if (!headCode) return "";
@@ -508,17 +509,21 @@ function optimizeHeadScripts(headCode: string): string {
     const hasAdSense = headCode.includes("pagead2.googlesyndication.com");
     const hasGA = headCode.includes("googletagmanager.com");
 
+    // 이미 preconnect / dns-prefetch 링크 태그가 존재하는지 엄격히 확인 (중복 삽입 방어)
+    const hasAdSensePreconnect = /<link\s+[^>]*href=["'][^"']*pagead2\.googlesyndication\.com[^"']*["'][^>]*>/i.test(headCode);
+    const hasGAPreconnect = /<link\s+[^>]*href=["'][^"']*googletagmanager\.com[^"']*["'][^>]*>/i.test(headCode);
+
     let resourceHints = "";
 
-    // 실제 설정된 구글 애드센스 도메인이 존재할 때만 사전 연결 힌트 삽입
-    if (hasAdSense) {
+    // 실제 설정된 구글 애드센스 도메인이 존재하고 사전 연결이 없을 때만 삽입
+    if (hasAdSense && !hasAdSensePreconnect) {
         resourceHints += `
 <link rel="preconnect" href="https://pagead2.googlesyndication.com">
 <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com">`;
     }
 
-    // 실제 설정된 GA4 도메인이 존재할 때만 사전 연결 힌트 삽입
-    if (hasGA) {
+    // 실제 설정된 GA4 도메인이 존재하고 사전 연결이 없을 때만 삽입
+    if (hasGA && !hasGAPreconnect) {
         resourceHints += `
 <link rel="preconnect" href="https://www.googletagmanager.com">
 <link rel="dns-prefetch" href="https://www.googletagmanager.com">`;
@@ -527,6 +532,6 @@ function optimizeHeadScripts(headCode: string): string {
     if (!resourceHints) return headCode;
 
     // 설정된 경우에만 상단에 리소스 힌트를 안전하게 병합하여 반환
-    return resourceHints + "\n" + headCode;
+    return resourceHints.trim() + "\n" + headCode;
 }
 

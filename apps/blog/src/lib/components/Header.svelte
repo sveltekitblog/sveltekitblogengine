@@ -87,7 +87,13 @@
         if (!sensorEl) return;
         const observer = new IntersectionObserver(
             ([entry]) => {
-                isScrolled = !entry.isIntersecting;
+                // 스크롤이 확실히 60px 이상 내려갔을 때만 scrolled 활성화하고,
+                // 다시 최상단 부근(window.scrollY < 20)으로 올라올 때만 해제하여 60px 경계선 헤더 떨림(Jitter) 원천 차단
+                if (!entry.isIntersecting) {
+                    isScrolled = true;
+                } else if (typeof window !== "undefined" && window.scrollY < 20) {
+                    isScrolled = false;
+                }
             },
             { root: null, threshold: 0 },
         );
@@ -187,17 +193,32 @@
     function toggleMenu(mode: "full" | "categories-only" = "full") {
         drawerMode = mode;
         isMenuOpen = !isMenuOpen;
-        if (isMenuOpen) {
-            document.body.style.overflow = "hidden";
-        } else {
-            document.body.style.overflow = "";
-        }
     }
 
     function closeMenu() {
         isMenuOpen = false;
-        document.body.style.overflow = "";
     }
+
+    // 모바일 드로어 메뉴 열림에 따른 body 스크롤 잠금 및 언마운트/닫힘 시 100% 안전 해제
+    $effect(() => {
+        if (typeof document !== "undefined") {
+            if (isMenuOpen) {
+                document.body.style.overflow = "hidden";
+                return () => {
+                    document.body.style.overflow = "";
+                };
+            } else {
+                document.body.style.overflow = "";
+            }
+        }
+    });
+
+    // 라우트 경로 변경(뒤로가기, 링크 터치 이동 등) 시 열려있는 메뉴 및 드롭다운 자동 닫기
+    $effect(() => {
+        const _ = $page.url.pathname;
+        closeMenu();
+        openDropdownId = null;
+    });
 
     function toggleCategoryDropdown(e: MouseEvent, id: number | string) {
         e.stopPropagation();

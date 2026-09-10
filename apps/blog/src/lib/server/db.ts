@@ -51,7 +51,7 @@ export class BlogDB {
 
     // BLOG_DB 데이터 (설정, 레이아웃, 포스트)
     async getSettings(lang: string = 'ko', dbDefaultLang: string = 'ko'): Promise<Record<string, any>> {
-        return getOrSetCache(`settings:${lang}:${dbDefaultLang}`, 120, async () => {
+        const cached = await getOrSetCache(`settings:${lang}:${dbDefaultLang}`, 120, async () => {
             const results = await this.db.query.blogSettings.findMany();
             
             // Define fields that are expected to be multilingual objects
@@ -74,6 +74,9 @@ export class BlogDB {
                 return acc;
             }, {});
         });
+
+        // 원본 캐시 변조(In-place mutation) 방지를 위해 복제본 반환
+        return JSON.parse(JSON.stringify(cached));
     }
 
     async getActiveLayout(): Promise<Layout | null> {
