@@ -105,6 +105,85 @@
     let drawerMode = $state<"full" | "categories-only">("full");
     let isLangMenuOpen = $state(false);
 
+    // 스마트 언어 안내 툴팁 상태 및 로직
+    let showLangTooltip = $state(false);
+    let tooltipTargetLang = $state<{ code: string; name: string; is_default?: number } | null>(null);
+    let tooltipSwitchUrl = $state("");
+    let tooltipTimer: any = null;
+
+    onMount(() => {
+        if (!$page.data.languages || $page.data.languages.length <= 1) return;
+
+        try {
+            const dismissed = localStorage.getItem("skbe_dismissed_lang_tooltip");
+            if (dismissed) return;
+
+            const currentLangCode = $page.data.lang || $page.data.dbDefaultLang || "ko";
+            const rawUserLangs = (navigator.languages && navigator.languages.length > 0)
+                ? Array.from(navigator.languages)
+                : [navigator.language || ""];
+
+            const userCodes = rawUserLangs
+                .map(l => l.split("-")[0].toLowerCase())
+                .filter(Boolean);
+
+            if (userCodes.length === 0) return;
+
+            // 1순위: 브라우저 언어 중 사이트 활성 지원 언어와 일치 탐색
+            let matched: any = null;
+            for (const code of userCodes) {
+                const found = $page.data.languages.find((l: any) => l.code.toLowerCase() === code);
+                if (found) {
+                    matched = found;
+                    break;
+                }
+            }
+
+            // 2순위 (글로벌 공용어 폴백): 미지원 언어(fr, de, es 등)이고 현재 기본 언어일 때 영어가 활성화된 경우
+            if (!matched) {
+                const isUserKorean = userCodes.includes("ko");
+                const isViewingDefault = currentLangCode === ($page.data.dbDefaultLang || "ko");
+                const englishOption = $page.data.languages.find((l: any) => l.code.toLowerCase() === "en");
+                if (!isUserKorean && isViewingDefault && englishOption) {
+                    matched = englishOption;
+                }
+            }
+
+            if (matched && matched.code !== currentLangCode) {
+                const langCodes = $page.data.languages.map((l: any) => l.code).join("|");
+                const cleanedPath = $page.url.pathname.replace(new RegExp(`^/(${langCodes})(?=/|$)`), "") || "/";
+                const isDefault = matched.is_default === 1;
+                const prefix = isDefault ? "" : "/" + matched.code;
+                tooltipSwitchUrl = prefix + cleanedPath || "/";
+                tooltipTargetLang = matched;
+                showLangTooltip = true;
+
+                // 8초 후 자연스럽게 닫힘
+                tooltipTimer = setTimeout(() => {
+                    showLangTooltip = false;
+                }, 8000);
+            }
+        } catch (e) {}
+
+        return () => {
+            if (tooltipTimer) clearTimeout(tooltipTimer);
+        };
+    });
+
+    function dismissLangTooltip() {
+        showLangTooltip = false;
+        if (tooltipTimer) clearTimeout(tooltipTimer);
+        if (tooltipTargetLang) {
+            try {
+                localStorage.setItem("skbe_dismissed_lang_tooltip", tooltipTargetLang.code);
+            } catch (e) {}
+        }
+    }
+
+    function handleTooltipSwitch() {
+        dismissLangTooltip();
+    }
+
     function toggleMenu(mode: "full" | "categories-only" = "full") {
         drawerMode = mode;
         isMenuOpen = !isMenuOpen;
@@ -803,6 +882,43 @@
                                 <ChevronDown size={14} />
                             </div>
                         </button>
+                        {#if showLangTooltip && tooltipTargetLang && !isLangMenuOpen}
+                            <div
+                                class="lang-suggest-tooltip"
+                                transition:fly={{ y: -6, duration: 220 }}
+                                onclick={(e) => e.stopPropagation()}
+                                role="tooltip"
+                            >
+                                <div class="tooltip-arrow"></div>
+                                <div class="tooltip-body">
+                                    <span class="tooltip-text">
+                                        {tooltipTargetLang.code === 'ja'
+                                            ? '日本語で表示しますか？'
+                                            : (tooltipTargetLang.code === 'en'
+                                                ? 'View in English?'
+                                                : `${tooltipTargetLang.name}?`)}
+                                    </span>
+                                    <div class="tooltip-actions">
+                                        <a
+                                            href={tooltipSwitchUrl}
+                                            data-sveltekit-reload
+                                            onclick={handleTooltipSwitch}
+                                            class="tooltip-switch-btn"
+                                        >
+                                            {tooltipTargetLang.code === 'ja' ? '切り替える' : (tooltipTargetLang.code === 'en' ? 'Switch' : 'View')}
+                                        </a>
+                                        <button
+                                            type="button"
+                                            onclick={dismissLangTooltip}
+                                            class="tooltip-close-btn"
+                                            aria-label="Close"
+                                        >
+                                            <X size={13} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        {/if}
                         {#if isLangMenuOpen}
                             <div
                                 class="lang-dropdown-panel"
@@ -931,6 +1047,43 @@
                                 <ChevronDown size={14} />
                             </div>
                         </button>
+                        {#if showLangTooltip && tooltipTargetLang && !isLangMenuOpen}
+                            <div
+                                class="lang-suggest-tooltip"
+                                transition:fly={{ y: -6, duration: 220 }}
+                                onclick={(e) => e.stopPropagation()}
+                                role="tooltip"
+                            >
+                                <div class="tooltip-arrow"></div>
+                                <div class="tooltip-body">
+                                    <span class="tooltip-text">
+                                        {tooltipTargetLang.code === 'ja'
+                                            ? '日本語で表示しますか？'
+                                            : (tooltipTargetLang.code === 'en'
+                                                ? 'View in English?'
+                                                : `${tooltipTargetLang.name}?`)}
+                                    </span>
+                                    <div class="tooltip-actions">
+                                        <a
+                                            href={tooltipSwitchUrl}
+                                            data-sveltekit-reload
+                                            onclick={handleTooltipSwitch}
+                                            class="tooltip-switch-btn"
+                                        >
+                                            {tooltipTargetLang.code === 'ja' ? '切り替える' : (tooltipTargetLang.code === 'en' ? 'Switch' : 'View')}
+                                        </a>
+                                        <button
+                                            type="button"
+                                            onclick={dismissLangTooltip}
+                                            class="tooltip-close-btn"
+                                            aria-label="Close"
+                                        >
+                                            <X size={13} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        {/if}
                         {#if isLangMenuOpen}
                             <div
                                 class="lang-dropdown-panel"
@@ -1048,18 +1201,58 @@
             </div>
         {/if}
 
-        <button
-            class="mobile-menu-btn"
-            aria-label="Toggle Menu"
-            onclick={() => toggleMenu("full")}
-            style={navStyle}
-        >
-            {#if isMenuOpen}
-                <X size={24} />
-            {:else}
-                <Menu size={24} />
+        <div class="mobile-menu-wrapper" style="position: relative;">
+            <button
+                class="mobile-menu-btn"
+                aria-label="Toggle Menu"
+                onclick={() => toggleMenu("full")}
+                style={navStyle}
+            >
+                {#if isMenuOpen}
+                    <X size={24} />
+                {:else}
+                    <Menu size={24} />
+                {/if}
+            </button>
+
+            {#if showLangTooltip && tooltipTargetLang && !isMenuOpen}
+                <div
+                    class="lang-suggest-tooltip mobile-only-tooltip"
+                    transition:fly={{ y: -6, duration: 220 }}
+                    onclick={(e) => e.stopPropagation()}
+                    role="tooltip"
+                >
+                    <div class="tooltip-arrow"></div>
+                    <div class="tooltip-body">
+                        <span class="tooltip-text">
+                            {tooltipTargetLang.code === 'ja'
+                                ? '日本語で表示しますか？'
+                                : (tooltipTargetLang.code === 'en'
+                                    ? 'View in English?'
+                                    : `${tooltipTargetLang.name}?`)}
+                        </span>
+                        <div class="tooltip-actions">
+                            <a
+                                href={tooltipSwitchUrl}
+                                data-sveltekit-reload
+                                onclick={handleTooltipSwitch}
+                                class="tooltip-switch-btn"
+                            >
+                                {tooltipTargetLang.code === 'ja' ? '切り替える' : (tooltipTargetLang.code === 'en' ? 'Switch' : 'View')}
+                            </a>
+                            <button
+                                type="button"
+                                onclick={dismissLangTooltip}
+                                class="tooltip-close-btn"
+                                aria-label="Close"
+                            >
+                                <X size={13} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
             {/if}
-        </button>
+        </div>
     </div>
 </header>
 
@@ -2075,5 +2268,126 @@
         background: #edf2f7;
         padding: 2px 6px;
         border-radius: 4px;
+    }
+
+    /* 스마트 다국어 안내 플로팅 툴팁 */
+    .lang-suggest-tooltip {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 120;
+        background: var(--surface-color, #ffffff);
+        color: var(--text-color, #1e293b);
+        border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+        border-radius: 10px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 4px 10px -2px rgba(0, 0, 0, 0.05);
+        padding: 6px 10px;
+        font-family: var(--base-font-family, inherit);
+        white-space: nowrap;
+        pointer-events: auto;
+    }
+
+    .tooltip-arrow {
+        position: absolute;
+        top: -5px;
+        right: 18px;
+        width: 9px;
+        height: 9px;
+        background: var(--surface-color, #ffffff);
+        border-left: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+        border-top: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+        transform: rotate(45deg);
+    }
+
+    .tooltip-body {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .tooltip-text {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--text-color, #334155);
+    }
+
+    .tooltip-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .tooltip-switch-btn {
+        display: inline-flex;
+        align-items: center;
+        background: var(--primary-color, #3b82f6);
+        color: #ffffff;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 3px 8px;
+        border-radius: 6px;
+        text-decoration: none;
+        transition: opacity 0.2s, transform 0.1s;
+    }
+
+    .tooltip-switch-btn:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
+    }
+
+    .tooltip-close-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        color: var(--secondary-color, #64748b);
+        cursor: pointer;
+        padding: 3px;
+        border-radius: 4px;
+        transition: background 0.15s, color 0.15s;
+    }
+
+    .tooltip-close-btn:hover {
+        background: rgba(0, 0, 0, 0.06);
+        color: var(--text-color, #0f172a);
+    }
+
+    :global([data-theme="dark"]) .tooltip-close-btn:hover,
+    :global(.dark) .tooltip-close-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: #ffffff;
+    }
+
+    /* 모바일 환경 툴팁 노출 및 위치 최적화 */
+    .mobile-menu-wrapper {
+        display: none;
+    }
+
+    .mobile-only-tooltip {
+        display: none;
+    }
+
+    @media (max-width: 768px) {
+        .mobile-menu-wrapper {
+            display: flex;
+            align-items: center;
+        }
+
+        .mobile-menu-btn {
+            display: block;
+        }
+
+        .mobile-only-tooltip {
+            display: block;
+            top: calc(100% + 8px);
+            right: 0;
+            max-width: calc(100vw - 32px);
+            z-index: 1500;
+        }
+
+        .mobile-only-tooltip .tooltip-arrow {
+            right: 14px;
+        }
     }
 </style>
