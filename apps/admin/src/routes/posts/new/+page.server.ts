@@ -124,7 +124,7 @@ export const actions: Actions = {
 
                 if (!title || !slug) continue;
 
-                if (category) {
+                if (type === 'post' && category) {
                     await db.prepare(`
                         INSERT OR REPLACE INTO categories (slug, name, lang, translation_group_id)
                         VALUES (?, ?, ?, ?)
@@ -139,7 +139,7 @@ export const actions: Actions = {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
                     CASE WHEN ? = 'published' THEN datetime('now', '+9 hours') ELSE NULL END)
                 `).bind(
-                    id, title, slug, content, excerpt || '', category || '일반', type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
+                    id, title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
                 ).run();
 
                 // 허브 자동 제출 훅 (status === 'published' & submitToBoard === true)

@@ -193,7 +193,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                     cancel();
                     return;
                 }
-                if (!item.category?.trim()) {
+                if (item.type !== 'page' && !item.category?.trim()) {
                     alert(`[${displayLang}] ${t('admin.editor.validate_category', { default: '카테고리를 입력해 주세요.' })}`);
                     cancel();
                     return;
@@ -285,6 +285,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                 bind:tags={translationsData[activeLang].tags}
                 bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
                 bind:submitToBoard={translationsData[activeLang].submitToBoard}
+                type={translationsData[activeLang]?.type || 'post'}
                 categories={data.categories}
                 lang={activeLang}
                 {defaultLang}
@@ -326,6 +327,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                             bind:tags={translationsData[activeLang].tags}
                             bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
                             bind:submitToBoard={translationsData[activeLang].submitToBoard}
+                            type={translationsData[activeLang]?.type || 'post'}
                             categories={data.categories}
                             lang={activeLang}
                             {defaultLang}

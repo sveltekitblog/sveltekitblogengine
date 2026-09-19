@@ -46,7 +46,10 @@ export class KVStorageAdapter implements StorageAdapter {
      */
     async list(_prefix: string, _cursor?: string, options?: { action?: string | null }): Promise<ListResult> {
         if (options?.action === 'backup') {
-            const result = await this.kv.list({ prefix: _prefix, cursor: _cursor });
+            const listOpts: { prefix?: string; cursor?: string } = {};
+            if (_prefix) listOpts.prefix = _prefix;
+            if (_cursor) listOpts.cursor = _cursor;
+            const result = await this.kv.list(listOpts);
             return {
                 objects: result.keys.map((k: any) => ({
                     key: k.name,
@@ -55,7 +58,7 @@ export class KVStorageAdapter implements StorageAdapter {
                 })),
                 folders: [],
                 truncated: result.list_complete === false,
-                cursor: result.cursor
+                cursor: result.cursor || undefined
             };
         }
 

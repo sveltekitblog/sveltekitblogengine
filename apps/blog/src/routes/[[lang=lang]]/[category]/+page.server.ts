@@ -160,8 +160,8 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
     const xDefaultUrl = `${cleanBase}/${category}`;
 
     let seo = {
-        title: `${category} - ${siteTitle}`,
-        description: `${category} 카테고리의 포스트 목록입니다. ${getTrans(settings?.description)}`,
+        title: `${categoryObj?.name || category} - ${siteTitle}`,
+        description: `${categoryObj?.name || category} | ${getTrans(settings?.description)}`,
         url: canonicalUrl,
         image: settings?.logo || '',
         jsonLd: JSON.stringify(jsonLd),

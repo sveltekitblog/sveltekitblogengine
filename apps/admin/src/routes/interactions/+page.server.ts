@@ -18,7 +18,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, parent }) => {
     const db = locals.blogDb;
     const userDb = locals.userDb;
     
@@ -27,6 +27,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
 
     try {
+        const parentData = await parent();
+        const defaultLang = parentData?.dbDefaultLang || 'ko';
+
         // Fetch Comments
         const { results: commentResults } = await userDb.prepare(`
             SELECT 
@@ -68,20 +71,30 @@ export const load: PageServerLoad = async ({ locals }) => {
             if (settings?.[0]?.value) siteUrl = JSON.parse(settings[0].value as string);
         } catch(e) {}
 
-        // Map Post Titles for Comments
+        // Map Post Titles for Comments (Dynamic defaultLang prioritization)
         if (comments.length > 0) {
             const cPostIds = [...new Set(comments.map((c: any) => c.post_id).filter(id => id != null))];
             
             if (cPostIds.length > 0) {
                 const safeIds = cPostIds.map(id => `'${id}'`).join(',');
-                // Search both slug and id, because frontend passes slug as targetId
-                const { results: postTitles } = await db.prepare(`SELECT id, title, slug, category_slug FROM posts WHERE slug IN (${safeIds}) OR id IN (${safeIds})`).all();
+                // Search both slug and id, including lang to respect configured default language
+                const { results: postTitles } = await db.prepare(`SELECT id, title, slug, category_slug, lang FROM posts WHERE slug IN (${safeIds}) OR id IN (${safeIds})`).all();
                 
                 let titleMap: Record<string, any> = {};
-                for (const row of postTitles as any[]) { 
-                    titleMap[row.id] = { id: row.id, title: row.title, slug: row.slug, category_slug: row.category_slug }; 
-                    if (row.slug) {
-                        titleMap[row.slug] = { id: row.id, title: row.title, slug: row.slug, category_slug: row.category_slug }; 
+                for (const row of (postTitles || []) as any[]) { 
+                    const keys = [row.id, row.slug].filter(Boolean);
+                    for (const key of keys) {
+                        const current = titleMap[key];
+                        // 아직 매핑되지 않았거나, 현재 등록된 것이 기본 언어가 아닌데 새로운 행이 기본 언어인 경우 최우선 갱신
+                        if (!current || (current.lang !== defaultLang && row.lang === defaultLang)) {
+                            titleMap[key] = { 
+                                id: row.id, 
+                                title: row.title, 
+                                slug: row.slug, 
+                                category_slug: row.category_slug,
+                                lang: row.lang 
+                            };
+                        }
                     }
                 }
                 

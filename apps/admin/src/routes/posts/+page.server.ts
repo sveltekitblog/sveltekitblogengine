@@ -187,6 +187,14 @@ export const actions: Actions = {
                     )
                 `).run();
                 await syncCategoryPostCounts(db);
+
+                // 2.6. 백그라운드로 사이드바 위젯 정적 스냅샷 재계산
+                try {
+                    const { generateSidebarSnapshot } = await import('@blog/shared');
+                    generateSidebarSnapshot(db).catch(e => console.error('[Snapshot Error]', e));
+                } catch (snapErr) {
+                    console.error('[Snapshot Error]', snapErr);
+                }
             } catch (catErr) {
                 console.warn('Failed to cleanup categories or sync counts:', catErr);
             }

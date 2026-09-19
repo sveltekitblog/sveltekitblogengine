@@ -18,7 +18,13 @@
 import type { StorageAdapter, PutOptions, ListResult } from './types';
 
 export class R2StorageAdapter implements StorageAdapter {
-    constructor(private r2: any) { }
+    private publicUrl: string;
+    private proxyMode: boolean;
+
+    constructor(private r2: any, opts?: { publicUrl?: string; proxyMode?: boolean }) {
+        this.publicUrl = (opts?.publicUrl || '').replace(/\/$/, '');
+        this.proxyMode = opts?.proxyMode ?? true;
+    }
 
     async put(key: string, body: ArrayBuffer, options: PutOptions): Promise<void> {
         await this.r2.put(key, body, {
@@ -57,6 +63,9 @@ export class R2StorageAdapter implements StorageAdapter {
     }
 
     getPublicUrl(key: string, siteUrl: string): string {
+        if (!this.proxyMode && this.publicUrl) {
+            return `${this.publicUrl}/${key}`;
+        }
         const base = siteUrl ? siteUrl.replace(/\/$/, '') : '';
         return `${base}/images/${key}`;
     }

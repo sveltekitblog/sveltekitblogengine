@@ -75,18 +75,20 @@ export const GET: RequestHandler = async ({ params, platform, locals }) => {
             ? `public, max-age=${cdnCacheTtl}, immutable`
             : 'no-cache, no-store, must-revalidate';
 
+        let response: Response;
+
         // ── 2. KV ────────────────────────────────────────────────────
         if (storageType === 'kv') {
             const kv = platform?.env?.IMAGES_KV;
             if (!kv) {
-                return new Response('IMAGES_KV binding not configured', { status: 503 });
+                return new Response('IMAGES_KV binding not configured', { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } });
             }
             const { value: data, metadata } = await kv.getWithMetadata<{ contentType?: string }>(path, 'arrayBuffer');
             if (!data) {
-                return new Response(`Image not found in KV: ${path}`, { status: 404 });
+                return new Response(`Image not found in KV: ${path}`, { status: 404, headers: { 'Access-Control-Allow-Origin': '*' } });
             }
             const contentType = inferContentType(path, (metadata as any)?.contentType);
-            return new Response(data as ArrayBuffer, {
+            response = new Response(data as ArrayBuffer, {
                 headers: {
                     'Content-Type': contentType,
                     'Cache-Control': cacheControl,
@@ -95,38 +97,38 @@ export const GET: RequestHandler = async ({ params, platform, locals }) => {
         }
 
         // ── 3. R2 ────────────────────────────────────────────────────
-        if (storageType === 'r2') {
+        else if (storageType === 'r2') {
             const r2 = platform?.env?.IMAGES;
             if (!r2) {
-                return new Response('R2 binding IMAGES not configured', { status: 503 });
+                return new Response('R2 binding IMAGES not configured', { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } });
             }
             const obj = await r2.get(path);
             if (!obj) {
-                return new Response(`Image not found in R2: ${path}`, { status: 404 });
+                return new Response(`Image not found in R2: ${path}`, { status: 404, headers: { 'Access-Control-Allow-Origin': '*' } });
             }
             const headers = new Headers();
             obj.writeHttpMetadata(headers);
             headers.set('Content-Type', inferContentType(path, headers.get('content-type')));
             headers.set('Cache-Control', cacheControl);
-            return new Response(obj.body, { headers });
+            response = new Response(obj.body, { headers });
         }
 
         // ── 4. ImageKit proxy mode ────────────────────────────────────
-        if (storageType === 'imagekit') {
+        else if (storageType === 'imagekit') {
             const proxyMode = settings['imagekit_proxy_mode'] === 'true';
             if (!proxyMode) {
                 // Direct CDN mode: images are served by ImageKit CDN directly, not here
-                return new Response('ImageKit is in direct CDN mode; images are not proxied via this route.', { status: 400 });
+                return new Response('ImageKit is in direct CDN mode; images are not proxied via this route.', { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } });
             }
             const urlEndpoint = (settings['imagekit_url_endpoint'] || '').replace(/\/$/, '');
             if (!urlEndpoint) {
-                return new Response('ImageKit URL endpoint not configured', { status: 503 });
+                return new Response('ImageKit URL endpoint not configured', { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } });
             }
             const res = await fetch(`${urlEndpoint}/${encodeURI(path)}`);
             if (!res.ok) {
-                return new Response(`ImageKit CDN returned ${res.status} for ${path}`, { status: res.status });
+                return new Response(`ImageKit CDN returned ${res.status} for ${path}`, { status: res.status, headers: { 'Access-Control-Allow-Origin': '*' } });
             }
-            return new Response(await res.arrayBuffer(), {
+            response = new Response(await res.arrayBuffer(), {
                 headers: {
                     'Content-Type': inferContentType(path, res.headers.get('content-type')),
                     'Cache-Control': cacheControl,
@@ -135,20 +137,20 @@ export const GET: RequestHandler = async ({ params, platform, locals }) => {
         }
 
         // ── 5. Supabase Storage ───────────────────────────────────────
-        if (storageType === 'supabase') {
+        else if (storageType === 'supabase') {
             const storageUrl = (settings['supabase_storage_url'] || '').replace(/\/$/, '');
             const serviceKey = settings['supabase_storage_key'] || '';
             const bucket = settings['supabase_storage_bucket'] || 'images';
             if (!storageUrl || !serviceKey) {
-                return new Response('Supabase storage settings incomplete', { status: 503 });
+                return new Response('Supabase storage settings incomplete', { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } });
             }
             const res = await fetch(`${storageUrl}/object/${bucket}/${encodeURI(path)}`, {
                 headers: { Authorization: `Bearer ${serviceKey}` },
             });
             if (!res.ok) {
-                return new Response(`Supabase returned ${res.status} for ${path}`, { status: res.status });
+                return new Response(`Supabase returned ${res.status} for ${path}`, { status: res.status, headers: { 'Access-Control-Allow-Origin': '*' } });
             }
-            return new Response(await res.arrayBuffer(), {
+            response = new Response(await res.arrayBuffer(), {
                 headers: {
                     'Content-Type': inferContentType(path, res.headers.get('content-type')),
                     'Cache-Control': cacheControl,
@@ -156,11 +158,32 @@ export const GET: RequestHandler = async ({ params, platform, locals }) => {
             });
         }
 
-        return new Response(`Unknown storage type: '${storageType}'`, { status: 400 });
+        else {
+            return new Response(`Unknown storage type: '${storageType}'`, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } });
+        }
+
+        // ── 6. Set CORS headers for public image access ───────────────
+        response.headers.set('Access-Control-Allow-Origin', '*');
+        response.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+
+        return response;
 
     } catch (e: any) {
         const msg = e?.message ?? String(e);
         console.error('[Admin Image Serve] Error:', msg);
-        return new Response(`Image serve error: ${msg}`, { status: 500 });
+        return new Response(`Image serve error: ${msg}`, {
+            status: 500,
+            headers: { 'Access-Control-Allow-Origin': '*' }
+        });
     }
+};
+
+export const OPTIONS: RequestHandler = async () => {
+    return new Response(null, {
+        headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+            'Access-Control-Max-Age': '86400',
+        },
+    });
 };

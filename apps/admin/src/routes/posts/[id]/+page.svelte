@@ -28,8 +28,14 @@
     let { data } = $props();
 
     type EditorMode = "visual" | "html" | "preview";
-    let mode = $state<EditorMode>("visual");
+    const currentTargetPost = data.posts?.find((p: any) => p.id === $page.params.id) || data.posts?.[0];
+    const hasCustomHtml = /<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(currentTargetPost?.content || '') || /style\s*=\s*["'][^"']+["']/i.test(currentTargetPost?.content || '');
+    let mode = $state<EditorMode>(hasCustomHtml ? "html" : "visual");
     let saveOriginal = $state(false);
+
+    // 방안 A: 커스텀 HTML 원본 스냅샷 및 Visual 수정 감지 상태
+    let rawHtmlSnapshots = $state<Record<string, string>>({});
+    let isVisualDirty = $state<Record<string, boolean>>({});
 
     let activeLang = $state("");
     let translationsData = $state<Record<string, any>>({});
@@ -111,6 +117,9 @@
                     thumbnailFit: existingPost?.thumbnail_fit || "cover",
                     submitToBoard: Boolean(existingPost?.is_syndicated)
                 };
+
+                rawHtmlSnapshots[lang.code] = existingPost?.content || "";
+                isVisualDirty[lang.code] = false;
             });
             
             activeLang = initialLang || data.languages[0]?.code;
@@ -122,17 +131,22 @@
     });
 
     function setModeSafe(newMode: EditorMode) {
-        if (mode === 'html' && newMode === 'visual') {
+        if (newMode === 'visual') {
             const html = translationsData[activeLang]?.content || '';
             const hasUnsafeTags = /<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(html) || /style\s*=\s*["'][^"']+["']/i.test(html);
 
             if (hasUnsafeTags) {
                 const confirmed = confirm(
                     t('admin.editor.warn_html_to_visual', { 
-                        default: '⚠️ 작성하신 HTML 코드에 포함된 표(Table)나 커스텀 태그/스타일은 Visual 에디터로 전환 시 자동 정제되어 삭제될 수 있습니다. Visual 모드로 전환하시겠습니까?' 
+                        default: '⚠️ 경고: 작성하신 HTML 코드에 포함된 표(Table)나 커스텀 레이아웃 태그, 인라인 스타일은 Visual 에디터에서 지원되지 않아 기존의 HTML 문서 구조가 깨질 수 있으며 정제되어 저장될 수 있습니다. Visual 모드로 전환하시겠습니까?' 
                     })
                 );
                 if (!confirmed) return;
+            }
+        } else if (newMode === 'html' && mode === 'visual') {
+            // 비주얼 모드에서 실제 타이핑/수정이 없었다면 원본 스냅샷을 그대로 복원하여 깨짐 방지
+            if (!isVisualDirty[activeLang] && rawHtmlSnapshots[activeLang] !== undefined) {
+                translationsData[activeLang].content = rawHtmlSnapshots[activeLang];
             }
         }
         mode = newMode;
@@ -215,7 +229,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                     cancel();
                     return;
                 }
-                if (!item.category?.trim()) {
+                if (item.type !== 'page' && !item.category?.trim()) {
                     alert(`[${displayLang}] ${t('admin.editor.validate_category', { default: '카테고리를 입력해 주세요.' })}`);
                     cancel();
                     return;
@@ -312,6 +326,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                 bind:tags={translationsData[activeLang].tags}
                 bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
                 bind:submitToBoard={translationsData[activeLang].submitToBoard}
+                type={translationsData[activeLang]?.type || 'post'}
                 categories={data.categories}
                 lang={activeLang}
                 {defaultLang}
@@ -353,6 +368,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                             bind:tags={translationsData[activeLang].tags}
                             bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
                             bind:submitToBoard={translationsData[activeLang].submitToBoard}
+                            type={translationsData[activeLang]?.type || 'post'}
                             categories={data.categories}
                             lang={activeLang}
                             {defaultLang}
@@ -415,13 +431,25 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
 
                 <!-- Visual Editor -->
                 {#if mode === "visual"}
-                    <TiptapEditor
-                        bind:content={translationsData[activeLang].content}
-                        bind:category={translationsData[activeLang].category}
-                        bind:slug={translationsData[activeLang].slug}
-                        lang={activeLang}
-                        bind:saveOriginal={saveOriginal}
-                    />
+                    {#if /<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(rawHtmlSnapshots[activeLang] || '') || /style\s*=\s*["'][^"']+["']/i.test(rawHtmlSnapshots[activeLang] || '')}
+                        <div style="background-color: #fffbeb; border: 1px solid #fde68a; color: #92400e; padding: 0.75rem 1rem; border-radius: 0.375rem 0.375rem 0 0; display: flex; align-items: center; justify-content: space-between; font-size: 0.8125rem;">
+                            <span style="font-weight: 500;">
+                                {t('admin.editor.banner_custom_html_visual_warning', { default: '⚠️ 주의: 현재 문서는 커스텀 HTML 태그 또는 인라인 스타일을 포함하고 있습니다. Visual 모드에서 본문을 수정하고 저장하면 기존의 HTML 문서 구조가 깨질 수 있습니다.' })}
+                            </span>
+                            <button type="button" style="text-decoration: underline; font-weight: 700; color: #78350f; margin-left: 0.75rem; background: none; border: none; cursor: pointer;" onclick={() => setModeSafe("html")}>
+                                {t('admin.editor.btn_return_to_html', { default: 'HTML 편집 모드로 복귀' })}
+                            </button>
+                        </div>
+                    {/if}
+                    <div oninput={() => { isVisualDirty[activeLang] = true; }}>
+                        <TiptapEditor
+                            bind:content={translationsData[activeLang].content}
+                            bind:category={translationsData[activeLang].category}
+                            bind:slug={translationsData[activeLang].slug}
+                            lang={activeLang}
+                            bind:saveOriginal={saveOriginal}
+                        />
+                    </div>
                 {/if}
 
                 <!-- HTML Editor -->
@@ -429,6 +457,10 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                     <textarea
                         class="html-editor"
                         bind:value={translationsData[activeLang].content}
+                        oninput={() => {
+                            rawHtmlSnapshots[activeLang] = translationsData[activeLang].content;
+                            isVisualDirty[activeLang] = false;
+                        }}
                         placeholder={t('admin.posts.write.html_placeholder', { default: 'HTML 코드를 직접 입력하세요...' })}
                     ></textarea>
                 {/if}

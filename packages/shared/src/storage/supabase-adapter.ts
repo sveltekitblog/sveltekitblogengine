@@ -25,11 +25,13 @@ export class SupabaseStorageAdapter implements StorageAdapter {
     private baseUrl: string;
     private bucket: string;
     private auth: string;
+    private proxyMode: boolean;
 
-    constructor(opts: { storageUrl: string; serviceKey: string; bucket: string }) {
+    constructor(opts: { storageUrl: string; serviceKey: string; bucket: string; proxyMode?: boolean }) {
         this.baseUrl = opts.storageUrl.replace(/\/$/, '');
         this.bucket = opts.bucket;
         this.auth = `Bearer ${opts.serviceKey}`;
+        this.proxyMode = opts.proxyMode ?? true;
     }
 
     async put(key: string, body: ArrayBuffer, options: PutOptions): Promise<void> {
@@ -94,6 +96,9 @@ export class SupabaseStorageAdapter implements StorageAdapter {
     }
 
     getPublicUrl(key: string, siteUrl: string): string {
+        if (!this.proxyMode) {
+            return `${this.baseUrl}/object/public/${this.bucket}/${key}`;
+        }
         const base = siteUrl ? siteUrl.replace(/\/$/, '') : '';
         return `${base}/images/${key}`;
     }

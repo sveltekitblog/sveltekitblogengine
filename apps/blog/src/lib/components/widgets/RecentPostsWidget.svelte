@@ -28,15 +28,15 @@
     }
 </script>
 
-<ul class="recent-posts-widget">
+<ul class="recent-posts-widget widget-posts-list" data-widget-list="recent-posts">
     {#each posts as post}
-        <li>
-            <a href={getLocalizedUrl(`/${post.categorySlug || 'all'}/${post.slug}`)}>
-                {post.title}
+        <li class="post-item" data-post-slug={post.slug}>
+            <a href={getLocalizedUrl(`/${post.categorySlug || 'all'}/${post.slug}`)} class="post-link" title={post.title} aria-label={post.title}>
+                <span class="title post-title">{post.title}</span>
             </a>
-            <span class="date"
-                >{formatDate(post.displayDate || post.createdAt, $page.data.settings?.timezone || 'Asia/Seoul')}</span
-            >
+            <div class="meta post-meta">
+                <time class="date post-date" datetime={post.displayDate || post.createdAt}>{formatDate(post.displayDate || post.createdAt, $page.data.settings?.timezone || 'Asia/Seoul')}</time>
+            </div>
         </li>
     {/each}
 </ul>
@@ -62,17 +62,24 @@
         border-bottom: none;
         padding-bottom: 0;
     }
-    a {
-        text-decoration: none;
-        color: var(--widget-item-color, var(--text-color));
+    .title {
         font-weight: var(--widget-item-font-weight, 500);
         font-size: var(--widget-item-font-size, 0.95rem);
+        color: var(--widget-item-color, var(--text-color));
         font-family: var(--widget-item-font-family, inherit);
-        display: block;
         line-height: 1.4;
     }
-    a:hover {
+    a {
+        text-decoration: none;
+        display: block;
+    }
+    a:hover .title {
         color: var(--primary-color);
+    }
+    .meta {
+        font-size: 0.8rem;
+        color: #767676;
+        margin-top: 0.25rem;
     }
     .date {
         font-size: 0.8rem;

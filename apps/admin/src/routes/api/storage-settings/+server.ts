@@ -34,6 +34,10 @@ const STORAGE_KEYS = [
     'supabase_storage_url',      // e.g. https://<ref>.supabase.co/storage/v1
     'supabase_storage_key',      // service_role key
     'supabase_storage_bucket',   // bucket name, e.g. images
+    'supabase_proxy_mode',       // 'true' | 'false'
+    // R2 Storage
+    'r2_public_url',             // e.g. https://pub-xxx.r2.dev or https://media.domain.com
+    'r2_proxy_mode',             // 'true' | 'false'
 ];
 
 // GET: Return all storage settings
@@ -54,6 +58,9 @@ export const GET: RequestHandler = async ({ platform, locals }) => {
         }
         // Defaults
         if (!settings['storage_type']) settings['storage_type'] = 'kv';
+        if (settings['imagekit_proxy_mode'] === undefined) settings['imagekit_proxy_mode'] = 'false';
+        if (settings['r2_proxy_mode'] === undefined) settings['r2_proxy_mode'] = 'true';
+        if (settings['supabase_proxy_mode'] === undefined) settings['supabase_proxy_mode'] = 'true';
 
         return json({ settings });
     } catch (e: any) {

@@ -59,7 +59,10 @@ export async function backupImages(
             params.append('action', 'backup');
 
             const res: any = await fetch(`/api/media?${params.toString()}`).then(r => r.json());
-            if (res.error) throw new Error(res.error);
+            if (res.error) {
+                const detailStr = res.details ? ` (${res.details})` : '';
+                throw new Error(`${res.error}${detailStr}`);
+            }
 
             if (res.disabled) {
                 if (currentPrefix === '') {
@@ -90,6 +93,8 @@ export async function backupImages(
     // 2. Download and Add to ZIP
     const total = allObjects.length;
     let completed = 0;
+    let successCount = 0;
+    let failedCount = 0;
 
     // Process in batches to avoid browser freeze
     const BATCH_SIZE = 5;
@@ -98,13 +103,38 @@ export async function backupImages(
 
         await Promise.all(batch.map(async (obj) => {
             try {
-                const response = await fetch(`/images/${obj.key}`);
-                if (!response.ok) throw new Error(`Failed to fetch ${obj.key}`);
+                // Internal same-origin route for admin
+                const localUrl = `/images/${obj.key}`;
+                // Proxy URLs (like /images/ or https://domain/images/) should use admin's local route directly
+                const isProxyUrl = !obj.url || obj.url.includes('/images/');
+
+                let response: Response;
+
+                if (storageType === 'kv' || isProxyUrl) {
+                    // KV and domain proxy storages always use same-origin admin route (avoids CORS)
+                    response = await fetch(localUrl);
+                } else {
+                    // Direct external CDN (ImageKit, direct R2/Supabase)
+                    try {
+                        response = await fetch(obj.url);
+                        if (!response.ok) {
+                            // Fallback to local admin proxy if CDN request returns non-200
+                            response = await fetch(localUrl);
+                        }
+                    } catch {
+                        // Fallback to local admin proxy on CORS/network failure
+                        response = await fetch(localUrl);
+                    }
+                }
+
+                if (!response.ok) throw new Error(`Failed to fetch ${obj.key} (Status: ${response.status})`);
                 const blob = await response.blob();
 
                 // Add to zip (preserve folder structure)
                 zip.file(obj.key, blob);
+                successCount++;
             } catch (err) {
+                failedCount++;
                 console.error(`Error backing up ${obj.key}:`, err);
             }
         }));
@@ -112,6 +142,10 @@ export async function backupImages(
         completed += batch.length;
         const percent = Math.round((completed / total) * 50); // First 50% is downloading
         onProgress(percent, t('admin.backup.msg_downloading_images', { default: '이미지 다운로드 중... ({completed}/{total})', completed: String(completed), total: String(total) }));
+    }
+
+    if (successCount === 0) {
+        throw new Error(t('admin.backup.err_all_download_failed', { default: '모든 이미지 다운로드에 실패하여 백업 파일을 생성할 수 없습니다.' }));
     }
 
     // 3. Generate ZIP
@@ -137,8 +171,9 @@ export async function backupImages(
 export async function restoreImages(
     file: File,
     onProgress: (percent: number, message: string) => void,
-    purgeFirst: boolean = false
-): Promise<void> {
+    purgeFirst: boolean = false,
+    migrateUrls: boolean = false
+): Promise<{ updatedPosts?: number; replacedImages?: number }> {
     // 1. Purge if requested
     if (purgeFirst) {
         onProgress(0, t('admin.backup.msg_purging', { default: '기존 이미지 삭제 중...' }));
@@ -187,9 +222,45 @@ export async function restoreImages(
         }));
 
         completed += batch.length;
-        const percent = 10 + Math.round((completed / total) * 90);
+        const percent = 10 + Math.round((completed / total) * (migrateUrls ? 80 : 88));
         onProgress(percent, t('admin.backup.msg_uploading_images', { default: '이미지 업로드 중... ({completed}/{total})', completed: String(completed), total: String(total) }));
     }
 
+    // 4. Migrate post URLs to active storage direct links if requested
+    let migrationResult: { updatedPosts?: number; replacedImages?: number } | undefined;
+    if (migrateUrls) {
+        onProgress(92, t('admin.media.modal.msg_migrating_urls', { default: '포스트 내 이미지 주소 치환 중...' }));
+        try {
+            const res = await fetch('/api/media/migrate-urls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keys: files.map(f => f.key) }),
+            });
+            if (res.ok) {
+                migrationResult = await res.json();
+            }
+        } catch (e) {
+            console.error('Failed to migrate post image URLs after restore:', e);
+        }
+    }
+
     onProgress(100, t('admin.backup.msg_restore_done', { default: '복원 완료!' }));
+    return migrationResult || {};
 }
+
+/**
+ * Standalone tool: Migrate image URLs in all posts to match the current storage adapter settings
+ */
+export async function migratePostImageUrls(): Promise<{ success: boolean; updatedPosts: number; replacedImages: number }> {
+    const res = await fetch('/api/media/migrate-urls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as any;
+        throw new Error(err.details || err.error || 'Failed to migrate image URLs');
+    }
+    return res.json();
+}
+

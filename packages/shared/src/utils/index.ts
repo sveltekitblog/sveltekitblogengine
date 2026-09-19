@@ -98,3 +98,4 @@ export function safeParseTags(tags: any): string[] {
 }
 
 export * from './cloudflare';
+export * from './snapshot';

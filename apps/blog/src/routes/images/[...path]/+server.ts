@@ -117,10 +117,6 @@ export const GET: RequestHandler = async ({ request, params, platform, locals })
             });
         }
         else if (storageType === 'imagekit') {
-            const proxyMode = settingsMap['imagekit_proxy_mode'] === 'true';
-            if (!proxyMode) {
-                return new Response('ImageKit CDN direct mode: use CDN URL directly', { status: 400 });
-            }
             const urlEndpoint = (settingsMap['imagekit_url_endpoint'] || '').replace(/\/$/, '');
             if (!urlEndpoint) return new Response('ImageKit URL endpoint not configured', { status: 503 });
             const res = await fetch(`${urlEndpoint}/${encodeURI(path)}`);
@@ -162,7 +158,11 @@ export const GET: RequestHandler = async ({ request, params, platform, locals })
             response = new Response(obj.body, { headers });
         }
 
-        // ── 4. Cache successful responses at Cloudflare Edge ─────────
+        // ── 4. Set CORS headers for public image access ──────────────
+        response.headers.set('Access-Control-Allow-Origin', '*');
+        response.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+
+        // ── 5. Cache successful responses at Cloudflare Edge ─────────
         if (response.status === 200 && enableCdnCache) {
             await cache.put(request, response.clone());
         }
@@ -172,6 +172,19 @@ export const GET: RequestHandler = async ({ request, params, platform, locals })
     } catch (e: any) {
         const msg = e?.message ?? String(e);
         console.error('[cf-blog Image Serve] Error:', msg, e?.stack);
-        return new Response(`Image serve error: ${msg}`, { status: 500 });
+        return new Response(`Image serve error: ${msg}`, {
+            status: 500,
+            headers: { 'Access-Control-Allow-Origin': '*' }
+        });
     }
+};
+
+export const OPTIONS: RequestHandler = async () => {
+    return new Response(null, {
+        headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+            'Access-Control-Max-Age': '86400',
+        },
+    });
 };

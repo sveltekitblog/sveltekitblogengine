@@ -20,13 +20,16 @@ import { error } from '@sveltejs/kit';
 import { runGa4Report, runGa4BatchReport, getGa4AccessToken } from '$lib/server/ga4';
 import { runAdsenseReport, getAdsenseAccessToken, type AdSenseConfig } from '$lib/server/adsense';
 
-export const load: PageServerLoad = async ({ locals, platform }) => {
+export const load: PageServerLoad = async ({ locals, platform, parent }) => {
     const db = locals.blogDb;
     const userDb = platform?.env?.USER_DB;
 
     if (!db) throw error(500, 'Database not found');
 
     try {
+        const parentData = await parent();
+        const defaultLang = parentData?.dbDefaultLang || 'ko';
+
         // Visitor Stats
         const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
         const today = new Date().toISOString().split('T')[0];
@@ -76,15 +79,25 @@ export const load: PageServerLoad = async ({ locals, platform }) => {
                 `).bind(limitComments).all();
 
                 if (commentResults && commentResults.length > 0) {
-                    const cPostIds = commentResults.map((c: any) => `'${c.post_id}'`).filter((id: string) => id !== "'null'").join(',');
-                    if (cPostIds) {
-                        const { results: postTitles } = await db.prepare(`SELECT id, title, slug FROM posts WHERE id IN (${cPostIds})`).all();
+                    const cPostIds = [...new Set(commentResults.map((c: any) => c.post_id).filter((id: any) => id != null))];
+                    if (cPostIds.length > 0) {
+                        const safeIds = cPostIds.map(id => `'${id}'`).join(',');
+                        const { results: postTitles } = await db.prepare(`SELECT id, title, slug, lang FROM posts WHERE slug IN (${safeIds}) OR id IN (${safeIds})`).all();
                         let titleMap: Record<string, any> = {};
-                        for (const row of postTitles as any[]) { titleMap[row.id] = { title: row.title, slug: row.slug }; }
+                        for (const row of (postTitles || []) as any[]) {
+                            const keys = [row.id, row.slug].filter(Boolean);
+                            for (const key of keys) {
+                                const current = titleMap[key];
+                                if (!current || (current.lang !== defaultLang && row.lang === defaultLang)) {
+                                    titleMap[key] = { id: row.id, title: row.title, slug: row.slug, lang: row.lang };
+                                }
+                            }
+                        }
                         recentComments = commentResults.map((c: any) => ({
                             ...c,
                             post_title: titleMap[c.post_id]?.title || '알 수 없는 포스트',
-                            post_slug:  titleMap[c.post_id]?.slug  || ''
+                            post_id: titleMap[c.post_id]?.id || c.post_id,
+                            post_slug: titleMap[c.post_id]?.slug || ''
                         }));
                     } else { recentComments = commentResults; }
                 }

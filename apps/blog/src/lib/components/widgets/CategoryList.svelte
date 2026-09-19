@@ -27,10 +27,10 @@
     }
 </script>
 
-<ul class="category-list-widget">
+<ul class="category-list-widget widget-categories-list" data-widget-list="categories">
     {#each categories as category}
-        <li>
-            <a href={getLocalizedUrl(`/${category.slug}`)}>
+        <li class="category-item" data-category-slug={category.slug}>
+            <a href={getLocalizedUrl(`/${category.slug}`)} class="category-link" title={category.name} aria-label={category.name}>
                 <span class="category-name">{category.name}</span>
                 {#if showPostCount && (category.count !== undefined || category.postCount !== undefined)}
                     <span class="category-count">({category.count ?? category.postCount ?? 0})</span>

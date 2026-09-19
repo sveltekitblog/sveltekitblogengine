@@ -24,6 +24,7 @@
         authorId: string;
         excerpt: string;
         tags: string;
+        type?: string;
         thumbnailFit?: string;
         submitToBoard?: boolean;
         categories?: Array<{slug: string, name: string, lang?: string}>;
@@ -41,6 +42,7 @@
         authorId = $bindable(),
         excerpt = $bindable(),
         tags = $bindable(),
+        type = 'post',
         thumbnailFit = $bindable("cover"),
         submitToBoard = $bindable(false),
         categories = [],
@@ -97,7 +99,7 @@
             <small class="help-text">{t('admin.posts.form.slug_help', { default: '가급적 영문과 하이픈(-) 사용을 권장합니다.' })}</small>
         </div>
         <div class="form-group">
-            <label for="category">{t('admin.posts.form.category_slug', { default: '카테고리 슬러그 *' })}</label>
+            <label for="category">{type === 'page' ? t('admin.posts.form.category_slug_page', { default: '카테고리 슬러그 (정적 페이지 제외)' }) : t('admin.posts.form.category_slug', { default: '카테고리 슬러그 *' })}</label>
             <input
                 type="text"
                 id="category"
@@ -113,8 +115,8 @@
                     }
                     if (oncategorysync) oncategorysync(category);
                 }}
-                required
-                placeholder={t('admin.posts.form.category_placeholder', { default: 'tech, life, etc.' })}
+                required={type !== 'page'}
+                placeholder={type === 'page' ? t('admin.posts.form.category_placeholder_page', { default: '정적 페이지는 카테고리가 필요 없습니다' }) : t('admin.posts.form.category_placeholder', { default: 'tech, life, etc.' })}
                 autocomplete="off"
             />
             <datalist id="category-slugs-list">

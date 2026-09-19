@@ -87,6 +87,7 @@
 
     let editor = $state.raw<any>(null);
     let editorElement: HTMLElement;
+    let lastInjectedHtml = "";
     let showImageModal = $state(false);
     let showFileModal = $state(false);
     let imageCounter = $state(0);
@@ -379,15 +380,18 @@
                 },
             },
             onUpdate: ({ editor }: { editor: any }) => {
-                content = postprocessHtmlFromEditor(editor.getHTML());
+                const newHtml = postprocessHtmlFromEditor(editor.getHTML());
+                lastInjectedHtml = preprocessHtmlForEditor(newHtml);
+                content = newHtml;
             },
         });
 
         // Sync content if it was set before editor initialized
         if (content && editor) {
             const cleanContent = preprocessHtmlForEditor(content);
-            if (editor.getHTML() !== cleanContent) {
-                editor.commands.setContent(cleanContent);
+            if (cleanContent !== lastInjectedHtml && editor.getHTML() !== cleanContent) {
+                lastInjectedHtml = cleanContent;
+                editor.commands.setContent(cleanContent, { emitUpdate: false });
             }
         }
     });
@@ -396,8 +400,9 @@
     $effect(() => {
         if (editor && content !== undefined) {
             const cleanContent = preprocessHtmlForEditor(content);
-            if (editor.getHTML() !== cleanContent) {
-                editor.commands.setContent(cleanContent);
+            if (cleanContent !== lastInjectedHtml && editor.getHTML() !== cleanContent) {
+                lastInjectedHtml = cleanContent;
+                editor.commands.setContent(cleanContent, { emitUpdate: false });
             }
         }
     });

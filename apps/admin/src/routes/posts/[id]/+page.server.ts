@@ -162,7 +162,7 @@ export const actions: Actions = {
                 if (!title || !slug) continue; // Skip incomplete tabs
 
                 // 카테고리 정보 저장 (INSERT OR REPLACE: lang별 카테고리명 업데이트 허용)
-                if (category) {
+                if (type === 'post' && category) {
                     await db.prepare(`
                         INSERT OR REPLACE INTO categories (slug, name, lang, translation_group_id)
                         VALUES (?, ?, ?, ?)
@@ -179,16 +179,16 @@ export const actions: Actions = {
                     await db.prepare(`
                         UPDATE posts
                         SET title = ?, slug = ?, content = ?, excerpt = ?, category_slug = ?, type = ?,
-                            author_id = ?, status = ?, tags = ?, featured_image = ?, lang = ?,
-                            content_type = ?, content_markdown = ?, thumbnail_fit = ?, is_syndicated = ?,
-                            updated_at = datetime('now', '+9 hours'),
-                            published_at = CASE 
-                                WHEN ? = 'published' THEN COALESCE(published_at, datetime('now', '+9 hours'))
-                                ELSE NULL 
-                            END
+                             author_id = ?, status = ?, tags = ?, featured_image = ?, lang = ?,
+                             content_type = ?, content_markdown = ?, thumbnail_fit = ?, is_syndicated = ?,
+                             updated_at = datetime('now', '+9 hours'),
+                             published_at = CASE 
+                                 WHEN ? = 'published' THEN COALESCE(published_at, datetime('now', '+9 hours'))
+                                 ELSE NULL 
+                             END
                         WHERE id = ?
                     `).bind(
-                        title, slug, content, excerpt || '', category || '일반', type,
+                        title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type,
                         author_id, status, tagsJson, featured_image, lang, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status, id
                     ).run();
                 } else {
@@ -197,7 +197,7 @@ export const actions: Actions = {
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
                         CASE WHEN ? = 'published' THEN datetime('now', '+9 hours') ELSE NULL END)
                     `).bind(
-                        id, title, slug, content, excerpt || '', category || '일반', type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
+                        id, title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
                     ).run();
                 }
 
@@ -274,6 +274,14 @@ export const actions: Actions = {
                 }
             } catch (e) {
                 console.error('[Purge Error]', e);
+            }
+
+            // 정적 사이드바 스냅샷 백그라운드 재계산
+            try {
+                const { generateSidebarSnapshot } = await import('@blog/shared');
+                generateSidebarSnapshot(db).catch(e => console.error('[Snapshot Error]', e));
+            } catch (snapErr) {
+                console.error('[Snapshot Error]', snapErr);
             }
 
             throw redirect(303, '/posts');

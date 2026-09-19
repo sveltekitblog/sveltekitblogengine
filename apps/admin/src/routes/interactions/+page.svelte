@@ -128,7 +128,7 @@
 
     async function restoreSelected() {
         if (selectedIds.length === 0) return;
-        if (!confirm(t('admin.interactions.confirm_restore_selected', { default: `선택한 ${selectedIds.length}개의 데이터를 복구하시겠습니까?` }))) return;
+        if (!confirm(t('admin.interactions.confirm_restore_selected', { count: selectedIds.length.toString(), default: `선택한 ${selectedIds.length}개의 데이터를 복구하시겠습니까?` }))) return;
         
         processingId = 'bulk';
         try {
@@ -147,7 +147,7 @@
 
     async function purgeSelected() {
         if (selectedIds.length === 0) return;
-        if (!confirm(t('admin.interactions.confirm_purge_selected', { default: `⚠️ 선택한 ${selectedIds.length}개의 데이터를 휴지통에서 영구 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.` }))) return;
+        if (!confirm(t('admin.interactions.confirm_purge_selected', { count: selectedIds.length.toString(), default: `⚠️ 선택한 ${selectedIds.length}개의 데이터를 휴지통에서 영구 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.` }))) return;
         
         processingId = 'bulk';
         try {
@@ -262,7 +262,14 @@
             if (res.ok) {
                 showReplyModal = false;
                 await invalidateAll();
-            } else alert(t('admin.interactions.reply_failed', { default: "답글 작성 실패" }));
+            } else {
+                const data = await res.json().catch(() => null);
+                const errorKey = data?.error;
+                const errorMsg = errorKey 
+                    ? t(errorKey, { default: t('admin.interactions.reply_failed', { default: "답글 작성 실패" }) }) 
+                    : t('admin.interactions.reply_failed', { default: "답글 작성 실패" });
+                alert(errorMsg);
+            }
         } catch(e) { alert(t('admin.interactions.error_occurred', { default: "오류 발생" })); }
     }
 
@@ -274,8 +281,8 @@
 
 <div class="header">
     <div>
-        <h1>{t('admin.interactions.title') || '상호작용 관리'}</h1>
-        <p class="subtitle">{t('admin.interactions.subtitle') || '사용자의 댓글과 방명록을 일괄 관리합니다.'}</p>
+        <h1>{t('admin.interactions.title', { default: '피드백 관리' })}</h1>
+        <p class="subtitle">{t('admin.interactions.subtitle', { default: '사용자의 댓글과 방명록을 일괄 관리합니다.' })}</p>
     </div>
     <div class="header-actions flex gap-4 items-center" style="display: flex; gap: 1rem; align-items: center;">
         <div class="items-per-page text-sm text-gray-600 flex items-center gap-2 bg-white px-3 py-2 rounded-md border border-gray-200" style="display: flex; align-items: center; gap: 0.5rem; background: white; padding: 0.5rem 0.75rem; border-radius: 0.375rem; border: 1px solid #e5e7eb; font-size: 0.875rem;">
@@ -288,7 +295,7 @@
             </select>
         </div>
         <div class="search-box">
-            <input type="text" bind:value={searchQuery} placeholder={t('admin.interactions.search_placeholder') || '이름 또는 내용 검색...'} />
+            <input type="text" bind:value={searchQuery} placeholder={t('admin.interactions.search_placeholder', { default: '이름 또는 내용 검색...' })} />
         </div>
     </div>
 </div>
@@ -308,30 +315,30 @@
 {#if activeTab === 'archive' && selectedIds.length > 0}
     <div class="bulk-action-bar" style="display: flex; align-items: center; justify-content: space-between; background: #eff6ff; border: 1px solid #bfdbfe; padding: 0.75rem 1rem; border-radius: 0.375rem; margin-bottom: 1rem; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
         <span style="font-size: 0.875rem; color: #1e40af; font-weight: 600;">
-            {selectedIds.length}개 선택됨
+            {t('admin.interactions.selected_count', { count: selectedIds.length.toString(), default: `${selectedIds.length}개 선택됨` })}
         </span>
         <div style="display: flex; gap: 0.5rem;">
-            <button class="btn-cancel" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; cursor: pointer; border: 1px solid #d1d5db; background: white; border-radius: 4px; color: #374151; font-weight: 600;" onclick={restoreSelected} disabled={processingId !== ''}>선택 복구</button>
-            <button class="btn-save" style="background:#ef4444; color: white; font-size: 0.8rem; padding: 0.4rem 0.8rem; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;" onclick={purgeSelected} disabled={processingId !== ''}>선택 영구 삭제</button>
+            <button class="btn-cancel" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; cursor: pointer; border: 1px solid #d1d5db; background: white; border-radius: 4px; color: #374151; font-weight: 600;" onclick={restoreSelected} disabled={processingId !== ''}>{t('admin.interactions.btn_restore_selected', { default: '선택 복구' })}</button>
+            <button class="btn-save" style="background:#ef4444; color: white; font-size: 0.8rem; padding: 0.4rem 0.8rem; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;" onclick={purgeSelected} disabled={processingId !== ''}>{t('admin.interactions.btn_purge_selected', { default: '선택 영구 삭제' })}</button>
         </div>
     </div>
 {/if}
 
 <div class="table-container">
     {#if paginatedList.length === 0}
-        <div class="empty">{t('admin.interactions.empty') || '조건에 맞는 데이터가 없습니다.'}</div>
+        <div class="empty">{t('admin.interactions.empty', { default: '조건에 맞는 데이터가 없습니다.' })}</div>
     {:else}
         <table class="interactions-table">
             <thead>
                 <tr>
                     {#if activeTab === 'archive'}
                         <th style="width: 5%; text-align: center;"><input type="checkbox" checked={isAllSelected} onchange={toggleSelectAll} style="cursor: pointer;" /></th>
-                        <th style="width: 20%">{t('admin.interactions.col_author') || '작성자 / 일시'}</th>
+                        <th style="width: 20%">{t('admin.interactions.col_author', { default: '작성자 / 일시' })}</th>
                     {:else}
-                        <th style="width: 25%">{t('admin.interactions.col_author') || '작성자 / 일시'}</th>
+                        <th style="width: 25%">{t('admin.interactions.col_author', { default: '작성자 / 일시' })}</th>
                     {/if}
-                    <th style="width: 45%;">{t('admin.interactions.col_content') || '내용 / 연결 정보'}</th>
-                    <th style="width: 30%">{t('admin.interactions.col_actions') || '관리'}</th>
+                    <th style="width: 45%;">{t('admin.interactions.col_content', { default: '내용 / 연결 정보' })}</th>
+                    <th style="width: 30%">{t('admin.interactions.col_actions', { default: '관리' })}</th>
                 </tr>
             </thead>
             <tbody>
@@ -348,8 +355,8 @@
                                         {#if item.parsed_data?.user_email}
                                         <span class="date block text-xs mt-1" style="color: #64748b;">E-mail: {item.parsed_data?.user_email}</span>
                                         {/if}
-                                        <span class="date block text-xs mt-1">{t('admin.interactions.deleted_at') || '삭제 일시'}: {formatDate(item.deleted_at)}</span>
-                                        <span class="date block text-xs mt-1" style="color: #ef4444;">{t('admin.interactions.deleted_by') || '지운 주체'}: {item.deleted_by}</span>
+                                        <span class="date block text-xs mt-1">{t('admin.interactions.deleted_at', { default: '삭제 일시' })}: {formatDate(item.deleted_at)}</span>
+                                        <span class="date block text-xs mt-1" style="color: #ef4444;">{t('admin.interactions.deleted_by', { default: '지운 주체' })}: {item.deleted_by}</span>
                                         {#if item.parsed_data?.ipAddress || item.parsed_data?.ip_address}
                                         <span class="date block text-xs mt-1">IP: {item.parsed_data?.ipAddress || item.parsed_data?.ip_address}</span>
                                         {/if}
@@ -358,17 +365,17 @@
                             </td>
                             <td>
                                 <div class="content-text opacity-70">
-                                    [{t('admin.interactions.original_text') || '원본 텍스트'}]<br>
+                                    [{t('admin.interactions.original_text', { default: '원본 텍스트' })}]<br>
                                     {item.parsed_data?.content || ''}
                                 </div>
                                 <div class="text-xs text-gray-400 mt-2">
-                                    {t('admin.interactions.created_at') || '작성 일시'}: {formatDate(item.parsed_data?.createdAt || item.parsed_data?.created_at)}
+                                    {t('admin.interactions.created_at', { default: '작성 일시' })}: {formatDate(item.parsed_data?.createdAt || item.parsed_data?.created_at)}
                                 </div>
                             </td>
                             <td>
                                 <div class="actions-group">
-                                    <button class="btn-cancel" style="font-size: 0.8rem; padding: 0.3rem 0.6rem;" onclick={() => restore(item.id)} disabled={processingId === item.id}>{t('admin.interactions.action_restore') || '복구'}</button>
-                                    <button class="btn-save" style="background:#ef4444; font-size: 0.8rem; padding: 0.3rem 0.6rem;" onclick={() => hardPurge(item.id)} disabled={processingId === item.id}>{t('admin.interactions.action_purge') || '영구 삭제'}</button>
+                                    <button class="btn-cancel" style="font-size: 0.8rem; padding: 0.3rem 0.6rem;" onclick={() => restore(item.id)} disabled={processingId === item.id}>{t('admin.interactions.action_restore', { default: '복구' })}</button>
+                                    <button class="btn-save" style="background:#ef4444; font-size: 0.8rem; padding: 0.3rem 0.6rem;" onclick={() => hardPurge(item.id)} disabled={processingId === item.id}>{t('admin.interactions.action_purge', { default: '영구 삭제' })}</button>
                                 </div>
                             </td>
                         </tr>
@@ -396,29 +403,29 @@
                             </div>
                             
                             {#if item.parent_id}
-                                <div class="badge-reply">↳ {t('admin.interactions.badge_reply') || '답글'}</div>
+                                <div class="badge-reply">↳ {t('admin.interactions.badge_reply', { default: '답글' })}</div>
                             {/if}
 
                             {#if activeTab === 'comment' && item.post_title}
                                 <div class="post-ref">
-                                    <a href="/posts/{item.actual_post_id}" target="_blank" title={t('admin.interactions.link_editor') || '에디터에서 수정하기'}>📝 {item.post_title}</a>
+                                    <a href="/posts/{item.actual_post_id}" target="_blank" title={t('admin.interactions.link_editor', { default: '에디터에서 수정하기' })}>📝 {item.post_title}</a>
                                 </div>
                             {/if}
                             {#if item.is_private}
-                                <div class="badge-private">{t('admin.interactions.badge_private') || '비밀글'}</div>
+                                <div class="badge-private">{t('admin.interactions.badge_private', { default: '비밀글' })}</div>
                             {/if}
                         </td>
                         <td>
                             <div class="actions-group">
-                                <button class="btn-icon" title={t('admin.interactions.tooltip_reply') || '답글 달기'} onclick={() => openReply(item)}><Reply size={16}/></button>
-                                <button class="btn-icon" title={t('admin.interactions.tooltip_edit') || '수정'} onclick={() => openEdit(item)}><Edit3 size={16}/></button>
+                                <button class="btn-icon" title={t('admin.interactions.tooltip_reply', { default: '답글 달기' })} onclick={() => openReply(item)}><Reply size={16}/></button>
+                                <button class="btn-icon" title={t('admin.interactions.tooltip_edit', { default: '수정' })} onclick={() => openEdit(item)}><Edit3 size={16}/></button>
                                     <button class="btn-icon {item.is_deleted ? 'active-blind' : ''}" 
-                                        title={item.is_deleted ? (t('admin.interactions.tooltip_unblind') || '블라인드 해제') : (t('admin.interactions.tooltip_blind') || '블라인드(숨김) 처리')} 
+                                        title={item.is_deleted ? t('admin.interactions.tooltip_unblind', { default: '블라인드 해제' }) : t('admin.interactions.tooltip_blind', { default: '블라인드(숨김) 처리' })} 
                                         onclick={() => toggleBlind(item.id, !!item.is_deleted)}
                                         disabled={processingId === item.id}>
                                         {#if item.is_deleted}<Eye size={16}/>{:else}<EyeOff size={16}/>{/if}
                                     </button>
-                                    <button class="btn-icon danger" title={t('admin.interactions.tooltip_delete') || '휴지통으로 이동'} onclick={() => hardDelete(item.id)} disabled={processingId === item.id}><Trash2 size={16}/></button>
+                                    <button class="btn-icon danger" title={t('admin.interactions.tooltip_delete', { default: '휴지통으로 이동' })} onclick={() => hardDelete(item.id)} disabled={processingId === item.id}><Trash2 size={16}/></button>
                                 </div>
                             </td>
                         </tr>
@@ -441,11 +448,11 @@
 {#if showEditModal}
 <div class="modal open">
     <div class="modal-box">
-        <h3>{t('admin.interactions.modal_edit_title') || '내용 수정'}</h3>
+        <h3>{t('admin.interactions.modal_edit_title', { default: '내용 수정' })}</h3>
         <textarea bind:value={editContent} rows="5" class="modal-textarea"></textarea>
         <div class="modal-actions">
-            <button class="btn-cancel" onclick={() => showEditModal = false}>{t('admin.interactions.modal_cancel') || '취소'}</button>
-            <button class="btn-save" onclick={saveEdit}>{t('admin.interactions.modal_save') || '저장'}</button>
+            <button class="btn-cancel" onclick={() => showEditModal = false}>{t('admin.interactions.modal_cancel', { default: '취소' })}</button>
+            <button class="btn-save" onclick={saveEdit}>{t('admin.interactions.modal_save', { default: '저장' })}</button>
         </div>
     </div>
 </div>
@@ -455,12 +462,12 @@
 {#if showReplyModal}
 <div class="modal open">
     <div class="modal-box">
-        <h3>{t('admin.interactions.modal_reply_title') || '관리자 답글 쓰기'}</h3>
+        <h3>{t('admin.interactions.modal_reply_title', { default: '관리자 답글 쓰기' })}</h3>
         <p class="reply-target"><strong>{replyItem?.user_name}</strong>: {replyItem?.content?.substring(0, 50)}...</p>
-        <textarea bind:value={replyContent} rows="5" placeholder={t('admin.interactions.modal_reply_placeholder') || '답글 내용을 입력하세요...'} class="modal-textarea"></textarea>
+        <textarea bind:value={replyContent} rows="5" placeholder={t('admin.interactions.modal_reply_placeholder', { default: '답글 내용을 입력하세요...' })} class="modal-textarea"></textarea>
         <div class="modal-actions">
-            <button class="btn-cancel" onclick={() => showReplyModal = false}>{t('admin.interactions.modal_cancel') || '취소'}</button>
-            <button class="btn-save" onclick={saveReply}>{t('admin.interactions.modal_reply_save') || '답글 작성'}</button>
+            <button class="btn-cancel" onclick={() => showReplyModal = false}>{t('admin.interactions.modal_cancel', { default: '취소' })}</button>
+            <button class="btn-save" onclick={saveReply}>{t('admin.interactions.modal_reply_save', { default: '답글 작성' })}</button>
         </div>
     </div>
 </div>

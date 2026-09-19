@@ -16,6 +16,7 @@
  */
 
 import type { D1Database } from '@cloudflare/workers-types';
+import { generateSidebarSnapshot } from '@blog/shared';
 
 interface BufferedView {
     postId: string;
@@ -85,6 +86,11 @@ export async function flushViewBuffer(blogD1?: D1Database, userD1?: D1Database):
                 `).bind(item.count, item.postId)
             );
             await blogD1.batch(blogStatements);
+
+            // 3. 비동기로 인기글/사이드바 정적 스냅샷 백그라운드 재집계
+            generateSidebarSnapshot(blogD1).catch(err => {
+                console.error('[ViewBuffer] Failed to refresh sidebar snapshot:', err);
+            });
         }
     } catch (err) {
         console.error('[ViewBuffer] Failed to batch flush buffered views:', err);

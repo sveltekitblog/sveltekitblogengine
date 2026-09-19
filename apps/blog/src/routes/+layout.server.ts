@@ -20,6 +20,7 @@ import { error } from '@sveltejs/kit';
 import fs from 'fs';
 import path from 'path';
 import { fallbackDictionary } from '@blog/shared/i18n';
+import { generateSidebarSnapshot } from '@blog/shared';
 
 // Lucide 아이콘 원본 SVG 로딩 헬퍼 함수
 function getLucideSvg(iconName: string): string {
@@ -256,24 +257,70 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
         const currentLang = locals.lang || locals.dbDefaultLang || 'ko';
         const defaultLang = locals.dbDefaultLang || 'ko';
 
-        const [categories, recentPosts, popularPosts, tags, recentEntries] = await Promise.all([
-            db.getCategories(currentLang, defaultLang).catch((e: any) => { console.error('getCategories failed:', e); return []; }),
-            hasWidget("RecentPosts")
-                ? db.getRecentPosts(getMaxLimitFor("RecentPosts"), undefined, 1, undefined, currentLang, defaultLang)
-                : Promise.resolve([]),
-            hasWidget("PopularPosts")
-                ? db.getPopularPosts(getMaxLimitFor("PopularPosts"), currentLang, defaultLang)
-                : Promise.resolve([]),
-            hasWidget(["TagCloud", "Tags"])
-                ? db.getAllTags(currentLang, defaultLang)
-                : Promise.resolve([]),
-            hasWidget(["RecentComments", "RecentGuestbooks"])
-                ? db.getRecentEntries(currentLang, defaultLang, getMaxLimitFor("RecentComments"), getMaxLimitFor("RecentGuestbooks")).catch((e: any) => {
-                    console.error('getRecentEntries failed:', e);
-                    return { comments: [], guestbooks: [] };
-                })
-                : Promise.resolve({ comments: [], guestbooks: [] })
-        ]);
+        const sidebarSnapshot = safeParse(settings?.sidebar_snapshot);
+        let categories: any[] = [];
+        let recentPosts: any[] = [];
+        let popularPosts: any[] = [];
+        let tags: any[] = [];
+        let recentEntries = { comments: [], guestbooks: [] };
+
+        const hasSnapshot = sidebarSnapshot && typeof sidebarSnapshot === 'object' && sidebarSnapshot.recentPosts;
+
+        if (hasSnapshot) {
+            // [정적 스냅샷 우선 서빙] D1 복잡 쿼리 0회, O(1) 정적 서빙
+            categories = sidebarSnapshot.categories?.[currentLang] || sidebarSnapshot.categories?.[defaultLang] || [];
+            
+            const rawRecent = sidebarSnapshot.recentPosts?.[currentLang] || sidebarSnapshot.recentPosts?.[defaultLang] || [];
+            const rLimit = getMaxLimitFor("RecentPosts");
+            recentPosts = rLimit ? rawRecent.slice(0, rLimit) : rawRecent;
+
+            const rawPopular = sidebarSnapshot.popularPosts?.[currentLang] || sidebarSnapshot.popularPosts?.[defaultLang] || [];
+            const pLimit = getMaxLimitFor("PopularPosts");
+            popularPosts = pLimit ? rawPopular.slice(0, pLimit) : rawPopular;
+
+            // 태그 및 댓글/방명록 위젯이 있을 때만 가볍게 병렬 조회
+            const [fetchedTags, fetchedEntries] = await Promise.all([
+                hasWidget(["TagCloud", "Tags"])
+                    ? db.getAllTags(currentLang, defaultLang).catch(() => [])
+                    : Promise.resolve([]),
+                hasWidget(["RecentComments", "RecentGuestbooks"])
+                    ? db.getRecentEntries(currentLang, defaultLang, getMaxLimitFor("RecentComments"), getMaxLimitFor("RecentGuestbooks")).catch(() => ({ comments: [], guestbooks: [] }))
+                    : Promise.resolve({ comments: [], guestbooks: [] })
+            ]);
+            tags = fetchedTags;
+            recentEntries = fetchedEntries;
+        } else {
+            // [스냅샷 부재 시 Fallback] 1회 조회 후 백그라운드 스냅샷 자동 생성
+            const [catList, recList, popList, fetchedTags, fetchedEntries] = await Promise.all([
+                db.getCategories(currentLang, defaultLang).catch((e: any) => { console.error('getCategories failed:', e); return []; }),
+                hasWidget("RecentPosts")
+                    ? db.getRecentPosts(getMaxLimitFor("RecentPosts"), undefined, 1, undefined, currentLang, defaultLang)
+                    : Promise.resolve([]),
+                hasWidget("PopularPosts")
+                    ? db.getPopularPosts(getMaxLimitFor("PopularPosts"), currentLang, defaultLang)
+                    : Promise.resolve([]),
+                hasWidget(["TagCloud", "Tags"])
+                    ? db.getAllTags(currentLang, defaultLang)
+                    : Promise.resolve([]),
+                hasWidget(["RecentComments", "RecentGuestbooks"])
+                    ? db.getRecentEntries(currentLang, defaultLang, getMaxLimitFor("RecentComments"), getMaxLimitFor("RecentGuestbooks")).catch((e: any) => {
+                        console.error('getRecentEntries failed:', e);
+                        return { comments: [], guestbooks: [] };
+                    })
+                    : Promise.resolve({ comments: [], guestbooks: [] })
+            ]);
+            categories = catList;
+            recentPosts = recList;
+            popularPosts = popList;
+            tags = fetchedTags;
+            recentEntries = fetchedEntries;
+
+            // 백그라운드 스냅샷 자동 생성
+            const rawD1 = (locals as any).platform?.env?.BLOG_DB || (db as any).blogD1;
+            if (rawD1) {
+                generateSidebarSnapshot(rawD1).catch(err => console.error('[Snapshot Background]', err));
+            }
+        }
 
         // [HTML 페이로드 다이어트: UI 사전 단일 언어 평탄화]
         // 관리자 전용(admin.*) 900+ 키를 배제하고 블로그/공통(blog.*, common.*) 키만 선별한 뒤,

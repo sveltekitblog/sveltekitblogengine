@@ -71,11 +71,30 @@
     // ─── 데이터 처리 ──────────────────────────────────────────────────
     const dbDefaultLang = $derived($page.data.dbDefaultLang || "ko");
     const lang = $derived($page.params.lang || $page.data.lang || dbDefaultLang);
-    const allWidgets = $derived(
-        layoutWidgets && layoutWidgets.length > 0
+    // 본문(PostContent) 위젯은 데스크톱/모바일 구분 없이 전체 페이지에서 단 하나만 존재해야 합니다.
+    // 디자인 에디터에서 데스크톱과 모바일용으로 각각 저장된 PostContent가 둘 다 렌더링되어
+    // 동일 포스트 목록 및 SEO 메타가 2벌 중복 출력되는 애드센스 정책 위반 결함을 원천 방지합니다.
+    const allWidgets = $derived.by(() => {
+        const raw = layoutWidgets && layoutWidgets.length > 0
             ? layoutWidgets
-            : (desktopWidgets && desktopWidgets.length > 0 ? desktopWidgets : [])
-    );
+            : (desktopWidgets && desktopWidgets.length > 0 ? desktopWidgets : []);
+
+        const pcWidgets = raw.filter((w: any) => w.type === 'post_content' || w.type === 'PostContent');
+        const primaryPc = pcWidgets.find((w: any) => w.device !== 'mobile') || pcWidgets[0];
+
+        return raw.filter((w: any) => {
+            if (w.type === 'post_content' || w.type === 'PostContent') {
+                return w === primaryPc;
+            }
+            return true;
+        }).map((w: any) => {
+            if (w.type === 'post_content' || w.type === 'PostContent') {
+                // 본문 블록은 데스크톱/모바일 양쪽 모두에서 display: none 되지 않는 단일 반응형 요소로 동작
+                return { ...w, device: 'all' };
+            }
+            return w;
+        });
+    });
 
     // PostContent widget config parsing to link TagCloud text size to the post card font size
     const defaultPcConfig = {
@@ -110,7 +129,7 @@
     const desktopCardFontSize = $derived(desktopPcConfig.cardFontSize || "1rem");
 
     function isWidgetRenderable(w: any): boolean {
-        if (!w) return false;
+        if (!w || !w.type) return false;
         if (w.type === 'HtmlWidget') {
             const cfg = typeof w.config === 'string' ? JSON.parse(w.config || '{}') : (w.config || {});
             if (!cfg.html || !cfg.html.trim()) return false;
@@ -146,7 +165,32 @@
     const desktopGridTemplate = $derived(buildGrid(layout?.columnWidths, layout?.columnCount || 1));
 
     // ─── 헬퍼 함수 ────────────────────────────────────────────────────
+    // ─── 헬퍼 함수 (위젯 기본 키값 w.type 중심 구동) ───────────────────
     function getWidgetTitle(w: any) {
+        if (!w || !w.type) return "";
+
+        // 시스템 표준 위젯은 고유 키값(w.type)에 정의된 표준 다국어 키를 절대적 기준으로 반환
+        switch (w.type) {
+            case "RecentPosts":
+                return $t("blog.widget.recent_posts", { default: "최신 포스트" });
+            case "PopularPosts":
+                return $t("blog.widget.popular_posts", { default: "인기 포스트" });
+            case "CategoryList":
+            case "CategoryMenu":
+            case "category_link":
+                return $t("blog.widget.categories", { default: "카테고리" });
+            case "TagCloud":
+                return $t("blog.widget.tags", { default: "태그" });
+            case "RecentComments":
+                return $t("admin.theme.widget_type_recent_comments", { default: "최근 댓글" });
+            case "RecentGuestbooks":
+                return $t("admin.theme.widget_type_recent_guestbooks", { default: "최근 방명록" });
+            case "PostContent":
+            case "post_content":
+                return "";
+        }
+
+        // 그 외 커스텀 위젯(HtmlWidget 등)에 한해서만 커스텀 타이틀 또는 위젯명 허용
         let title = typeof w.customTitle === 'string' ? w.customTitle.trim() : (w.customTitle ?? w.custom_title);
         if (title && typeof title === 'object') {
             title = title[lang] || title[dbDefaultLang] || Object.values(title)[0] || '';
@@ -158,19 +202,7 @@
             } catch (e) {}
         }
         if (title && title !== "{}" && !title.includes('{}')) return $t(title, { default: title });
-        switch (w.type) {
-            case "RecentPosts": return $t("blog.widget.recent_posts", { default: "최신 포스트" });
-            case "PopularPosts": return $t("blog.widget.popular_posts", { default: "인기 포스트" });
-            case "RecentComments": return $t("admin.theme.widget_type_recent_comments", { default: "최근 댓글" });
-            case "RecentGuestbooks": return $t("admin.theme.widget_type_recent_guestbooks", { default: "최근 방명록" });
-            case "CategoryList": 
-            case "CategoryMenu":
-            case "category_link": return $t("blog.widget.categories", { default: "카테고리" });
-            case "TagCloud": return $t("blog.widget.tags", { default: "인기 태그" });
-            case "PostContent":
-            case "post_content": return ""; // 본문 위젯은 제목을 표시하지 않음
-            default: return w.name;
-        }
+        return w.name || "";
     }
 
     function getWidgetShadowStyle(w: any) {
@@ -235,31 +267,20 @@
         </div>
     {/if}
     {#each dCols as widgets, colIdx}
-        <div class="layout-column">
-            {#if colIdx === 0 && !hasPostContentWidget}
-                <div class="main-content-block widget-item">
-                    {@render children()}
-                </div>
-            {/if}
-            {#each widgets as w}
-                {#if isWidgetRenderable(w)}
-                    {#if w.type === 'post_content' || w.type === 'PostContent'}
-                        <div 
-                            class="main-content-block widget-item" 
+        {@const isSidebar = !widgets.some(w => w.type === 'post_content' || w.type === 'PostContent')}
+        {#if isSidebar}
+            <aside class="layout-column sidebar-column" id="sidebar-col-{colIdx}">
+                {#each widgets as w}
+                    {#if isWidgetRenderable(w)}
+                        <section 
+                            class="widget-item widget-{(w.type || '').toLowerCase()}" 
+                            data-widget-type={w.type}
+                            id="widget-{(w.type || '').toLowerCase()}"
                             class:desktop-only-widget={w.device === 'desktop'} 
                             class:mobile-only-widget={w.device === 'mobile'} 
                             style={getWidgetShadowStyle(w)}
                         >
-                            {@render children()}
-                        </div>
-                    {:else}
-                        <div 
-                            class="widget-item" 
-                            class:desktop-only-widget={w.device === 'desktop'} 
-                            class:mobile-only-widget={w.device === 'mobile'} 
-                            style={getWidgetShadowStyle(w)}
-                        >
-                            {#if (w.customTitle || w.name)}
+                            {#if getWidgetTitle(w)}
                                 <h3 class="widget-title">{getWidgetTitle(w)}</h3>
                             {/if}
                             <div class="widget-body">
@@ -289,11 +310,71 @@
                                     <Component html={cfg.html || ""} useShadowDom={cfg.useShadowDom ?? true} />
                                 {/if}
                             </div>
-                        </div>
+                        </section>
                     {/if}
+                {/each}
+            </aside>
+        {:else}
+            <div class="layout-column main-column" id="main-col-{colIdx}">
+                {#if !hasPostContentWidget}
+                    <div class="main-content-block widget-item">
+                        {@render children()}
+                    </div>
                 {/if}
-            {/each}
-        </div>
+                {#each widgets as w}
+                    {#if isWidgetRenderable(w)}
+                        {#if w.type === 'post_content' || w.type === 'PostContent'}
+                            <div 
+                                class="main-content-block widget-item" 
+                                style={getWidgetShadowStyle(w)}
+                            >
+                                {@render children()}
+                            </div>
+                        {:else}
+                            <section 
+                                class="widget-item widget-{(w.type || '').toLowerCase()}" 
+                                data-widget-type={w.type}
+                                id="widget-{(w.type || '').toLowerCase()}"
+                                class:desktop-only-widget={w.device === 'desktop'} 
+                                class:mobile-only-widget={w.device === 'mobile'} 
+                                style={getWidgetShadowStyle(w)}
+                            >
+                                {#if getWidgetTitle(w)}
+                                    <h3 class="widget-title">{getWidgetTitle(w)}</h3>
+                                {/if}
+                                <div class="widget-body">
+                                    {#if w.type === "RecentPosts" && widgetComponents["RecentPosts"]}
+                                        {@const Component = widgetComponents["RecentPosts"]}
+                                        <Component posts={recentPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
+                                    {:else if (w.type === "CategoryList" || w.type === "CategoryMenu" || w.type === "category_link") && widgetComponents["CategoryList"]}
+                                        {@const Component = widgetComponents["CategoryList"]}
+                                        {@const cfg = typeof w.config === "string" ? JSON.parse(w.config || "{}") : (w.config || {})}
+                                        <Component {categories} config={cfg} />
+                                    {:else if w.type === "PopularPosts" && widgetComponents["PopularPosts"]}
+                                        {@const Component = widgetComponents["PopularPosts"]}
+                                        <Component posts={popularPosts.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
+                                    {:else if w.type === "TagCloud" && widgetComponents["TagCloud"]}
+                                        {@const rawCfg = w.config && typeof w.config === "string" ? JSON.parse(w.config) : w.config || {}}
+                                        {@const Component = widgetComponents["TagCloud"]}
+                                        <Component {tags} config={rawCfg.desktop || rawCfg} cardFontSize={desktopCardFontSize} />
+                                    {:else if w.type === "RecentComments" && widgetComponents["RecentComments"]}
+                                        {@const Component = widgetComponents["RecentComments"]}
+                                        <Component comments={recentComments.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
+                                    {:else if w.type === "RecentGuestbooks" && widgetComponents["RecentGuestbooks"]}
+                                        {@const Component = widgetComponents["RecentGuestbooks"]}
+                                        <Component guestbooks={recentGuestbooks.slice(0, w.config?.limit ? parseInt(w.config.limit, 10) : undefined)} />
+                                    {:else if w.type === "HtmlWidget" && widgetComponents["HtmlWidget"]}
+                                        {@const Component = widgetComponents["HtmlWidget"]}
+                                        {@const cfg = typeof w.config === 'string' ? JSON.parse(w.config || '{}') : (w.config || {})}
+                                        <Component html={cfg.html || ""} useShadowDom={cfg.useShadowDom ?? true} />
+                                    {/if}
+                                </div>
+                            </section>
+                        {/if}
+                    {/if}
+                {/each}
+            </div>
+        {/if}
     {/each}
 </div>
 

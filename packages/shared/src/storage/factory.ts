@@ -40,7 +40,8 @@ export async function getStorageAdapter(
             const keys = [
                 'storage_type',
                 'imagekit_private_key', 'imagekit_url_endpoint', 'imagekit_proxy_mode',
-                'supabase_storage_url', 'supabase_storage_key', 'supabase_storage_bucket',
+                'supabase_storage_url', 'supabase_storage_key', 'supabase_storage_bucket', 'supabase_proxy_mode',
+                'r2_public_url', 'r2_proxy_mode'
             ];
             const placeholders = keys.map(() => '?').join(',');
             const rows = await dbInstance
@@ -74,15 +75,18 @@ export async function getStorageAdapter(
             const storageUrl = settingsMap['supabase_storage_url'] || '';
             const serviceKey = settingsMap['supabase_storage_key'] || '';
             const bucket = settingsMap['supabase_storage_bucket'] || 'images';
+            const proxyMode = settingsMap['supabase_proxy_mode'] !== 'false';
             if (!storageUrl || !serviceKey) {
                 throw new Error('Supabase storage settings are incomplete. Please configure supabase_storage_url and supabase_storage_key.');
             }
-            return new SupabaseStorageAdapter({ storageUrl, serviceKey, bucket });
+            return new SupabaseStorageAdapter({ storageUrl, serviceKey, bucket, proxyMode });
         }
         default: {
             const r2 = bindings.IMAGES;
             if (!r2) throw new Error('R2 binding IMAGES not found. Check wrangler.json.');
-            return new R2StorageAdapter(r2);
+            const publicUrl = settingsMap['r2_public_url'] || '';
+            const proxyMode = settingsMap['r2_proxy_mode'] !== 'false';
+            return new R2StorageAdapter(r2, { publicUrl, proxyMode });
         }
     }
 }

@@ -39,7 +39,7 @@
         CheckCircle,
         FileText,
     } from "lucide-svelte";
-    import { backupImages, restoreImages } from "$lib/utils/backup";
+    import { backupImages, restoreImages, migratePostImageUrls } from "$lib/utils/backup";
     import { t } from "$lib/i18n.svelte";
 
     let { data } = $props<{ data: PageData }>();
@@ -62,6 +62,12 @@
                 storageSettings = json.settings || { storage_type: "r2" };
                 if (storageSettings.imagekit_proxy_mode === undefined) {
                     storageSettings.imagekit_proxy_mode = "false";
+                }
+                if (storageSettings.r2_proxy_mode === undefined) {
+                    storageSettings.r2_proxy_mode = "true";
+                }
+                if (storageSettings.supabase_proxy_mode === undefined) {
+                    storageSettings.supabase_proxy_mode = "true";
                 }
             }
         } catch (e) {
@@ -117,6 +123,8 @@
     let mediaProgress = $state(0);
     let mediaStatus = $state("");
     let purgeFirst = $state(false);
+    let migrateUrls = $state(true);
+    let isMigratingUrls = $state(false);
 
     $effect(() => {
         if (!showBackupModal) {
@@ -171,16 +179,25 @@
         mediaStatus = t('admin.media.modal.status_ready');
 
         try {
-            await restoreImages(
+            const result = await restoreImages(
                 file,
                 (percent, message) => {
                     mediaProgress = percent;
                     mediaStatus = message;
                 },
                 purgeFirst,
+                migrateUrls,
             );
 
-            alert(t('admin.media.modal.success_restore'));
+            let alertMsg = t('admin.media.modal.success_restore');
+            if (result.updatedPosts && result.updatedPosts > 0) {
+                alertMsg += '\n\n' + t('admin.media.tools.sync_urls_success', {
+                    posts: String(result.updatedPosts),
+                    images: String(result.replacedImages || 0)
+                });
+            }
+            alert(alertMsg);
+
             if (imageFileInput) imageFileInput.value = "";
             mediaFileName = "";
             showBackupModal = false;
@@ -191,6 +208,27 @@
             alert(t('admin.media.msg.delete_fail') + e.message);
         } finally {
             isProcessingMedia = false;
+        }
+    }
+
+    // Standalone Post Image URL Migration Handler
+    async function handleMigrateUrls() {
+        if (!confirm(t('admin.media.tools.sync_urls_confirm'))) return;
+        isMigratingUrls = true;
+        try {
+            const res = await migratePostImageUrls();
+            if (res.updatedPosts > 0) {
+                alert(t('admin.media.tools.sync_urls_success', {
+                    posts: String(res.updatedPosts),
+                    images: String(res.replacedImages)
+                }));
+            } else {
+                alert(t('admin.media.tools.sync_urls_none'));
+            }
+        } catch (e: any) {
+            alert(t('admin.media.msg.save_fail') + e.message);
+        } finally {
+            isMigratingUrls = false;
         }
     }
 
@@ -642,10 +680,10 @@
                         </p>
                         <div class="storage-type-cards">
                             {#each [
+                                { id: "imagekit", label: "ImageKit CDN", desc: t('admin.media.settings.imagekit_desc'), icon: "🚀", recommended: true },
                                 { id: "r2", label: "Cloudflare R2", desc: t('admin.media.settings.r2_desc'), icon: "☁️" },
-                                { id: "kv", label: "Cloudflare KV", desc: t('admin.media.settings.kv_desc'), icon: "🗂️" },
                                 { id: "supabase", label: "Supabase Storage", desc: t('admin.media.settings.supabase_desc'), icon: "🟢" },
-                                { id: "imagekit", label: "ImageKit CDN", desc: t('admin.media.settings.imagekit_desc'), icon: "🚀" }
+                                { id: "kv", label: "Cloudflare KV", desc: t('admin.media.settings.kv_desc'), icon: "🗂️" }
                             ] as opt}
                                 <button
                                     class="storage-card"
@@ -658,6 +696,9 @@
                                             storage_type: opt.id,
                                         })}
                                 >
+                                    {#if opt.recommended}
+                                        <span class="recommended-badge">{t('admin.media.settings.badge_recommended')}</span>
+                                    {/if}
                                     <span class="storage-icon">{opt.icon}</span>
                                     <strong>{opt.label}</strong>
                                     <span class="storage-card-desc"
@@ -667,77 +708,6 @@
                             {/each}
                         </div>
                     </div>
-
-                    <!-- Supabase Settings -->
-                    {#if storageSettings["storage_type"] === "supabase"}
-                        <div class="settings-section">
-                            <h3>{t('admin.media.supabase.title')}</h3>
-                            <div class="settings-form">
-                                <label>
-                                    Storage URL
-                                    <span class="field-hint"
-                                        >예:
-                                        https://&lt;ref&gt;.supabase.co/storage/v1</span
-                                    >
-                                    <input
-                                        type="url"
-                                        placeholder="https://xxxx.supabase.co/storage/v1"
-                                        value={storageSettings[
-                                            "supabase_storage_url"
-                                        ] || ""}
-                                        oninput={(e) =>
-                                            (storageSettings = {
-                                                ...storageSettings,
-                                                supabase_storage_url: (
-                                                    e.target as HTMLInputElement
-                                                ).value,
-                                            })}
-                                    />
-                                </label>
-                                <label>
-                                    Service Role Key
-                                    <span class="field-hint"
-                                        >Supabase 대시보드 → Project Settings →
-                                        API → service_role</span
-                                    >
-                                    <input
-                                        type="password"
-                                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                                        value={storageSettings[
-                                            "supabase_storage_key"
-                                        ] || ""}
-                                        oninput={(e) =>
-                                            (storageSettings = {
-                                                ...storageSettings,
-                                                supabase_storage_key: (
-                                                    e.target as HTMLInputElement
-                                                ).value,
-                                            })}
-                                    />
-                                </label>
-                                <label>
-                                    {t('admin.media.supabase.bucket_label')}
-                                    <span class="field-hint"
-                                        >{t('admin.media.supabase.bucket_hint')}</span
-                                    >
-                                    <input
-                                        type="text"
-                                        placeholder="images"
-                                        value={storageSettings[
-                                            "supabase_storage_bucket"
-                                        ] || ""}
-                                        oninput={(e) =>
-                                            (storageSettings = {
-                                                ...storageSettings,
-                                                supabase_storage_bucket: (
-                                                    e.target as HTMLInputElement
-                                                ).value,
-                                            })}
-                                    />
-                                </label>
-                            </div>
-                        </div>
-                    {/if}
 
                     <!-- ImageKit Settings -->
                     {#if storageSettings["storage_type"] === "imagekit"}
@@ -806,11 +776,8 @@
                                                     })}
                                             />
                                             <span>
-                                                <strong>{t('admin.media.imagekit.direct')}</strong
-                                                >
-                                                <small
-                                                    >{t('admin.media.imagekit.direct_desc')}</small
-                                                >
+                                                <strong>{t('admin.media.imagekit.direct')}</strong>
+                                                <small>{t('admin.media.imagekit.direct_desc')}</small>
                                             </span>
                                         </label>
                                         <label class="proxy-radio">
@@ -829,11 +796,198 @@
                                                     })}
                                             />
                                             <span>
-                                                <strong>{t('admin.media.imagekit.proxy')}</strong
-                                                >
-                                                <small
-                                                    >{t('admin.media.imagekit.proxy_desc')}</small
-                                                >
+                                                <strong>{t('admin.media.imagekit.proxy')}</strong>
+                                                <small>{t('admin.media.imagekit.proxy_desc')}</small>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+
+                    <!-- R2 Settings -->
+                    {#if storageSettings["storage_type"] === "r2"}
+                        <div class="settings-section">
+                            <h3>{t('admin.media.r2.title')}</h3>
+                            <div class="settings-form">
+                                <div class="proxy-mode-field">
+                                    <span class="proxy-label"
+                                        >{t('admin.media.r2.serving_type')}</span
+                                    >
+                                    <div class="proxy-options">
+                                        <label class="proxy-radio">
+                                            <input
+                                                type="radio"
+                                                name="r2_proxy"
+                                                value="true"
+                                                checked={storageSettings[
+                                                    "r2_proxy_mode"
+                                                ] !== "false"}
+                                                onchange={() =>
+                                                    (storageSettings = {
+                                                        ...storageSettings,
+                                                        r2_proxy_mode: "true",
+                                                    })}
+                                            />
+                                            <span>
+                                                <strong>{t('admin.media.r2.proxy')}</strong>
+                                                <small>{t('admin.media.r2.proxy_desc')}</small>
+                                            </span>
+                                        </label>
+                                        <label class="proxy-radio">
+                                            <input
+                                                type="radio"
+                                                name="r2_proxy"
+                                                value="false"
+                                                checked={storageSettings[
+                                                    "r2_proxy_mode"
+                                                ] === "false"}
+                                                onchange={() =>
+                                                    (storageSettings = {
+                                                        ...storageSettings,
+                                                        r2_proxy_mode: "false",
+                                                    })}
+                                            />
+                                            <span>
+                                                <strong>{t('admin.media.r2.direct')}</strong>
+                                                <small>{t('admin.media.r2.direct_desc')}</small>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <label>
+                                    {t('admin.media.r2.public_url_label')}
+                                    <span class="field-hint"
+                                        >{t('admin.media.r2.public_url_hint')}</span
+                                    >
+                                    <input
+                                        type="url"
+                                        placeholder="https://pub-xxxx.r2.dev or https://media.mydomain.com"
+                                        value={storageSettings[
+                                            "r2_public_url"
+                                        ] || ""}
+                                        oninput={(e) =>
+                                            (storageSettings = {
+                                                ...storageSettings,
+                                                r2_public_url: (
+                                                    e.target as HTMLInputElement
+                                                ).value,
+                                            })}
+                                    />
+                                </label>
+                            </div>
+                        </div>
+                    {/if}
+
+                    <!-- Supabase Settings -->
+                    {#if storageSettings["storage_type"] === "supabase"}
+                        <div class="settings-section">
+                            <h3>{t('admin.media.supabase.title')}</h3>
+                            <div class="settings-form">
+                                <label>
+                                    Storage URL
+                                    <span class="field-hint"
+                                        >예:
+                                        https://&lt;ref&gt;.supabase.co/storage/v1</span
+                                    >
+                                    <input
+                                        type="url"
+                                        placeholder="https://xxxx.supabase.co/storage/v1"
+                                        value={storageSettings[
+                                            "supabase_storage_url"
+                                        ] || ""}
+                                        oninput={(e) =>
+                                            (storageSettings = {
+                                                ...storageSettings,
+                                                supabase_storage_url: (
+                                                    e.target as HTMLInputElement
+                                                ).value,
+                                            })}
+                                    />
+                                </label>
+                                <label>
+                                    Service Role Key
+                                    <span class="field-hint"
+                                        >Supabase 대시보드 → Project Settings →
+                                        API → service_role</span
+                                    >
+                                    <input
+                                        type="password"
+                                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                                        value={storageSettings[
+                                            "supabase_storage_key"
+                                        ] || ""}
+                                        oninput={(e) =>
+                                            (storageSettings = {
+                                                ...storageSettings,
+                                                supabase_storage_key: (
+                                                    e.target as HTMLInputElement
+                                                ).value,
+                                            })}
+                                    />
+                                </label>
+                                <label>
+                                    {t('admin.media.supabase.bucket_label')}
+                                    <span class="field-hint"
+                                        >{t('admin.media.supabase.bucket_hint')}</span
+                                    >
+                                    <input
+                                        type="text"
+                                        placeholder="images"
+                                        value={storageSettings[
+                                            "supabase_storage_bucket"
+                                        ] || ""}
+                                        oninput={(e) =>
+                                            (storageSettings = {
+                                                ...storageSettings,
+                                                supabase_storage_bucket: (
+                                                    e.target as HTMLInputElement
+                                                ).value,
+                                            })}
+                                    />
+                                </label>
+                                <div class="proxy-mode-field">
+                                    <span class="proxy-label"
+                                        >{t('admin.media.supabase.serving_type')}</span
+                                    >
+                                    <div class="proxy-options">
+                                        <label class="proxy-radio">
+                                            <input
+                                                type="radio"
+                                                name="supabase_proxy"
+                                                value="true"
+                                                checked={storageSettings[
+                                                    "supabase_proxy_mode"
+                                                ] !== "false"}
+                                                onchange={() =>
+                                                    (storageSettings = {
+                                                        ...storageSettings,
+                                                        supabase_proxy_mode: "true",
+                                                    })}
+                                            />
+                                            <span>
+                                                <strong>{t('admin.media.supabase.proxy')}</strong>
+                                                <small>{t('admin.media.supabase.proxy_desc')}</small>
+                                            </span>
+                                        </label>
+                                        <label class="proxy-radio">
+                                            <input
+                                                type="radio"
+                                                name="supabase_proxy"
+                                                value="false"
+                                                checked={storageSettings[
+                                                    "supabase_proxy_mode"
+                                                ] === "false"}
+                                                onchange={() =>
+                                                    (storageSettings = {
+                                                        ...storageSettings,
+                                                        supabase_proxy_mode: "false",
+                                                    })}
+                                            />
+                                            <span>
+                                                <strong>{t('admin.media.supabase.direct')}</strong>
+                                                <small>{t('admin.media.supabase.direct_desc')}</small>
                                             </span>
                                         </label>
                                     </div>
@@ -854,6 +1008,9 @@
                                 <p>
                                     {t('admin.media.kv.notice_hint')}
                                 </p>
+                                <p class="kv-proxy-note">
+                                    {t('admin.media.kv.proxy_only_notice')}
+                                </p>
                             </div>
                         </div>
                     {/if}
@@ -870,6 +1027,29 @@
                                 <CheckCircle size={16} /> {t('admin.common.saved', { default: '저장됨' })}
                             {:else}
                                 <Save size={16} /> {t('admin.common.save', { default: '설정 저장' })}
+                            {/if}
+                        </button>
+                    </div>
+
+                    <!-- Post URL Migration Tool -->
+                    <div class="sync-tool-card">
+                        <div class="sync-tool-header">
+                            <RefreshCw size={18} />
+                            <div>
+                                <strong>{t('admin.media.tools.sync_urls_title')}</strong>
+                                <p>{t('admin.media.tools.sync_urls_desc')}</p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            class="sync-btn"
+                            onclick={handleMigrateUrls}
+                            disabled={isMigratingUrls}
+                        >
+                            {#if isMigratingUrls}
+                                <span class:spinning={true}><RefreshCw size={14} /></span> {t('blog.auth.processing', { default: '처리 중...' })}
+                            {:else}
+                                <RefreshCw size={14} /> {t('admin.media.tools.sync_urls_btn')}
                             {/if}
                         </button>
                     </div>
@@ -971,7 +1151,7 @@
                             >
                                 <Upload size={16} /> {t('admin.media.modal.restore_title')}
                             </h3>
-                            <div class="mb-3 flex items-center gap-2">
+                            <div class="mb-2 flex items-center gap-2">
                                 <input
                                     type="checkbox"
                                     id="modalPurgeFirst"
@@ -980,9 +1160,26 @@
                                 />
                                 <label
                                     for="modalPurgeFirst"
-                                    class="text-xs text-orange-800 font-medium"
+                                    class="text-xs text-orange-800 font-medium cursor-pointer"
                                     >{t('admin.media.modal.restore_purge')}</label
                                 >
+                            </div>
+                            <div class="mb-3 flex items-start gap-2">
+                                <input
+                                    type="checkbox"
+                                    id="modalMigrateUrls"
+                                    bind:checked={migrateUrls}
+                                    class="w-4 h-4 mt-0.5"
+                                />
+                                <label
+                                    for="modalMigrateUrls"
+                                    class="text-xs text-orange-800 font-medium cursor-pointer"
+                                >
+                                    <span>{t('admin.media.modal.restore_migrate_urls')}</span>
+                                    <span class="block text-[11px] text-orange-700/80 font-normal mt-0.5">
+                                        {t('admin.media.modal.restore_migrate_hint')}
+                                    </span>
+                                </label>
                             </div>
                             <div class="flex flex-col gap-2 w-full">
                                 <div class="flex gap-2 items-center">
@@ -1084,6 +1281,7 @@
     }
 
     .storage-card {
+        position: relative;
         display: flex;
         flex-direction: column;
         align-items: flex-start;
@@ -1097,6 +1295,29 @@
         transition:
             border-color 0.15s,
             background 0.15s;
+    }
+
+    .recommended-badge {
+        position: absolute;
+        top: -10px;
+        right: 10px;
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: #fff;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 0.15rem 0.55rem;
+        border-radius: 9999px;
+        box-shadow: 0 2px 4px rgba(217, 119, 6, 0.3);
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+    }
+
+    .kv-proxy-note {
+        font-size: 0.78rem;
+        color: #b45309;
+        margin-top: 0.5rem;
+        font-weight: 500;
+        line-height: 1.4;
     }
 
     .storage-card:hover {
@@ -1247,6 +1468,67 @@
 
     .save-btn:disabled {
         background: #93c5fd;
+        cursor: not-allowed;
+    }
+
+    .sync-tool-card {
+        margin-top: 2rem;
+        padding: 1.25rem 1.5rem;
+        background: #f8fafc;
+        border: 1.5px dashed #cbd5e1;
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.25rem;
+        flex-wrap: wrap;
+    }
+
+    .sync-tool-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        color: #3b82f6;
+        flex: 1;
+        min-width: 260px;
+    }
+
+    .sync-tool-header strong {
+        display: block;
+        font-size: 0.875rem;
+        color: #1e293b;
+        margin-bottom: 0.25rem;
+    }
+
+    .sync-tool-header p {
+        font-size: 0.75rem;
+        color: #64748b;
+        line-height: 1.4;
+        margin: 0;
+    }
+
+    .sync-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.55rem 1rem;
+        background: #3b82f6;
+        color: #fff;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+        white-space: nowrap;
+    }
+
+    .sync-btn:hover:not(:disabled) {
+        background: #2563eb;
+    }
+
+    .sync-btn:disabled {
+        background: #94a3b8;
         cursor: not-allowed;
     }
 

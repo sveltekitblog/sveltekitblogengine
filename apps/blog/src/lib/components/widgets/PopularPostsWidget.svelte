@@ -27,15 +27,15 @@
     }
 </script>
 
-<ul class="popular-posts-widget">
+<ul class="popular-posts-widget widget-posts-list" data-widget-list="popular-posts">
     {#each posts as post}
-        <li>
-            <a href={getLocalizedUrl(`/${post.categorySlug || 'all'}/${post.slug}`)}>
-                <div class="title">{post.title}</div>
+        <li class="post-item" data-post-slug={post.slug}>
+            <a href={getLocalizedUrl(`/${post.categorySlug || 'all'}/${post.slug}`)} class="post-link" title={post.title} aria-label={post.title}>
+                <span class="title post-title">{post.title}</span>
             </a>
-            <div class="meta">
+            <div class="meta post-meta">
                 {#if post.displayDate}
-                    <span>{formatDate(post.displayDate, $page.data.settings?.timezone || 'Asia/Seoul')}</span>
+                    <time class="date post-date" datetime={post.displayDate}>{formatDate(post.displayDate, $page.data.settings?.timezone || 'Asia/Seoul')}</time>
                 {/if}
             </div>
         </li>
