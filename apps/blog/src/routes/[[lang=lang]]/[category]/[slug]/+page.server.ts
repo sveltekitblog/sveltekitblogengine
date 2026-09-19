@@ -186,7 +186,7 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
                 {
                     "@type": "ListItem",
                     "position": 2,
-                    "name": post.categorySlug || "Category",
+                    "name": post.categoryName || post.categorySlug || "Category",
                     "item": `${siteUrl}/${post.categorySlug}`
                 },
                 {
