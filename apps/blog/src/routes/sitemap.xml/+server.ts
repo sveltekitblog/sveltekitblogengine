@@ -94,6 +94,7 @@ export const GET: RequestHandler = async ({ platform, url, locals }) => {
     <url>
         <loc>${siteUrl}/</loc>
 ${activeLangs.map((code: string) => `        <xhtml:link rel="alternate" hreflang="${code}" href="${siteUrl}${code === dbDefaultLang ? '' : `/${code}`}/" />`).join('\n')}
+        <lastmod>${posts && posts.length > 0 ? new Date((posts[0] as any).updated_at).toISOString() : new Date().toISOString()}</lastmod>
         <changefreq>daily</changefreq>
         <priority>1.0</priority>
     </url>

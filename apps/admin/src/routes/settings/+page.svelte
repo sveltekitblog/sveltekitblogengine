@@ -18,7 +18,7 @@
 <script lang="ts">
     import { enhance } from "$app/forms";
     import type { PageData, ActionData } from "./$types";
-    import { Settings, Save, Globe, LayoutDashboard, Code, UserCog, Shield, Download, Upload, AlertTriangle, RefreshCcw, Share2 } from "lucide-svelte";
+    import { Settings, Save, Globe, Search, LayoutDashboard, Code, UserCog, Shield, Download, Upload, AlertTriangle, RefreshCcw, Share2 } from "lucide-svelte";
     import { t } from "$lib/i18n.svelte";
     import { SOCIAL_PROVIDER_META, PRIMARY_PROVIDERS, EXTRA_PROVIDERS } from "@blog/shared";
 
@@ -652,6 +652,31 @@
                         >
                             {isPurging ? 'Purging...' : t('admin.settings.manual_purge_btn', { default: '캐시 전체 삭제 (Purge)' })}
                         </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SEO 검색엔진 최적화 설정 -->
+            <section class="settings-card mb-6">
+                <div class="card-header">
+                    <Search size={20} />
+                    <h2>{t('admin.settings.seo_settings_title', { default: 'SEO 검색엔진 최적화 설정' })}</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-group flex items-center justify-between p-5 bg-blue-50 border-2 border-blue-200 rounded-xl shadow-sm">
+                        <div class="flex-1 pr-6">
+                            <span class="font-bold text-blue-900 block text-lg mb-1 flex items-center gap-2">
+                                🏷️ {t('admin.settings.tag_noindex_title', { default: '태그 페이지 검색엔진 색인 차단 (noindex)' })}
+                            </span>
+                            <span class="text-sm text-blue-800 block leading-relaxed font-medium">
+                                {t('admin.settings.tag_noindex_desc', { default: '태그 페이지의 검색엔진 중복 노출을 차단합니다. 켜면 색인 차단(noindex), 끄면 색인 허용(index)됩니다. (기본값: ON)' })}
+                            </span>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                            <input type="checkbox" name="tag_page_noindex" value="true" class="sr-only peer"
+                                checked={data.settings.tag_page_noindex !== 'false'}>
+                            <div class="w-14 h-7 bg-blue-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-400 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-blue-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
                     </div>
                 </div>
             </section>

@@ -76,7 +76,7 @@ export const load: PageServerLoad = async ({ params, locals, url, parent }) => {
                 image: settings?.logo || '',
                 alternates,
                 xDefaultUrl,
-                noindex: true
+                noindex: settings?.tag_page_noindex !== 'false'
             },
             settings
         };

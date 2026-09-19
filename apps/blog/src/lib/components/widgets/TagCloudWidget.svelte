@@ -62,7 +62,7 @@
 <div class="tag-cloud-widget">
     <div class="tags-container">
         {#each displayTags as tag}
-            <a href={getLocalizedUrl(`/tags/${tag}`)} class="tag" style={cardFontSize ? `--tag-font-size: ${cardFontSize}` : undefined}>
+            <a href={getLocalizedUrl(`/tags/${encodeURIComponent(tag)}`)} class="tag" style={cardFontSize ? `--tag-font-size: ${cardFontSize}` : undefined}>
                 #{tag}
             </a>
         {/each}

@@ -74,7 +74,7 @@
         <meta property="og:image:height" content="630" />
     {/if}
     <meta property="og:site_name" content={siteTitle} />
-    <meta property="og:locale" content={lang === "ko" ? "ko_KR" : lang} />
+    <meta property="og:locale" content={lang === "ko" ? "ko_KR" : lang === "en" ? "en_US" : lang === "ja" ? "ja_JP" : lang} />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content={url} />

@@ -46,13 +46,14 @@ export const load: PageServerLoad = async ({ locals }) => {
             timezone: 'Asia/Seoul',
             board_hub_url: 'https://hub.sveltekitblog.com',
             board_api_key: '',
-            board_auto_syndicate: 'true'
+            board_auto_syndicate: 'true',
+            tag_page_noindex: 'true'
         };
 
         // Override with DB values
         if (settingsResults) {
             for (const row of settingsResults as any[]) {
-                if (row.key in settings || row.key === 'enable_ip_logging' || row.key === 'enable_email_login' || row.key === 'enable_cdn_cache' || row.key === 'cdn_cache_ttl' || row.key === 'timezone' || row.key === 'board_hub_url' || row.key === 'board_api_key' || row.key === 'board_auto_syndicate') {
+                if (row.key in settings || row.key === 'enable_ip_logging' || row.key === 'enable_email_login' || row.key === 'enable_cdn_cache' || row.key === 'cdn_cache_ttl' || row.key === 'timezone' || row.key === 'board_hub_url' || row.key === 'board_api_key' || row.key === 'board_auto_syndicate' || row.key === 'tag_page_noindex') {
                     settings[row.key] = row.value;
                 }
             }
@@ -106,7 +107,8 @@ export const actions: Actions = {
             'timezone',
             'board_hub_url',
             'board_api_key',
-            'board_auto_syndicate'
+            'board_auto_syndicate',
+            'tag_page_noindex'
         ];
 
         try {
@@ -119,7 +121,7 @@ export const actions: Actions = {
                     // These are expected to be JSON stringified from the frontend multi-lang inputs
                     // We just save the string as is.
                     value = data.get(key) as string || '{}';
-                } else if (key === 'enable_ip_logging' || key === 'enable_email_login' || key === 'board_auto_syndicate') {
+                } else if (key === 'enable_ip_logging' || key === 'enable_email_login' || key === 'board_auto_syndicate' || key === 'tag_page_noindex') {
                     value = data.get(key) === 'true' ? 'true' : 'false';
                 } else if (key === 'auth_providers') {
                     value = data.get(key) as string || '[]';

@@ -132,7 +132,7 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
         title: siteTitle,
         description: siteDescription,
         url: canonicalUrl,
-        image: settings?.logo || '',
+        image: settings?.logo || lcpImage || '',
         jsonLd: JSON.stringify(jsonLd),
         alternates,
         xDefaultUrl
