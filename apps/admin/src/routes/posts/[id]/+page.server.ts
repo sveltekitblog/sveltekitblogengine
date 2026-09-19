@@ -276,10 +276,10 @@ export const actions: Actions = {
                 console.error('[Purge Error]', e);
             }
 
-            // 정적 사이드바 스냅샷 백그라운드 재계산
+            // 정적 사이드바 스냅샷 재계산 (동기 완료 보장)
             try {
                 const { generateSidebarSnapshot } = await import('@blog/shared');
-                generateSidebarSnapshot(db).catch(e => console.error('[Snapshot Error]', e));
+                await generateSidebarSnapshot(db);
             } catch (snapErr) {
                 console.error('[Snapshot Error]', snapErr);
             }

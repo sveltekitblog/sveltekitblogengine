@@ -185,6 +185,14 @@ export const actions: Actions = {
                 console.error('[Purge Error]', e);
             }
 
+            // 정적 사이드바 스냅샷 재계산 (동기 완료 보장)
+            try {
+                const { generateSidebarSnapshot } = await import('@blog/shared');
+                await generateSidebarSnapshot(db);
+            } catch (snapErr) {
+                console.error('[Snapshot Error]', snapErr);
+            }
+
             throw redirect(303, '/posts');
         } catch (err: any) {
             if (err.status === 303) throw err;
