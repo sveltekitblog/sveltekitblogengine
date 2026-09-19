@@ -218,6 +218,7 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
         seo: {
             title: `${postTitle} - ${siteTitle}`,
             description: excerpt,
+            ogType: "article",
             url: post.isFallback ? xDefaultUrl : fullUrl,
             image: ogImage,
             siteTitle,

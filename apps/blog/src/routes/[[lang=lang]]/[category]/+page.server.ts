@@ -72,7 +72,7 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
                 title: `${pageTitle} - ${getTrans(settings?.site_title) || 'Blog'}`,
                 description: getTrans(cmsPage.excerpt) || pageTitle,
                 url: canonicalUrl,
-                image: cmsPage.featured_image || settings?.logo || ''
+                image: cmsPage.featuredImage || ''
             };
             return { type: 'cms_page', page: cmsPage, layoutWidgets, category, seo };
         }
@@ -124,6 +124,7 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
     const posts = rawPosts.slice(0, limit);
 
     const siteTitle = getTrans(settings?.site_title) || 'Blog';
+    const categoryObj = (categories || []).find((c: any) => c.slug === category);
 
     const jsonLd = {
         "@context": "https://schema.org",
@@ -138,7 +139,7 @@ export const load: PageServerLoad = async ({ params, locals, url, parent, setHea
             {
                 "@type": "ListItem",
                 "position": 2,
-                "name": category,
+                "name": categoryObj?.name || category,
                 "item": canonicalUrl
             }
         ]

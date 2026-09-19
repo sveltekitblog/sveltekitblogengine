@@ -237,8 +237,6 @@
             fetchpriority="high"
         />
     {/if}
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta charset="utf-8" />
 
     <!-- 범용 페이지용 전역 Hreflang 자동 생성 (하드코딩 배제, DB 활성화 언어 연동) -->
     {#if !seo?.alternates && data.languages && data.languages.length > 0}

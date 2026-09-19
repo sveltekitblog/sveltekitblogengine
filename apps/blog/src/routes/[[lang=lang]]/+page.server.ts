@@ -105,10 +105,12 @@ export const load: PageServerLoad = async ({ locals, url, parent, setHeaders }) 
         "publisher": {
             "@type": "Organization",
             "name": siteTitle,
-            "logo": {
-                "@type": "ImageObject",
-                "url": settings?.logo || ''
-            }
+            ...(settings?.logo ? {
+                "logo": {
+                    "@type": "ImageObject",
+                    "url": settings.logo
+                }
+            } : {})
         }
     };
 
