@@ -21,6 +21,12 @@
     let container: HTMLDivElement | undefined = $state();
     let lastInjectedHtml = "";
 
+    // 광고 스크립트(AdSense) 포함 여부 감지 (구글 스크립트는 Shadow DOM 내부를 탐색하지 못하므로 자동 Light DOM 전환)
+    const isAdSense = $derived(
+        Boolean(html && (html.includes("adsbygoogle") || html.includes("pagead2.googlesyndication.com")))
+    );
+    const effectiveUseShadowDom = $derived(isAdSense ? false : useShadowDom);
+
     $effect(() => {
         if (!container || !html) return;
 
@@ -31,7 +37,7 @@
         try {
             let targetDOM: ShadowRoot | HTMLDivElement;
 
-            if (!useShadowDom) {
+            if (!effectiveUseShadowDom) {
                 // 일반 모드 (Light DOM): 외부 스타일 상속
                 let shadow = container.shadowRoot;
                 if (shadow) shadow.innerHTML = ""; // 기존 쉐도우 돔 내부 비우기
@@ -57,7 +63,7 @@
 
                 // Copy content
                 let content = oldScript.textContent || "";
-                if (!useShadowDom && content.includes("adsbygoogle") && !content.includes("window.adsbygoogle")) {
+                if (!effectiveUseShadowDom && content.includes("adsbygoogle") && !content.includes("window.adsbygoogle")) {
                     // 엄격 모드(Strict Mode)에서 변수 선언 오류로 인한 실행 중단 방지
                     content = content.replace(/\badsbygoogle\s*=/g, "window.adsbygoogle =");
                 }
@@ -75,7 +81,8 @@
 <div 
     bind:this={container} 
     class="html-widget-host" 
-    class:light-dom-widget={!useShadowDom}
+    class:light-dom-widget={!effectiveUseShadowDom}
+    class:adsense-widget={isAdSense}
 ></div>
 
 <style>
@@ -87,6 +94,9 @@
         font-size: var(--widget-item-font-size, inherit);
         font-weight: var(--widget-item-font-weight, inherit);
         color: var(--widget-item-color, inherit);
+    }
+    .html-widget-host.adsense-widget {
+        min-height: 250px; /* 광고 로딩 시 레이아웃 이동(CLS) 방어 */
     }
 </style>
 

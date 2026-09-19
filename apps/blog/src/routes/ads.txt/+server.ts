@@ -22,12 +22,16 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ locals }) => {
     const db = locals.db;
     if (!db) {
-        return text('', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+        return new Response('Not Found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
 
     try {
         const settings = await db.getSettings();
-        const content = settings.ads_txt || "";
+        const content = (settings.ads_txt || "").trim();
+
+        if (!content) {
+            return new Response('Not Found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+        }
 
         return text(content, {
             headers: {
@@ -37,6 +41,6 @@ export const GET: RequestHandler = async ({ locals }) => {
         });
     } catch (err) {
         console.error('Failed to load ads.txt from db:', err);
-        return text('', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+        return new Response('Not Found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
 };

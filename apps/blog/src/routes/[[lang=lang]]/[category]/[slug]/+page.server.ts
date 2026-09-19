@@ -167,10 +167,12 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
             "publisher": {
                 "@type": "Organization",
                 "name": siteTitle,
-                "logo": {
-                    "@type": "ImageObject",
-                    "url": settings?.logo || ogImage
-                }
+                ...((settings?.logo || ogImage) ? {
+                    "logo": {
+                        "@type": "ImageObject",
+                        "url": settings?.logo || ogImage
+                    }
+                } : {})
             }
         },
         {
@@ -181,13 +183,13 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
                     "@type": "ListItem",
                     "position": 1,
                     "name": "Home",
-                    "item": `${siteUrl}/`
+                    "item": `${siteUrl}${locals.lang !== locals.dbDefaultLang ? `/${locals.lang}` : ''}/`
                 },
                 {
                     "@type": "ListItem",
                     "position": 2,
                     "name": post.categoryName || post.categorySlug || "Category",
-                    "item": `${siteUrl}/${post.categorySlug}`
+                    "item": `${siteUrl}${locals.lang !== locals.dbDefaultLang ? `/${locals.lang}` : ''}/${post.categorySlug}`
                 },
                 {
                     "@type": "ListItem",

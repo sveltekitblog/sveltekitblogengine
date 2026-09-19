@@ -54,6 +54,14 @@ export const GET: RequestHandler = async ({ platform, url, locals }) => {
             `)
             .all();
 
+        // Fetch published categories for archive URLs
+        const { results: categories } = await db
+            .prepare(`
+                SELECT DISTINCT slug 
+                FROM categories 
+                WHERE slug IS NOT NULL AND slug != ''
+            `).all();
+
         // Fetch all active languages configured in admin DB
         const { results: dbLanguages } = await db
             .prepare('SELECT code FROM languages ORDER BY sort_order ASC')
@@ -113,6 +121,12 @@ ${alternateLinks ? alternateLinks + '\n' : ''}        <lastmod>${new Date(post.u
         <priority>0.8</priority>
     </url>`;
 }).join('\n')}
+${(categories || []).map((cat: any) => `    <url>
+        <loc>${siteUrl}/${cat.slug}</loc>
+${activeLangs.map((code: string) => `        <xhtml:link rel="alternate" hreflang="${code}" href="${siteUrl}${code === dbDefaultLang ? '' : `/${code}`}/${cat.slug}" />`).join('\n')}
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>`).join('\n')}
 </urlset>`;
 
         return new Response(sitemap, {

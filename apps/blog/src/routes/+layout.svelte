@@ -256,9 +256,6 @@
         <link rel="alternate" hreflang="x-default" href="{settings.siteUrl || ''}{cleanPath === '/' ? '' : cleanPath}" />
     {/if}
 
-    <meta property="og:site_name" content={siteTitle} />
-    <meta property="og:locale" content={lang === "ko" ? "ko_KR" : lang} />
-
     {#if data.googleFonts && data.googleFonts.length > 0}
         {#each data.googleFonts as fontName}
             {@html `<link rel="preload" as="style" href="/api/font-css?name=${fontName}" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="/api/font-css?name=${fontName}"></noscript>`}
