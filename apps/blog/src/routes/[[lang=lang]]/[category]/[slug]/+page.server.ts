@@ -130,8 +130,18 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
         ? `${siteUrl}/${post.categorySlug}/${defaultTr.slug}`
         : (post.lang === locals.dbDefaultLang ? fullUrl : `${siteUrl}/${post.categorySlug}/${post.slug}`);
 
-    // OG Image
-    const ogImage = post.featured_image || settings?.logo || '';
+    // OG Image (절대 URL 보장)
+    const rawOgImage = post.featured_image || settings?.logo || '';
+    const ogImage = rawOgImage
+        ? (rawOgImage.startsWith('http') ? rawOgImage : `${siteUrl}${rawOgImage.startsWith('/') ? '' : '/'}${rawOgImage}`)
+        : '';
+
+    // ISO 8601 타임존 보정 (SQLite datetime('now')는 UTC이므로 'Z' 추가)
+    const ensureTimezone = (dateStr: string | null | undefined): string | undefined => {
+        if (!dateStr) return undefined;
+        if (dateStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(dateStr)) return dateStr;
+        return dateStr + 'Z';
+    };
 
     // Prepare JSON-LD (Safe stringify with BlogPosting & BreadcrumbList)
     const jsonLd = [
@@ -140,12 +150,13 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
             "@type": "BlogPosting",
             "headline": postTitle,
             "description": excerpt,
-            "image": ogImage,
-            "datePublished": post.publishedAt || post.createdAt,
-            "dateModified": post.updatedAt || post.createdAt,
+            ...(ogImage ? { "image": ogImage } : {}),
+            "datePublished": ensureTimezone(post.publishedAt || post.createdAt),
+            "dateModified": ensureTimezone(post.updatedAt || post.createdAt),
             "author": {
                 "@type": "Person",
-                "name": settings?.authorName || "Blog Author"
+                "name": settings?.authorName || "Blog Author",
+                "url": siteUrl
             },
             "publisher": {
                 "@type": "Organization",
