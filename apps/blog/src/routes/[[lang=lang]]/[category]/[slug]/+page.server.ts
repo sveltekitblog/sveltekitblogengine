@@ -131,7 +131,13 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
         : (post.lang === locals.dbDefaultLang ? fullUrl : `${siteUrl}/${post.categorySlug}/${post.slug}`);
 
     // OG Image (절대 URL 보장)
-    const rawOgImage = post.featured_image || settings?.logo || '';
+    // JSON-LD image: featuredImage → content 첫 번째 이미지 → 없으면 필드 제거 (Google 가이드라인 준수)
+    const extractFirstImage = (html: string | null | undefined): string => {
+        if (!html) return '';
+        const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+        return match?.[1] || '';
+    };
+    const rawOgImage = post.featuredImage || extractFirstImage(post.content) || '';
     const ogImage = rawOgImage
         ? (rawOgImage.startsWith('http') ? rawOgImage : `${siteUrl}${rawOgImage.startsWith('/') ? '' : '/'}${rawOgImage}`)
         : '';
