@@ -39,6 +39,10 @@ CS_GUIDE.md
 .output
 .vercel
 .netlify
+# HTML
+*.html
+**/*.html
+!/apps/*/src/app.html
 
 .logs
 /.svelte-kit
