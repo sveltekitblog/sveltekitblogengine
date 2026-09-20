@@ -182,6 +182,45 @@ export function syncAccounts(silent = false) {
     // 파일 저장
     writeFileSync(configPath, JSON.stringify(updatedAccounts, null, 2), 'utf8');
 
+    // ── 3. package.json의 deploy:blog / deploy:admin 프로젝트명 자동 동기화 ──
+    if (existsSync(pkgPath) && updatedAccounts.main) {
+        try {
+            const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+            let pkgModified = false;
+            const targetBlogProj = updatedAccounts.main.blogProject;
+            const targetAdminProj = updatedAccounts.main.adminProject;
+
+            if (pkg.scripts?.['deploy:blog'] && targetBlogProj) {
+                const updated = pkg.scripts['deploy:blog']
+                    .replace(/--project-name\s+([^\s&]+)/, `--project-name ${targetBlogProj}`)
+                    .replace(/node scripts\/sync-secrets\.js apps\/blog\s+([^\s&]+)/, `node scripts/sync-secrets.js apps/blog ${targetBlogProj}`);
+                if (updated !== pkg.scripts['deploy:blog']) {
+                    pkg.scripts['deploy:blog'] = updated;
+                    pkgModified = true;
+                }
+            }
+
+            if (pkg.scripts?.['deploy:admin'] && targetAdminProj) {
+                const updated = pkg.scripts['deploy:admin']
+                    .replace(/--project-name\s+([^\s&]+)/, `--project-name ${targetAdminProj}`)
+                    .replace(/node scripts\/sync-secrets\.js apps\/admin\s+([^\s&]+)/, `node scripts/sync-secrets.js apps/admin ${targetAdminProj}`);
+                if (updated !== pkg.scripts['deploy:admin']) {
+                    pkg.scripts['deploy:admin'] = updated;
+                    pkgModified = true;
+                }
+            }
+
+            if (pkgModified) {
+                writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + '\n', 'utf8');
+                if (!silent) {
+                    console.log(`✨ [package.json] 배포 프로젝트명이 [blog: ${targetBlogProj}, admin: ${targetAdminProj}]로 자동 동기화되었습니다!`);
+                }
+            }
+        } catch (e) {
+            if (!silent) console.warn('⚠ package.json 프로젝트명 업데이트 실패:', e.message);
+        }
+    }
+
     if (!silent) {
         console.log('\n======================================================');
         console.log('✅ [.deploy-accounts.json] 계정 설정 동기화 완료!');

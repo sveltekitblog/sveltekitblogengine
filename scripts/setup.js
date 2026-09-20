@@ -139,8 +139,42 @@ function saveBackupResources(resources, blogProject, adminProject) {
         };
         writeFileSync(backupPath, JSON.stringify(backupData, null, 4) + '\n');
         console.log(`  💾 Automatically backed up environment bindings and deploy names to: ${backupPath}`);
+        updatePackageJsonDeployScripts(blogProject, adminProject);
     } catch (e) {
         console.error('  ⚠ Failed to save wrangler.backup.json:', e.message);
+    }
+}
+
+function updatePackageJsonDeployScripts(blogProject, adminProject) {
+    const pkgPath = resolve(ROOT, 'package.json');
+    if (!existsSync(pkgPath)) return;
+    try {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+        let modified = false;
+        if (pkg.scripts?.['deploy:blog'] && blogProject) {
+            const updated = pkg.scripts['deploy:blog']
+                .replace(/--project-name\s+([^\s&]+)/, `--project-name ${blogProject}`)
+                .replace(/node scripts\/sync-secrets\.js apps\/blog\s+([^\s&]+)/, `node scripts/sync-secrets.js apps/blog ${blogProject}`);
+            if (updated !== pkg.scripts['deploy:blog']) {
+                pkg.scripts['deploy:blog'] = updated;
+                modified = true;
+            }
+        }
+        if (pkg.scripts?.['deploy:admin'] && adminProject) {
+            const updated = pkg.scripts['deploy:admin']
+                .replace(/--project-name\s+([^\s&]+)/, `--project-name ${adminProject}`)
+                .replace(/node scripts\/sync-secrets\.js apps\/admin\s+([^\s&]+)/, `node scripts/sync-secrets.js apps/admin ${adminProject}`);
+            if (updated !== pkg.scripts['deploy:admin']) {
+                pkg.scripts['deploy:admin'] = updated;
+                modified = true;
+            }
+        }
+        if (modified) {
+            writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + '\n', 'utf8');
+            console.log(`  📦 [package.json] Deploy scripts updated: blog=${blogProject}, admin=${adminProject}`);
+        }
+    } catch (e) {
+        console.warn('  ⚠ Failed to update package.json deploy scripts:', e.message);
     }
 }
 
