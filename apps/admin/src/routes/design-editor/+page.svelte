@@ -980,7 +980,7 @@
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
         } catch (e: any) {
-            alert("디자인 백업 실패: " + e.message);
+            alert(t("admin.theme.slot_backup_fail", { default: "디자인 백업 실패: " }) + e.message);
         }
     }
 
@@ -1047,12 +1047,12 @@
             const text = await file.text();
             const converted = convertLegacyBackupToPreset(JSON.parse(text));
             if (!converted) {
-                alert("유효한 디자인 백업 파일 형식이 아닙니다.");
+                alert(t("admin.theme.slot_restore_invalid_file", { default: "유효한 디자인 백업 파일 형식이 아닙니다." }));
                 slotRestoreFileName = ""; slotRestoreFileContent = null; input.value = ""; return;
             }
             slotRestoreFileContent = converted;
         } catch (err: any) {
-            alert("파일 읽기 실패: " + err.message);
+            alert(t("admin.theme.slot_restore_read_fail", { default: "파일 읽기 실패: " }) + err.message);
             slotRestoreFileName = ""; slotRestoreFileContent = null; input.value = "";
         }
     }
@@ -1061,7 +1061,7 @@
         if (!slotRestoreFileContent) return;
         const targetId = slotRestoreTargetId;
         const targetName = slots[targetId]?.name || `디자인 슬롯 ${targetId}`;
-        if (!confirm(`선택한 디자인을 '${targetName}'(으)로 복원하시겠습니까?\n(기존 ${targetName}의 디자인이 덮어쓰여집니다)`)) return;
+        if (!confirm(t("admin.theme.slot_restore_confirm", { name: targetName, default: `선택한 디자인을 '${targetName}'(으)로 복원하시겠습니까?\n(기존 ${targetName}의 디자인이 덮어쓰여집니다)` }))) return;
         try {
             slots[currentSlotId] = getSnapshotOfCurrentSlot();
             slots[targetId] = {
@@ -1071,8 +1071,10 @@
                 updatedAt: new Date().toISOString()
             };
             if (targetId === currentSlotId) applySlotSnapshot(slots[targetId]);
-            alert(`✅ '${targetName}'에 디자인이 성공적으로 복원되었습니다!\n화면 프리뷰를 확인하신 후, 우측 상단의 [블로그에 적용] 또는 [현재 설정 저장] 버튼을 눌러 확정해 주세요.`);
-        } catch (err: any) { alert("복원 적용 실패: " + err.message); }
+            alert(t("admin.theme.slot_restore_success", { name: targetName, default: `✅ '${targetName}'에 디자인이 성공적으로 복원되었습니다!\n화면 프리뷰를 확인하신 후, 우측 상단의 [블로그에 적용] 또는 [현재 설정 저장] 버튼을 눌러 확정해 주세요.` }));
+        } catch (err: any) {
+            alert(t("admin.theme.slot_restore_fail", { default: "복원 적용 실패: " }) + err.message);
+        }
     }
 
     // Style Helper: Convert background config to CSS string
@@ -7354,18 +7356,17 @@ header.blog-header.scrolled .header-inner {
                         {t("admin.theme.tab_config", { default: "고급 설정" })}
                     </h2>
 
-                    <!-- Full Design Backup Section -->
-                    <!-- 슬롯별 디자인 독립 백업 및 복원 -->
+                    <!-- 백업 및 복원 -->
                     <AccordionItem
-                        title={t("admin.theme.backup_restore_title", { default: "디자인 프리셋 백업 및 복원" })}
-                        icon={Settings}
+                        title={t("admin.theme.slot_backup_restore_title", { default: "슬롯별 디자인 백업 및 복원" })}
+                        icon={Database}
                     >
                         <div class="settings-form mb-8">
                             <div class="form-header">
-                                <h3 class="depth-2-subtitle">{t("admin.theme.backup_restore_title", { default: "디자인 프리셋 백업 및 복원" })}</h3>
-                                <p class="depth-4-hint">
-                                    각 슬롯의 디자인을 독립된 파일로 내보내거나, 백업 파일을 원하는 슬롯에 지정하여 안전하게 복원할 수 있습니다.<br />
-                                    <strong class="text-slate-500">※ 복원 시 다른 슬롯이나 게시글 데이터는 전혀 영향을 받지 않습니다.</strong>
+                                <h3 class="depth-2-subtitle">{t("admin.theme.slot_backup_restore_title", { default: "슬롯별 디자인 백업 및 복원" })}</h3>
+                                <p class="depth-4-hint break-keep leading-relaxed" style="word-break: keep-all;">
+                                    {t("admin.theme.slot_backup_desc", { default: "각 슬롯의 디자인을 독립된 파일로 내보내거나, 백업 파일을 특정 슬롯에 지정하여 안전하게 복원할 수 있습니다." })}<br />
+                                    <span class="text-xs text-slate-500 block mt-1">{t("admin.theme.slot_backup_notice", { default: "※ 복원 시 다른 슬롯이나 게시글 데이터는 전혀 영향을 받지 않습니다." })}</span>
                                 </p>
                             </div>
 
@@ -7373,23 +7374,23 @@ header.blog-header.scrolled .header-inner {
                                 <!-- 슬롯 백업 (내보내기) -->
                                 <div class="setting-row">
                                     <div class="setting-info">
-                                        <label class="depth-3-label">디자인 백업 (내보내기)</label>
-                                        <span class="depth-4-hint">백업할 슬롯을 선택한 뒤 독립된 JSON 파일로 다운로드합니다.</span>
+                                        <label class="depth-3-label">{t("admin.theme.slot_export_title", { default: "디자인 백업 (내보내기)" })}</label>
+                                        <span class="depth-4-hint break-keep" style="word-break: keep-all;">{t("admin.theme.slot_export_hint", { default: "백업할 슬롯을 선택한 뒤 독립된 JSON 파일로 다운로드합니다." })}</span>
                                     </div>
-                                    <div class="setting-control flex items-center gap-2 w-full">
-                                        <select class="select-field flex-1" style="height: 38px;" bind:value={slotBackupTargetId}>
+                                    <div class="setting-control flex flex-col gap-2 w-full">
+                                        <select class="select-field w-full" style="height: 38px;" bind:value={slotBackupTargetId}>
                                             {#each Object.keys(slots) as sId}
                                                 <option value={sId}>슬롯 {sId} ({slots[sId]?.name || `슬롯 ${sId}`})</option>
                                             {/each}
                                         </select>
                                         <button
                                             type="button"
-                                            class="btn-primary flex items-center justify-center gap-2 flex-none"
-                                            style="height: 38px; min-width: 150px; padding: 0 1rem; background-color: #4f46e5;"
+                                            class="btn-primary w-full flex items-center justify-center gap-2"
+                                            style="height: 38px; background-color: #4f46e5;"
                                             onclick={() => exportSlotPreset(slotBackupTargetId)}
                                         >
                                             <Download size={16} />
-                                            슬롯 백업 다운로드
+                                            {t("admin.theme.slot_export_btn", { default: "슬롯 백업 다운로드" })}
                                         </button>
                                     </div>
                                 </div>
@@ -7397,46 +7398,47 @@ header.blog-header.scrolled .header-inner {
                                 <!-- 슬롯 복원 (가져오기) -->
                                 <div class="setting-row">
                                     <div class="setting-info">
-                                        <label class="depth-3-label text-orange-600">디자인 복원 (가져오기)</label>
-                                        <span class="depth-4-hint">백업 파일을 선택하고, 이 디자인을 주입할 대상 슬롯을 지정합니다.</span>
+                                        <label class="depth-3-label text-orange-600">{t("admin.theme.slot_import_title", { default: "디자인 복원 (가져오기)" })}</label>
+                                        <span class="depth-4-hint break-keep" style="word-break: keep-all;">{t("admin.theme.slot_import_hint", { default: "백업 파일을 선택하고, 이 디자인을 주입할 대상 슬롯을 지정합니다." })}</span>
                                     </div>
-                                    <div class="setting-control flex flex-col gap-3 w-full">
+                                    <div class="setting-control flex flex-col gap-2.5 w-full">
                                         <div class="flex items-center gap-2 w-full">
                                             <button
                                                 type="button"
                                                 class="btn-action-mini btn-mini flex-none"
-                                                style="height: 38px; min-width: 100px; padding: 0 0.75rem;"
+                                                style="height: 38px; min-width: 90px; padding: 0 0.75rem;"
                                                 onclick={() => document.getElementById("restore-slot-file")?.click()}
                                             >
                                                 <Upload size={16} />
                                                 {t("admin.theme.browse", { default: "찾아보기..." })}
                                             </button>
-                                            <div class="flex-1 text-sm text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap bg-slate-50 px-3 py-2 border rounded border-slate-200 flex items-center" style="height: 38px;">
+                                            <div class="flex-1 text-xs text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap bg-slate-50 px-3 py-2 border rounded border-slate-200 flex items-center" style="height: 38px;">
                                                 {slotRestoreFileName || t("admin.theme.no_file_selected", { default: "선택된 파일 없음." })}
                                             </div>
                                         </div>
                                         <input id="restore-slot-file" type="file" accept=".json" class="hidden" onchange={handleSlotRestoreFileSelect} />
 
-                                        <div class="flex items-center gap-2 w-full">
-                                            <div class="flex-1 flex items-center gap-2">
-                                                <span class="text-xs font-semibold text-slate-600 whitespace-nowrap">복원 대상:</span>
-                                                <select class="select-field flex-1" style="height: 38px;" bind:value={slotRestoreTargetId}>
-                                                    {#each Object.keys(slots) as sId}
-                                                        <option value={sId}>👉 슬롯 {sId} ({slots[sId]?.name || `슬롯 ${sId}`})에 복원</option>
-                                                    {/each}
-                                                </select>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                class="btn-primary flex items-center justify-center gap-2 flex-none"
-                                                style="height: 38px; min-width: 150px; padding: 0 1rem; background-color: #ea580c;"
-                                                disabled={!slotRestoreFileContent}
-                                                onclick={applySlotRestore}
-                                            >
-                                                <Upload size={16} />
-                                                선택 슬롯에 복원 적용
-                                            </button>
+                                        <div class="flex flex-col gap-1 w-full">
+                                            <span class="text-xs font-semibold text-slate-600">{t("admin.theme.slot_restore_target_label", { default: "복원 대상 슬롯:" })}</span>
+                                            <select class="select-field w-full" style="height: 38px;" bind:value={slotRestoreTargetId}>
+                                                {#each Object.keys(slots) as sId}
+                                                    <option value={sId}>
+                                                        {t("admin.theme.slot_restore_target_option", { id: sId, name: slots[sId]?.name || `슬롯 ${sId}`, default: `👉 슬롯 ${sId} (${slots[sId]?.name || `슬롯 ${sId}`})에 복원` })}
+                                                    </option>
+                                                {/each}
+                                            </select>
                                         </div>
+
+                                        <button
+                                            type="button"
+                                            class="btn-primary w-full flex items-center justify-center gap-2"
+                                            style="height: 38px; background-color: #ea580c;"
+                                            disabled={!slotRestoreFileContent}
+                                            onclick={applySlotRestore}
+                                        >
+                                            <Upload size={16} />
+                                            {t("admin.theme.slot_restore_apply_btn", { default: "선택 슬롯에 복원 적용" })}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
