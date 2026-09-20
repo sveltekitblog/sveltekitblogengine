@@ -28,7 +28,7 @@ import { getStorageAdapter } from '$lib/server/storageAdapter';
  *
  * Capture group 1: The key path starting with "uploads/"
  */
-const IMAGE_URL_REGEX = /(?:(?:https?:\/\/[^\/"'\s<>)]+)?\/images\/|https?:\/\/ik\.imagekit\.io\/[^\/"'\s<>)]+\/|https?:\/\/[^\/"'\s<>)]+\.r2\.dev\/|https?:\/\/[^\/"'\s<>)]+\/storage\/v1\/object\/public\/[^\/"'\s<>)]+\/)(uploads\/[^\s"'<>\)]+\.(?:webp|png|jpg|jpeg|gif|svg|avif))/gi;
+const IMAGE_URL_REGEX = /(?:(?:https?:\/\/[^\/"'\s<>)]+)?\/images\/|https?:\/\/ik\.imagekit\.io\/[^\/"'\s<>)]+\/|https?:\/\/[^\/"'\s<>)]+\.r2\.dev\/|https?:\/\/[^\/"'\s<>)]+\/storage\/v1\/object\/public\/[^\/"'\s<>)]+\/)([^\s"'<>\)\?\#]+\.(?:webp|png|jpg|jpeg|gif|svg|avif))/gi;
 
 interface MigrateRequestBody {
     keys?: string[]; // Optional: list of specific keys restored
@@ -71,9 +71,15 @@ export const POST: RequestHandler = async ({ request, platform, locals, url }) =
             .prepare(`
                 SELECT id, content, content_markdown, featured_image 
                 FROM posts 
-                WHERE content LIKE '%uploads/%' 
-                   OR content_markdown LIKE '%uploads/%' 
-                   OR featured_image LIKE '%uploads/%'
+                WHERE content LIKE '%/images/%' 
+                   OR content LIKE '%ik.imagekit.io%' 
+                   OR content LIKE '%.r2.dev%'
+                   OR content_markdown LIKE '%/images/%' 
+                   OR content_markdown LIKE '%ik.imagekit.io%' 
+                   OR content_markdown LIKE '%.r2.dev%'
+                   OR featured_image LIKE '%/images/%'
+                   OR featured_image LIKE '%ik.imagekit.io%'
+                   OR featured_image LIKE '%.r2.dev%'
             `)
             .all<{
                 id: string;
