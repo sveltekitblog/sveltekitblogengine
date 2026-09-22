@@ -846,6 +846,19 @@
         }),
     );
 
+    onMount(() => {
+        // [디자인 에디터 슬롯 동기화 원칙]
+        // 페이지 진입 시 DB 단일 테이블의 레거시 잔재 대신,
+        // 현재 활성화된 슬롯(기본 1번 슬롯)의 온전한 스냅샷을 에디터 상태에 즉각 주입하여
+        // 화면 불일치 및 슬롯 전환 시의 스냅샷 오염을 원천 차단합니다.
+        const initSlotId = activeDesignMode || "1";
+        const targetSlot = slots[initSlotId] || slots["1"];
+        if (targetSlot) {
+            currentSlotId = targetSlot === slots[initSlotId] ? initSlotId : "1";
+            applySlotSnapshot(targetSlot);
+        }
+    });
+
     function applySlotSnapshot(slotData: any) {
         if (!slotData) return;
         try {
