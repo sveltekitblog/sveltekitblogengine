@@ -212,12 +212,30 @@ export const POST: RequestHandler = async ({ request, platform }) => {
             }
         }
 
-        // --- Phase 3: Execute in correct order (Deletes then Inserts) ---
-        if (blogDeleteStatements.length > 0 || blogInsertStatements.length > 0) {
-            await BLOG_DB.batch([...blogDeleteStatements, ...blogInsertStatements]);
+        // --- Phase 3: Execute in safe chunks (Deletes first, then Inserts) ---
+        const executeInChunks = async (db: any, statements: any[], chunkSize = 50) => {
+            for (let i = 0; i < statements.length; i += chunkSize) {
+                const chunk = statements.slice(i, i + chunkSize);
+                if (chunk.length > 0) {
+                    await db.batch(chunk);
+                }
+            }
+        };
+
+        // 1. BLOG_DB: Deletes must strictly complete before Inserts
+        if (blogDeleteStatements.length > 0) {
+            await executeInChunks(BLOG_DB, blogDeleteStatements);
         }
-        if (userDeleteStatements.length > 0 || userInsertStatements.length > 0) {
-            await USER_DB.batch([...userDeleteStatements, ...userInsertStatements]);
+        if (blogInsertStatements.length > 0) {
+            await executeInChunks(BLOG_DB, blogInsertStatements);
+        }
+
+        // 2. USER_DB: Deletes must strictly complete before Inserts
+        if (userDeleteStatements.length > 0) {
+            await executeInChunks(USER_DB, userDeleteStatements);
+        }
+        if (userInsertStatements.length > 0) {
+            await executeInChunks(USER_DB, userInsertStatements);
         }
 
         // 복원 완료 시 Cloudflare 캐시 전체 퍼지 비동기 기동 (s-maxage=86400 장기 캐시 무력화)
