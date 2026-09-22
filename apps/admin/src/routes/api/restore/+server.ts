@@ -19,7 +19,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { purgeEverything } from '@blog/shared';
 
-const SITE_INFO_KEYS = ['site_title', 'description', 'siteUrl', 'authorName', 'admin_user_id'];
+const SITE_INFO_KEYS = ['site_title', 'description', 'siteUrl', 'authorName', 'admin_user_id', 'design_slots'];
 
 // 디자인 복원 시 기존 값을 보존할 텍스트/콘텐츠 필드
 const HEADER_TEXT_KEYS = ['loginLabel', 'profileLabel', 'menuItems'];
