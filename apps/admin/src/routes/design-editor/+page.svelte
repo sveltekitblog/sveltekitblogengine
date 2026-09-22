@@ -854,9 +854,18 @@
             }
             if (slotData.header) {
                 headerConfig = JSON.parse(JSON.stringify(slotData.header));
+                headerConfig.menuItems = ensureMenuItemStructure(headerConfig.menuItems);
+                if (headerConfig.mobile) {
+                    headerConfig.mobile.menuItems = ensureMenuItemStructure(headerConfig.mobile.menuItems);
+                }
             }
             if (slotData.footer) {
                 footerConfig = JSON.parse(JSON.stringify(slotData.footer));
+                footerConfig.navLinks = ensureArray(footerConfig.navLinks);
+                footerConfig.socialLinks = ensureArray(footerConfig.socialLinks);
+                if (footerConfig.mobile) {
+                    footerConfig.mobile.navLinks = ensureArray(footerConfig.mobile.navLinks);
+                }
             }
             if (slotData.site_title) {
                 siteTitleConfig = JSON.parse(JSON.stringify(slotData.site_title));
@@ -1020,15 +1029,19 @@
                 try { parsedConfig = typeof master.config === "string" ? JSON.parse(master.config) : (master.config || {}); } catch {}
                 let customTitle = lw.custom_title;
                 try { customTitle = typeof lw.custom_title === "string" ? JSON.parse(lw.custom_title) : lw.custom_title; } catch {}
+                const resolvedWidgetId = Number(lw.widget_id ?? lw.id ?? 1);
                 return {
-                    id: lw.widget_id,
-                    name: master.name || `위젯 ${lw.widget_id}`,
+                    id: lw.id || resolvedWidgetId,
+                    widget_id: resolvedWidgetId,
+                    name: master.name || `위젯 ${resolvedWidgetId}`,
                     type: master.type || "RecentPosts",
                     config: parsedConfig,
-                    column_index: lw.column_index ?? 0,
-                    sort_order: lw.sort_order ?? 0,
+                    column_index: lw.column_index ?? lw.columnIndex ?? 0,
+                    columnIndex: lw.column_index ?? lw.columnIndex ?? 0,
+                    sort_order: lw.sort_order ?? lw.sortOrder ?? 0,
+                    sortOrder: lw.sort_order ?? lw.sortOrder ?? 0,
                     device: lw.device || "desktop",
-                    custom_title: customTitle
+                    custom_title: ensureTranslationObj(customTitle, "")
                 };
             });
 
