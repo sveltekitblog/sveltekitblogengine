@@ -66,24 +66,97 @@ export const GET: RequestHandler = async ({ platform }) => {
         const layoutWidgets = layoutWidgetsRes.results || [];
         const languages = languagesRes.results || [];
 
-        // 3. 화이트리스트 필터링 적용 (개인정보 원천 차단) + 텍스트 필드 제거 (디자인만 공유)
-        const filteredSettings = blogSettings
-            .filter((s: any) => DESIGN_SETTING_KEYS.includes(s.key))
-            .map((s: any) => {
-                if (s.key === 'header' || s.key === 'footer') {
-                    try {
-                        const parsed = JSON.parse(s.value);
-                        const textKeys = s.key === 'header' ? HEADER_TEXT_KEYS : FOOTER_TEXT_KEYS;
-                        for (const key of textKeys) {
-                            delete parsed[key];
+        // 3. 다중 디자인 슬롯(design_slots) 지원: 현재 활성 슬롯 디자인 우선 추출
+        const designSlotsRow = blogSettings.find((s: any) => s.key === 'design_slots');
+        let activeSlotData: any = null;
+        if (designSlotsRow?.value) {
+            try {
+                const parsedSlots = JSON.parse(designSlotsRow.value);
+                const activeMode = parsedSlots.active_mode || '1';
+                activeSlotData = parsedSlots.slots?.[activeMode] || parsedSlots.slots?.['1'] || null;
+            } catch {}
+        }
+
+        let exportSettings: any[] = [];
+        let exportLayouts: any[] = layouts;
+        let exportWidgets: any[] = widgets;
+        let exportLayoutWidgets: any[] = layoutWidgets;
+
+        if (activeSlotData) {
+            // 현재 활성 슬롯 스냅샷을 기반으로 공유 데이터 구성
+            const cleanHeader = JSON.parse(JSON.stringify(activeSlotData.header || {}));
+            for (const key of HEADER_TEXT_KEYS) delete cleanHeader[key];
+
+            const cleanFooter = JSON.parse(JSON.stringify(activeSlotData.footer || {}));
+            for (const key of FOOTER_TEXT_KEYS) delete cleanFooter[key];
+
+            exportSettings = [
+                { key: 'theme', value: JSON.stringify(activeSlotData.theme || {}) },
+                { key: 'header', value: JSON.stringify(cleanHeader) },
+                { key: 'footer', value: JSON.stringify(cleanFooter) },
+                { key: 'widget_shadow_global', value: JSON.stringify(activeSlotData.widget_shadow_global || {}) }
+            ];
+
+            // 커스텀 CSS 보존
+            const headerCssRow = blogSettings.find((s: any) => s.key === 'header_css');
+            const footerCssRow = blogSettings.find((s: any) => s.key === 'footer_css');
+            if (headerCssRow?.value) exportSettings.push({ key: 'header_css', value: headerCssRow.value });
+            if (footerCssRow?.value) exportSettings.push({ key: 'footer_css', value: footerCssRow.value });
+
+            // 슬롯 레이아웃 추출
+            if (activeSlotData.layout) {
+                exportLayouts = [{
+                    id: 1,
+                    name: activeSlotData.name || 'Shared Layout',
+                    column_count: activeSlotData.layout.columnCount || 1,
+                    column_widths: Array.isArray(activeSlotData.layout.columnWidths) ? activeSlotData.layout.columnWidths.join(' ') : (activeSlotData.layout.columnWidths || '1fr'),
+                    mobile_column_count: activeSlotData.layout.mobileColumnCount || 1,
+                    mobile_column_widths: Array.isArray(activeSlotData.layout.mobileColumnWidths) ? activeSlotData.layout.mobileColumnWidths.join(' ') : (activeSlotData.layout.mobileColumnWidths || '1fr'),
+                    is_active: 1
+                }];
+            }
+
+            // 슬롯 위젯 목록 추출 및 정규화
+            if (Array.isArray(activeSlotData.widgets)) {
+                exportWidgets = [];
+                exportLayoutWidgets = [];
+                activeSlotData.widgets.forEach((w: any, idx: number) => {
+                    const wId = Number(w.widget_id || w.id || (idx + 1));
+                    exportWidgets.push({
+                        id: wId,
+                        name: w.name || `Widget ${wId}`,
+                        type: w.type || 'RecentPosts',
+                        config: typeof w.config === 'object' ? JSON.stringify(w.config) : (w.config || '{}')
+                    });
+                    exportLayoutWidgets.push({
+                        id: idx + 1,
+                        layout_id: 1,
+                        widget_id: wId,
+                        column_index: w.column_index ?? w.columnIndex ?? 0,
+                        sort_order: w.sort_order ?? w.sortOrder ?? idx,
+                        device: w.device || 'desktop',
+                        custom_title: typeof w.custom_title === 'object' ? JSON.stringify(w.custom_title) : (w.custom_title || null)
+                    });
+                });
+            }
+        } else {
+            // Fallback: 슬롯 데이터가 없는 경우 기존 화이트리스트 단일 테이블 필터링 적용
+            exportSettings = blogSettings
+                .filter((s: any) => DESIGN_SETTING_KEYS.includes(s.key))
+                .map((s: any) => {
+                    if (s.key === 'header' || s.key === 'footer') {
+                        try {
+                            const parsed = JSON.parse(s.value);
+                            const textKeys = s.key === 'header' ? HEADER_TEXT_KEYS : FOOTER_TEXT_KEYS;
+                            for (const key of textKeys) delete parsed[key];
+                            return { ...s, value: JSON.stringify(parsed) };
+                        } catch {
+                            return s;
                         }
-                        return { ...s, value: JSON.stringify(parsed) };
-                    } catch {
-                        return s;
                     }
-                }
-                return s;
-            });
+                    return s;
+                });
+        }
 
         // 4. 표준 백업 포맷 구성 및 반환
         const backupData = {
@@ -91,10 +164,10 @@ export const GET: RequestHandler = async ({ platform }) => {
             version: '3.0',
             backupType: 'design',
             data: {
-                blog_settings: filteredSettings,
-                layouts,
-                widgets,
-                layout_widgets: layoutWidgets,
+                blog_settings: exportSettings,
+                layouts: exportLayouts,
+                widgets: exportWidgets,
+                layout_widgets: exportLayoutWidgets,
                 languages
             }
         };
