@@ -193,7 +193,7 @@ export const actions: Actions = {
                 console.error('[Snapshot Error]', snapErr);
             }
 
-            throw redirect(303, '/posts');
+            throw redirect(303, `/posts?refreshed=${Date.now()}`);
         } catch (err: any) {
             if (err.status === 303) throw err;
             console.error('Failed to create posts:', err);

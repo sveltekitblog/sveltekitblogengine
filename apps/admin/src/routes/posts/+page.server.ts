@@ -19,14 +19,26 @@ import type { PageServerLoad, Actions } from './$types';
 import { error, fail } from '@sveltejs/kit';
 import { syncCategoryPostCounts } from '$lib/server/categorySync';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, setHeaders, url }) => {
     const db = locals.blogDb;
     if (!db) throw error(500, 'Database not found');
 
+    // 글쓰기/수정/삭제 후 강제 갱신 요청(?refreshed=...)이 아닐 때만 브라우저 캐시를 적용하여 워커스 호출 차단
+    const isRefreshed = url.searchParams.has('refreshed');
+    if (!isRefreshed) {
+        setHeaders({
+            'cache-control': 'private, max-age=86400, stale-while-revalidate=3600'
+        });
+    } else {
+        setHeaders({
+            'cache-control': 'no-store, no-cache, must-revalidate'
+        });
+    }
+
     try {
-        // Posts 목록 & Languages 목록 병렬 조회
+        // Posts 목록 & Languages 목록 & Categories 목록 병렬 조회
         // content, content_markdown 등의 대형 본문 컬럼은 목록 뷰에서 제외하여 D1 읽기량과 대역폭을 획기적으로 최적화
-        const [{ results: postsRaw }, langResult] = await Promise.all([
+        const [{ results: postsRaw }, langResult, catResult] = await Promise.all([
             db.prepare(`
                 SELECT id, title, slug, category_slug, type, status, author_id, featured_image,
                        lang, translation_group_id, thumbnail_fit, is_syndicated, view_count, like_count,
@@ -39,9 +51,16 @@ export const load: PageServerLoad = async ({ locals }) => {
             `).all().catch((e: any) => {
                 console.warn('Failed to load languages in admin posts:', e);
                 return { results: [] };
+            }),
+            db.prepare(`
+                SELECT slug, name, lang FROM categories ORDER BY name ASC
+            `).all().catch((e: any) => {
+                console.warn('Failed to load categories in admin posts:', e);
+                return { results: [] };
             })
         ]);
         const languages = (langResult as any)?.results || [];
+        const categories = (catResult as any)?.results || [];
 
         const posts = (postsRaw || []).map((p: any) => ({
             ...p,
@@ -51,7 +70,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 
         return {
             posts,
-            languages
+            languages,
+            categories
         };
     } catch (err) {
         console.error('Failed to load posts:', err);

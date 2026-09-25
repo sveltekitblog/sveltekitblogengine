@@ -90,11 +90,27 @@ export function extractStandardHtmlIntro(post: PostSyncData, siteUrl: string): s
 }
 
 /**
+ * 다국어 사이트 제목에서 포스트 언어에 맞는 사이트명을 추출하는 헬퍼
+ */
+export function resolveSiteName(siteTitleRaw: string | undefined, lang: string): string {
+    if (!siteTitleRaw) return '';
+    try {
+        const parsed = JSON.parse(siteTitleRaw);
+        if (typeof parsed === 'object' && parsed !== null) {
+            return parsed[lang] || parsed['ko'] || parsed['en'] || Object.values(parsed)[0] || '';
+        }
+    } catch {
+        // JSON이 아닌 일반 문자열일 경우 그대로 반환
+    }
+    return siteTitleRaw;
+}
+
+/**
  * 허브 설정(URL, API Key, 사이트 대표 URL)을 DB에서 로드
  */
 async function getHubConfig(db: D1Database) {
     const { results } = await db
-        .prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_hub_url', 'board_api_key', 'siteUrl')")
+        .prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_hub_url', 'board_api_key', 'siteUrl', 'site_title')")
         .all();
 
     const map: Record<string, string> = {};
@@ -109,8 +125,9 @@ async function getHubConfig(db: D1Database) {
     }
 
     const siteUrl = (map['siteUrl'] || 'https://sveltekitblog.com').replace(/\/+$/, '');
+    const siteTitleRaw = map['site_title'] || '';
 
-    return { apiKey, ingestUrl, siteUrl };
+    return { apiKey, ingestUrl, siteUrl, siteTitleRaw };
 }
 
 /**
@@ -130,7 +147,7 @@ export async function publishPostToHub(post: PostSyncData, db: D1Database): Prom
     try {
         if (!db) return { success: false, reason: 'database_unavailable' };
 
-        const { apiKey, ingestUrl, siteUrl } = await getHubConfig(db);
+        const { apiKey, ingestUrl, siteUrl, siteTitleRaw } = await getHubConfig(db);
         if (!apiKey) return { success: false, reason: 'no_api_key' };
 
         const categorySlug = post.categorySlug || post.category || 'general';
@@ -138,6 +155,7 @@ export async function publishPostToHub(post: PostSyncData, db: D1Database): Prom
         const postUrl = post.url || buildPostUrl(siteUrl, lang, categorySlug, post.slug);
         const htmlIntro = extractStandardHtmlIntro(post, siteUrl);
         const featuredImageUrl = makeAbsoluteUrl(post.featuredImage, siteUrl);
+        const siteName = resolveSiteName(siteTitleRaw, lang);
 
         let parsedTags: string[] = [];
         if (Array.isArray(post.tags)) {
@@ -152,8 +170,10 @@ export async function publishPostToHub(post: PostSyncData, db: D1Database): Prom
         }
 
         const payload = {
+            site_name: siteName,
             post: {
                 title: post.title,
+                site_name: siteName,
                 excerpt: post.excerpt || '',
                 content: htmlIntro,
                 original_url: postUrl,
@@ -198,18 +218,21 @@ export async function hidePostFromHub(post: PostSyncData, db: D1Database): Promi
     try {
         if (!db) return { success: false, reason: 'database_unavailable' };
 
-        const { apiKey, ingestUrl, siteUrl } = await getHubConfig(db);
+        const { apiKey, ingestUrl, siteUrl, siteTitleRaw } = await getHubConfig(db);
         if (!apiKey) return { success: false, reason: 'no_api_key' };
 
         const categorySlug = post.categorySlug || post.category || 'general';
         const lang = post.lang || 'ko';
         const postUrl = post.url || buildPostUrl(siteUrl, lang, categorySlug, post.slug);
+        const siteName = resolveSiteName(siteTitleRaw, lang);
 
         const featuredImageUrl = makeAbsoluteUrl(post.featuredImage, siteUrl);
 
         const payload = {
+            site_name: siteName,
             post: {
                 title: post.title,
+                site_name: siteName,
                 excerpt: post.excerpt || '',
                 original_url: postUrl,
                 featured_image: featuredImageUrl,

@@ -19,12 +19,73 @@
     import { enhance } from "$app/forms";
     import type { PageData } from "./$types";
     import { invalidateAll } from "$app/navigation";
-    import { FileText, Edit2, Trash2, Plus, Eye, Calendar, Tag } from "lucide-svelte";
+    import { FileText, Edit2, Trash2, Plus, Eye, Calendar, Tag, RotateCw, Folder, File, Clock, HelpCircle } from "lucide-svelte";
     import { t } from "$lib/i18n.svelte";
 
     let { data } = $props<{ data: PageData }>();
 
     let deleteConfirmPost: any = $state(null);
+
+    // 브라우저 캐시 키 및 반응형 데이터 상태
+    const POSTS_CACHE_KEY = 'skbe_admin_posts_cache_v1';
+    let cachedPosts = $state<any[]>(data.posts || []);
+    let cachedCategories = $state<any[]>(data.categories || []);
+    let cachedLanguages = $state<any[]>(data.languages || []);
+    let isRefreshing = $state(false);
+
+    // 브라우저 캐시 동기화 로직
+    $effect(() => {
+        if (typeof window === 'undefined') return;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const isRefreshed = urlParams.has('refreshed');
+
+        if (isRefreshed) {
+            // 글쓰기/수정/삭제 등으로 인한 강제 갱신: 서버에서 전달된 새 data로 로컬 캐시 갱신
+            const cachePayload = {
+                posts: data.posts || [],
+                categories: data.categories || [],
+                languages: data.languages || [],
+                cachedAt: Date.now()
+            };
+            try {
+                localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(cachePayload));
+            } catch (e) {
+                console.warn('[Cache] Failed to save localStorage cache:', e);
+            }
+            cachedPosts = data.posts || [];
+            cachedCategories = data.categories || [];
+            cachedLanguages = data.languages || [];
+
+            // 주소창에서 ?refreshed 파라미터 조용히 제거
+            const cleanUrl = window.location.pathname;
+            window.history.replaceState({}, '', cleanUrl);
+        } else {
+            // 일반 진입: localStorage에 유효한 캐시가 있으면 재활용
+            const saved = localStorage.getItem(POSTS_CACHE_KEY);
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed.posts) && parsed.posts.length > 0) {
+                        cachedPosts = parsed.posts;
+                        if (Array.isArray(parsed.categories)) cachedCategories = parsed.categories;
+                        if (Array.isArray(parsed.languages)) cachedLanguages = parsed.languages;
+                    }
+                } catch (e) {
+                    console.warn('[Cache] Failed to parse cached posts:', e);
+                }
+            }
+        }
+    });
+
+    // 수동 강제 새로고침 함수
+    function handleForceRefresh() {
+        if (typeof window !== 'undefined') {
+            isRefreshing = true;
+            localStorage.removeItem(POSTS_CACHE_KEY);
+            window.location.href = `/posts?refreshed=${Date.now()}`;
+        }
+    }
 
     function showDeleteConfirm(post: any) {
         deleteConfirmPost = post;
@@ -60,7 +121,7 @@
         return `${year}-${month}-${day} ${hours}:${minutes}`;
     }
 
-    // Language filtering state
+    // Language filtering state (1단 언어 축)
     let selectedLang = $state<string>('all');
 
     // Dynamic languages list: DB languages + any existing post languages
@@ -68,7 +129,7 @@
         const langMap = new Map<string, { code: string; name: string }>();
         
         // 1. Add configured languages from DB
-        (data.languages || []).forEach((l: any) => {
+        (cachedLanguages || []).forEach((l: any) => {
             if (l?.code) {
                 langMap.set(l.code, {
                     code: l.code,
@@ -78,7 +139,7 @@
         });
 
         // 2. Discover any additional languages present in existing posts
-        (data.posts || []).forEach((p: any) => {
+        (cachedPosts || []).forEach((p: any) => {
             const code = p.lang || 'ko';
             if (!langMap.has(code)) {
                 langMap.set(code, {
@@ -94,28 +155,115 @@
     // Counts per language
     let langCounts = $derived.by(() => {
         const counts: Record<string, number> = {
-            all: data.posts?.length || 0
+            all: cachedPosts?.length || 0
         };
         availableLanguages.forEach(l => {
             counts[l.code] = 0;
         });
-        (data.posts || []).forEach((p: any) => {
+        (cachedPosts || []).forEach((p: any) => {
             const code = p.lang || 'ko';
             counts[code] = (counts[code] || 0) + 1;
         });
         return counts;
     });
 
-    // Filtered posts based on selected language
+    // 1단: 현재 선택된 언어 기준 포스트 목록
+    let postsByLang = $derived.by(() => {
+        if (selectedLang === 'all') return cachedPosts || [];
+        return (cachedPosts || []).filter((p: any) => (p.lang || 'ko') === selectedLang);
+    });
+
+    // 2단: 카테고리 & 특수 분류 필터 상태 ('all' | 'draft' | 'page' | 'uncategorized' | 'cat:{slug}')
+    let activeFilter = $state<string>('all');
+
+    // 현재 언어 기준 특수 분류(초안, 정적페이지, 미분류) 카운트
+    let specialCounts = $derived.by(() => {
+        let draft = 0;
+        let page = 0;
+        let uncategorized = 0;
+
+        postsByLang.forEach((p: any) => {
+            if (p.status === 'draft') draft++;
+            if (p.type === 'page') page++;
+            if (p.type !== 'page' && (!p.category_slug || p.category_slug.trim() === '')) {
+                uncategorized++;
+            }
+        });
+
+        return { draft, page, uncategorized };
+    });
+
+    // 현재 언어 기준 카테고리 목록 및 카운트
+    let categoryList = $derived.by(() => {
+        const map = new Map<string, { slug: string; name: string; count: number }>();
+
+        // DB 카테고리 name 매핑
+        const catNameMap = new Map<string, string>();
+        cachedCategories.forEach((c: any) => {
+            if (c?.slug && c?.name) {
+                if (selectedLang === 'all' || !c.lang || c.lang === selectedLang) {
+                    catNameMap.set(c.slug, c.name);
+                }
+            }
+        });
+
+        // 현재 언어 포스트 중 일반 글(type !== 'page') 카테고리 집계
+        postsByLang.forEach((p: any) => {
+            if (p.type === 'page') return;
+            const slug = p.category_slug?.trim();
+            if (!slug) return;
+
+            if (!map.has(slug)) {
+                map.set(slug, {
+                    slug,
+                    name: catNameMap.get(slug) || slug,
+                    count: 0
+                });
+            }
+            map.get(slug)!.count++;
+        });
+
+        return Array.from(map.values()).sort((a, b) => b.count - a.count);
+    });
+
+    // 2단 최종 필터링된 포스트 목록
     let filteredPosts = $derived.by(() => {
-        if (selectedLang === 'all') return data.posts || [];
-        return (data.posts || []).filter((p: any) => (p.lang || 'ko') === selectedLang);
+        if (activeFilter === 'all') {
+            return postsByLang;
+        }
+        if (activeFilter === 'draft') {
+            return postsByLang.filter((p: any) => p.status === 'draft');
+        }
+        if (activeFilter === 'page') {
+            return postsByLang.filter((p: any) => p.type === 'page');
+        }
+        if (activeFilter === 'uncategorized') {
+            return postsByLang.filter((p: any) => p.type !== 'page' && (!p.category_slug || p.category_slug.trim() === ''));
+        }
+        if (activeFilter.startsWith('cat:')) {
+            const catSlug = activeFilter.slice(4);
+            return postsByLang.filter((p: any) => p.type !== 'page' && p.category_slug === catSlug);
+        }
+        return postsByLang;
     });
 
     let selectedLangObj = $derived(availableLanguages.find(l => l.code === selectedLang));
 
     function selectLanguageTab(code: string) {
         selectedLang = code;
+        currentPage = 1;
+        // 선택된 특정 카테고리가 새 언어에 없으면 'all'로 안전 복귀
+        if (activeFilter.startsWith('cat:')) {
+            const catSlug = activeFilter.slice(4);
+            const exists = categoryList.some(c => c.slug === catSlug);
+            if (!exists) {
+                activeFilter = 'all';
+            }
+        }
+    }
+
+    function selectFilterTab(filterKey: string) {
+        activeFilter = filterKey;
         currentPage = 1;
     }
 
@@ -150,7 +298,7 @@
     let paginatedPosts = $derived(filteredPosts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage));
 
     // Calculate numbering and labels for published posts using a Map for O(1) rendering lookup
-    let publishedPosts = $derived(data.posts.filter((p: any) => p.status === 'published' && p.type !== 'page'));
+    let publishedPosts = $derived((cachedPosts || []).filter((p: any) => p.status === 'published' && p.type !== 'page'));
 
     let postNumberMap = $derived.by(() => {
         const map = new Map<string, string>();
@@ -189,8 +337,18 @@
 
 <div class="admin-container">
     <header class="page-header">
-        <h1><FileText size={24} /> {t('admin.left.menu.posts', { default: '포스트 관리' })} ({data.posts.length})</h1>
+        <h1><FileText size={24} /> {t('admin.left.menu.posts', { default: '포스트 관리' })} ({cachedPosts.length})</h1>
         <div class="header-actions flex gap-4 items-center">
+            <button
+                type="button"
+                class="btn-refresh"
+                onclick={handleForceRefresh}
+                title={t('admin.posts.btn_refresh', { default: '캐시 비우고 최신 데이터로 새로고침' })}
+                disabled={isRefreshing}
+            >
+                <RotateCw size={15} class={isRefreshing ? 'spin' : ''} />
+                <span class="refresh-text">{t('admin.posts.refresh', { default: '새로고침' })}</span>
+            </button>
             <div class="items-per-page text-sm text-gray-600 flex items-center gap-2 bg-white px-3 py-2 rounded-md border border-gray-200">
                 <label for="perPage" class="whitespace-nowrap">{t('admin.posts.main.items_per_page', { default: '페이지당 항목:' })}</label>
                 <select id="perPage" bind:value={itemsPerPage} class="border-none bg-transparent outline-none cursor-pointer font-semibold text-gray-800">
@@ -206,7 +364,7 @@
         </div>
     </header>
 
-    <!-- Dynamic Language Filter Tabs -->
+    <!-- Dynamic Language Filter Tabs (1단: 언어 필터) -->
     {#if availableLanguages.length > 1}
         <div class="lang-filter-bar">
             <button
@@ -231,6 +389,64 @@
         </div>
     {/if}
 
+    <!-- Category & Special Classifications Filter Bar (2단: 카테고리 및 특수분류) -->
+    <div class="category-filter-bar">
+        <button
+            type="button"
+            class="cat-filter-tab {activeFilter === 'all' ? 'active' : ''}"
+            onclick={() => selectFilterTab('all')}
+        >
+            <span>{t('admin.posts.filter_all_cats', { default: '전체' })}</span>
+            <span class="cat-count-badge">{postsByLang.length}</span>
+        </button>
+
+        {#each categoryList as cat}
+            <button
+                type="button"
+                class="cat-filter-tab {activeFilter === `cat:${cat.slug}` ? 'active' : ''}"
+                onclick={() => selectFilterTab(`cat:${cat.slug}`)}
+            >
+                <Folder size={13} class="tab-icon cat-icon" />
+                <span class="cat-name">{cat.name}</span>
+                <span class="cat-count-badge">{cat.count}</span>
+            </button>
+        {/each}
+
+        <div class="filter-divider"></div>
+
+        <button
+            type="button"
+            class="cat-filter-tab special-tab tab-page {activeFilter === 'page' ? 'active' : ''}"
+            onclick={() => selectFilterTab('page')}
+        >
+            <File size={13} class="tab-icon" />
+            <span>{t('admin.posts.filter_page', { default: '정적 페이지' })}</span>
+            <span class="cat-count-badge {specialCounts.page === 0 ? 'zero' : ''}">{specialCounts.page}</span>
+        </button>
+
+        <button
+            type="button"
+            class="cat-filter-tab special-tab tab-draft {activeFilter === 'draft' ? 'active' : ''}"
+            onclick={() => selectFilterTab('draft')}
+        >
+            <Clock size={13} class="tab-icon" />
+            <span>{t('admin.posts.filter_draft', { default: '초안' })}</span>
+            <span class="cat-count-badge {specialCounts.draft === 0 ? 'zero' : ''}">{specialCounts.draft}</span>
+        </button>
+
+        {#if specialCounts.uncategorized > 0}
+            <button
+                type="button"
+                class="cat-filter-tab special-tab tab-uncategorized {activeFilter === 'uncategorized' ? 'active' : ''}"
+                onclick={() => selectFilterTab('uncategorized')}
+            >
+                <HelpCircle size={13} class="tab-icon" />
+                <span>{t('admin.posts.filter_uncategorized', { default: '미분류' })}</span>
+                <span class="cat-count-badge">{specialCounts.uncategorized}</span>
+            </button>
+        {/if}
+    </div>
+
     <div class="table-container">
         <table>
             <thead>
@@ -247,19 +463,29 @@
                 {#if paginatedPosts.length === 0}
                     <tr>
                         <td colspan="6" class="empty-state">
-                            {#if selectedLang !== 'all'}
-                                <div class="empty-lang-box">
-                                    <p class="empty-lang-title">
+                            <div class="empty-lang-box">
+                                <p class="empty-lang-title">
+                                    {#if activeFilter === 'page'}
+                                        {t('admin.posts.empty_page', { default: '등록된 정적 페이지가 없습니다.' })}
+                                    {:else if activeFilter === 'draft'}
+                                        {t('admin.posts.empty_draft', { default: '작성 중인 초안이 없습니다.' })}
+                                    {:else if activeFilter === 'uncategorized'}
+                                        {t('admin.posts.empty_uncategorized', { default: '미분류 포스트가 없습니다.' })}
+                                    {:else if activeFilter.startsWith('cat:')}
+                                        {t('admin.posts.empty_cat', { default: '해당 카테고리에 등록된 포스트가 없습니다.' })}
+                                    {:else if selectedLang !== 'all'}
                                         {selectedLangObj ? `${selectedLangObj.name} (${selectedLangObj.code.toUpperCase()}) ` : ''}
                                         {t('admin.posts.filter_empty_lang', { default: '해당 언어로 작성된 포스트가 없습니다.' })}
-                                    </p>
-                                    <a href="/posts/new" class="btn-primary mt-3 inline-flex items-center gap-1.5 text-xs">
-                                        <Plus size={14} /> {selectedLangObj ? `${selectedLangObj.name} ` : ''}{t('admin.posts.filter_write_new', { default: '새 글 작성하기' })}
-                                    </a>
-                                </div>
-                            {:else}
-                                {t('admin.posts.empty', { default: '작성된 글이 없습니다.' })}
-                            {/if}
+                                    {:else}
+                                        {t('admin.posts.empty', { default: '작성된 글이 없습니다.' })}
+                                    {/if}
+                                </p>
+                                {#if activeFilter !== 'all'}
+                                    <button type="button" class="btn-reset-filter" onclick={() => selectFilterTab('all')}>
+                                        {t('admin.posts.reset_filter', { default: '전체 목록 보기' })}
+                                    </button>
+                                {/if}
+                            </div>
                         </td>
                     </tr>
                 {/if}
@@ -353,7 +579,12 @@
                         return async ({ result }) => {
                             if (result.type === "success") {
                                 deleteConfirmPost = null;
-                                await invalidateAll();
+                                if (typeof window !== 'undefined') {
+                                    localStorage.removeItem(POSTS_CACHE_KEY);
+                                    window.location.href = `/posts?refreshed=${Date.now()}`;
+                                } else {
+                                    await invalidateAll();
+                                }
                             } else {
                                 console.error("Delete failed:", result);
                                 alert(t('admin.posts.delete_failed_server', { default: "삭제에 실패했습니다. (서버 오류)" }));
@@ -481,6 +712,188 @@
         color: #64748b;
         font-size: 0.9375rem;
         margin: 0;
+    }
+
+    /* 새로고침 버튼 스타일 */
+    .btn-refresh {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: white;
+        border: 1px solid #e2e8f0;
+        color: #475569;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.375rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-refresh:hover:not(:disabled) {
+        background: #f8fafc;
+        color: #1e293b;
+        border-color: #cbd5e1;
+    }
+    .btn-refresh:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    .refresh-text {
+        font-size: 0.8125rem;
+    }
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    .btn-refresh :global(svg.spin) {
+        animation: spin 0.8s linear infinite;
+    }
+
+    /* 2단: Category & Special Filter Tabs */
+    .category-filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        margin-bottom: 1.5rem;
+        overflow-x: auto;
+        padding-bottom: 0.35rem;
+        scrollbar-width: thin;
+    }
+    .cat-filter-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.375rem 0.75rem;
+        background: #ffffff;
+        color: #475569;
+        border: 1px solid #e2e8f0;
+        border-radius: 9999px;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+    }
+    .cat-filter-tab:hover {
+        background: #f1f5f9;
+        color: #1e293b;
+        border-color: #cbd5e1;
+    }
+    .cat-filter-tab.active {
+        background: #0f172a;
+        color: #ffffff;
+        border-color: #0f172a;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    .cat-name {
+        font-weight: 500;
+    }
+    .tab-icon {
+        flex-shrink: 0;
+        opacity: 0.75;
+    }
+    .cat-filter-tab.active .tab-icon {
+        opacity: 1;
+    }
+    .cat-count-badge {
+        font-size: 0.6875rem;
+        font-weight: 700;
+        padding: 0.1rem 0.4rem;
+        border-radius: 9999px;
+        background: #e2e8f0;
+        color: #334155;
+        line-height: 1.2;
+    }
+    .cat-filter-tab.active .cat-count-badge {
+        background: #334155;
+        color: #ffffff;
+    }
+    .cat-count-badge.zero {
+        opacity: 0.5;
+    }
+
+    /* 구분선 */
+    .filter-divider {
+        width: 1px;
+        height: 18px;
+        background: #cbd5e1;
+        margin: 0 0.35rem;
+        flex-shrink: 0;
+    }
+
+    /* 특수 탭 개별 스타일 */
+    .cat-filter-tab.special-tab.tab-page {
+        background: #f5f3ff;
+        color: #5b21b6;
+        border-color: #ddd6fe;
+    }
+    .cat-filter-tab.special-tab.tab-page:hover {
+        background: #ede9fe;
+    }
+    .cat-filter-tab.special-tab.tab-page.active {
+        background: #6d28d9;
+        color: #ffffff;
+        border-color: #6d28d9;
+    }
+    .cat-filter-tab.special-tab.tab-page .cat-count-badge {
+        background: #ddd6fe;
+        color: #5b21b6;
+    }
+    .cat-filter-tab.special-tab.tab-page.active .cat-count-badge {
+        background: #5b21b6;
+        color: #ffffff;
+    }
+
+    .cat-filter-tab.special-tab.tab-draft {
+        background: #fffbeb;
+        color: #92400e;
+        border-color: #fde68a;
+    }
+    .cat-filter-tab.special-tab.tab-draft:hover {
+        background: #fef3c7;
+    }
+    .cat-filter-tab.special-tab.tab-draft.active {
+        background: #d97706;
+        color: #ffffff;
+        border-color: #d97706;
+    }
+    .cat-filter-tab.special-tab.tab-draft .cat-count-badge {
+        background: #fde68a;
+        color: #92400e;
+    }
+    .cat-filter-tab.special-tab.tab-draft.active .cat-count-badge {
+        background: #b45309;
+        color: #ffffff;
+    }
+
+    .cat-filter-tab.special-tab.tab-uncategorized {
+        background: #f8fafc;
+        color: #475569;
+        border-color: #cbd5e1;
+    }
+    .cat-filter-tab.special-tab.tab-uncategorized:hover {
+        background: #f1f5f9;
+    }
+    .cat-filter-tab.special-tab.tab-uncategorized.active {
+        background: #475569;
+        color: #ffffff;
+        border-color: #475569;
+    }
+
+    /* 필터 리셋 버튼 */
+    .btn-reset-filter {
+        margin-top: 0.5rem;
+        background: none;
+        border: none;
+        color: #4f46e5;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: underline;
+        padding: 0;
+    }
+    .btn-reset-filter:hover {
+        color: #3730a3;
     }
 
     .btn-primary {
