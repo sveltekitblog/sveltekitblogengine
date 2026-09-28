@@ -207,10 +207,15 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             } else {
                 isDummyData = true;
                 trafficData = {
-                    rows: Array.from({ length: 28 }).map((_, i) => ({
-                        dimensionValues: [{ value: '202609' + (i + 1).toString().padStart(2, '0') }],
-                        metricValues: [{ value: '150' }, { value: '80' }]
-                    }))
+                    // 더미 날짜: d28Ago 기준 오늘까지 실제 날짜 동적 생성 (하드코딩 제거)
+                    rows: Array.from({ length: 28 }).map((_, i) => {
+                        const d = new Date(new Date(d28Ago).getTime() + i * 86400000);
+                        const dateStr = d.toISOString().split('T')[0].replace(/-/g, '');
+                        return {
+                            dimensionValues: [{ value: dateStr }],
+                            metricValues: [{ value: '150' }, { value: '80' }]
+                        };
+                    })
                 };
                 sourceData = {
                     rows: [{ dimensionValues: [{ value: 'Direct / None' }], metricValues: [{ value: '1420' }] }]
@@ -247,10 +252,15 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             } else {
                 isDummyData = true;
                 trafficData = {
-                    rows: Array.from({ length: 28 }).map((_, i) => ({
-                        dimensionValues: [{ value: '202609' + (i + 1).toString().padStart(2, '0') }],
-                        metricValues: [{ value: '150' }, { value: '80' }]
-                    }))
+                    // 더미 날짜: d28Ago 기준 오늘까지 실제 날짜 동적 생성 (하드코딩 제거)
+                    rows: Array.from({ length: 28 }).map((_, i) => {
+                        const d = new Date(new Date(d28Ago).getTime() + i * 86400000);
+                        const dateStr = d.toISOString().split('T')[0].replace(/-/g, '');
+                        return {
+                            dimensionValues: [{ value: dateStr }],
+                            metricValues: [{ value: '150' }, { value: '80' }]
+                        };
+                    })
                 };
                 sourceData = {
                     rows: [{ dimensionValues: [{ value: 'google / organic' }], metricValues: [{ value: '1420' }] }]
