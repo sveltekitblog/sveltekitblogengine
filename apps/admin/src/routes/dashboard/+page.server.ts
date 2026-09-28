@@ -18,7 +18,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { runGa4Report, runGa4BatchReport, getGa4AccessToken } from '$lib/server/ga4';
-import { runCfAnalyticsReport, type CFAnalyticsConfig } from '$lib/server/cf-analytics';
+import { runCfAnalyticsReport, type CFAnalyticsConfig, type CFDetailItem } from '$lib/server/cf-analytics';
 import { runAdsenseReport, getAdsenseAccessToken, type AdSenseConfig } from '$lib/server/adsense';
 
 export const load: PageServerLoad = async ({ locals, platform, parent, url }) => {
@@ -137,18 +137,26 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
         let isDummyData = false;
         let trafficData: any = null;
         let sourceData: any = null;
+        let cfDetails: {
+            pages: CFDetailItem[];
+            referrers: CFDetailItem[];
+            countries: CFDetailItem[];
+            devices: CFDetailItem[];
+            browsers: CFDetailItem[];
+            os: CFDetailItem[];
+        } | null = null;
 
+        const d7Ago  = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
         const d28Ago = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
 
         if (activeProvider === 'cf') {
             // ── Cloudflare Web Analytics (기본 엔진 + D1 증분 캐싱) ─────────────
             if (isCfConfigured) {
                 try {
-                    // Cloudflare Analytics에서 최근 28일치 데이터를 전수 조회하여 최신 상태로 동기화
-                    const cfResult = await runCfAnalyticsReport(cfConfig, d28Ago, today);
+                    // Cloudflare Analytics에서 정확도가 보장되는 최근 7일치 정밀 데이터 조회
+                    const cfResult = await runCfAnalyticsReport(cfConfig, d7Ago, today);
 
-                    // 조회된 최신 일자 데이터를 D1에 동기화
-                    // CF API가 count=0인 row를 반환할 경우 기존 데이터를 0으로 덮어쓰지 않도록 필터
+                    // 조회된 7일치 일자 데이터를 D1에 동기화 (기존 28일치 누적 데이터 위에 보존 및 갱신)
                     const meaningfulRows = cfResult.trafficRows.filter(row => row.pageViews > 0 || row.visitors > 0);
                     if (meaningfulRows.length > 0) {
                         const batchStmts = meaningfulRows.map(row => 
@@ -168,6 +176,16 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
                             dimensionValues: [{ value: s.source }],
                             metricValues: [{ value: String(s.visits) }]
                         }))
+                    };
+
+                    // Cloudflare 전용 6대 상세 분석 데이터 적재
+                    cfDetails = {
+                        pages: cfResult.pages || [],
+                        referrers: cfResult.referrers || [],
+                        countries: cfResult.countries || [],
+                        devices: cfResult.devices || [],
+                        browsers: cfResult.browsers || [],
+                        os: cfResult.os || []
                     };
                 } catch (e: any) {
                     console.error('CF Analytics fetch error:', e);
@@ -327,6 +345,7 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             isCfConfigured,
             isGa4Configured,
             analyticsData: { trafficData, sourceData },
+            cfDetails,
             analyticsError,
             ga4Data: { trafficData, sourceData }, // 하위 호환성 유지
             ga4Error: analyticsError,
