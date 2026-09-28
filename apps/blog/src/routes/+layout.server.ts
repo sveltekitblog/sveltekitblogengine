@@ -49,7 +49,7 @@ const DEFAULT_SETTINGS = {
     }
 };
 
-export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
+export const load: LayoutServerLoad = async ({ locals, request, cookies, platform }) => {
     const userAgent = request.headers.get('user-agent') || '';
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
 
@@ -467,6 +467,7 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
 
         return {
             settings,
+            cfAnalyticsSiteTag: (platform?.env as any)?.CF_WEB_ANALYTICS_SITE_TAG || settings?.cf_analytics_token || '',
             isMobile,
             navIconSvgs,
             googleFonts,
@@ -507,6 +508,7 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies }) => {
         console.error('Layout data load failed:', e);
         return {
             settings: {},
+            cfAnalyticsSiteTag: '',
             isMobile: false,
             navIconSvgs: {},
             googleFontName: '',

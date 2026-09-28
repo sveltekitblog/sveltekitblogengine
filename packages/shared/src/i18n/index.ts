@@ -171,8 +171,12 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.dashboard.stats.visitors_today": { "ko": "오늘 방문자", "en": "Visitors Today", "ja": "今日の訪問者" },
     "admin.dashboard.stats.visitors_total": { "ko": "전체 방문자", "en": "Total Visitors", "ja": "総訪問者数" },
     "admin.dashboard.reports.ga4_title": { "ko": "트래픽 리포트 (GA4)", "en": "Traffic Report (GA4)", "ja": "トラフィックレポート (GA4)" },
+    "admin.dashboard.reports.cf_title": { "ko": "트래픽 리포트 (Cloudflare Web Analytics)", "en": "Traffic Report (Cloudflare Web Analytics)", "ja": "トラフィックレポート (Cloudflare Web Analytics)" },
+    "admin.dashboard.reports.provider_cf": { "ko": "Cloudflare Web Analytics", "en": "Cloudflare Web Analytics", "ja": "Cloudflare Web Analytics" },
+    "admin.dashboard.reports.provider_ga4": { "ko": "Google Analytics 4", "en": "Google Analytics 4", "ja": "Google Analytics 4" },
     "admin.dashboard.reports.adsense_title": { "ko": "실적 리포트 (AdSense)", "en": "Performance Report (AdSense)", "ja": "実績レポート (AdSense)" },
     "admin.dashboard.reports.ga4_dummy_warning": { "ko": "Google Analytics 4가 설정되지 않아 더미 데이터(예시)를 표시 중입니다.", "en": "GA4 is not configured; showing dummy data.", "ja": "GA4が設定されていないため、ダミーデータを表示しています。" },
+    "admin.dashboard.reports.cf_dummy_warning": { "ko": "Cloudflare Web Analytics가 설정되지 않아 더미 데이터(예시)를 표시 중입니다.", "en": "Cloudflare Web Analytics is not configured; showing dummy data.", "ja": "Cloudflare Web Analyticsが設定されていないため、ダミーデータを表示しています。" },
     "admin.dashboard.reports.recent_28d_traffic": { "ko": "최근 28일 트래픽 (일별)", "en": "Recent 28 Days Traffic", "ja": "直近28日間のトラフィック" },
     "admin.dashboard.reports.user_acquisition": { "ko": "사용자 획득 (소스/매체)", "en": "User Acquisition (Source/Medium)", "ja": "ユーザー獲得 (参照元/メディア)" },
     "admin.dashboard.recent.comments_title": { "ko": "최근 댓글", "en": "Recent Comments", "ja": "最近のコメント" },
@@ -1032,6 +1036,11 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "blog.error.not_found_desc": { "ko": "요청하신 페이지가 삭제되었거나 주소가 변경되었습니다.", "en": "The requested page might have been removed or the link is broken.", "ja": "リクエストされたページは削除されたか、アドレスが変更された可能性があります。" },
     "blog.error.go_home": { "ko": "홈으로 돌아가기", "en": "Back to Home", "ja": "ホームに戻る" },
     "admin.dashboard.reports.ga4_dummy_desc": {
+        "ko": "차트 출력 확인용이며 실제 데이터가 아닙니다. 환경 변수(Secret)에 다음 키를 등록해주세요:",
+        "en": "This is for chart display validation and is not real data. Please register the following keys in your environment variables (Secret):",
+        "ja": "チャート表示確認用であり、実際のデータではありません。環境変数(Secret)に次のキーを登録してください:"
+    },
+    "admin.dashboard.reports.cf_dummy_desc": {
         "ko": "차트 출력 확인용이며 실제 데이터가 아닙니다. 환경 변수(Secret)에 다음 키를 등록해주세요:",
         "en": "This is for chart display validation and is not real data. Please register the following keys in your environment variables (Secret):",
         "ja": "チャート表示確認用であり、実際のデータではありません。環境変数(Secret)に次のキーを登録してください:"

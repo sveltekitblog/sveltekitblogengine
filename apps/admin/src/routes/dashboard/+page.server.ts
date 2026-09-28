@@ -18,9 +18,10 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { runGa4Report, runGa4BatchReport, getGa4AccessToken } from '$lib/server/ga4';
+import { runCfAnalyticsReport, type CFAnalyticsConfig } from '$lib/server/cf-analytics';
 import { runAdsenseReport, getAdsenseAccessToken, type AdSenseConfig } from '$lib/server/adsense';
 
-export const load: PageServerLoad = async ({ locals, platform, parent }) => {
+export const load: PageServerLoad = async ({ locals, platform, parent, url }) => {
     const db = locals.blogDb;
     const userDb = platform?.env?.USER_DB;
 
@@ -112,74 +113,143 @@ export const load: PageServerLoad = async ({ locals, platform, parent }) => {
             } catch (e) { console.warn('Failed to load user-db entries:', e); }
         }
 
-        // ── GA4 & AdSense (Awaited) ───────────────────────────────────────────
-        
-        let ga4Data: any = null;
-        let ga4Error: string | null = null;
-        let isDummyData = false;
+        // ── Visitor Analytics & AdSense ───────────────────────────────────────
+        const requestedProvider = (url.searchParams.get('provider') || 'cf').toLowerCase();
+        const activeProvider = requestedProvider === 'ga4' ? 'ga4' : 'cf';
 
+        // 1) Cloudflare Web Analytics Config
+        const cfConfig: CFAnalyticsConfig = {
+            accountId: (platform?.env as any)?.CF_ACCOUNT_ID as string,
+            apiToken:  (platform?.env as any)?.CF_API_TOKEN  as string,
+            siteTag:   (platform?.env as any)?.CF_WEB_ANALYTICS_SITE_TAG as string
+        };
+        const isCfConfigured = Boolean(cfConfig.accountId && cfConfig.apiToken && cfConfig.siteTag);
+
+        // 2) GA4 Config
         const ga4Config = {
             propertyId:  (platform?.env as any)?.GA4_PROPERTY_ID  as string,
             clientEmail: (platform?.env as any)?.GA4_CLIENT_EMAIL  as string,
             privateKey:  (platform?.env as any)?.GA4_PRIVATE_KEY   as string,
         };
+        const isGa4Configured = Boolean(ga4Config.propertyId && ga4Config.clientEmail && ga4Config.privateKey);
 
-        if (ga4Config.propertyId && ga4Config.clientEmail && ga4Config.privateKey) {
-            try {
-                const ga4Token = await getGa4AccessToken(ga4Config);
-                const batchResult = await runGa4BatchReport(ga4Config, [
-                    {
-                        dateRanges: [{ startDate: '28daysAgo', endDate: 'today' }],
-                        dimensions: [{ name: 'date' }],
-                        metrics: [{ name: 'sessions' }, { name: 'activeUsers' }],
-                        orderBys: [{ dimension: { dimensionName: 'date' } }]
-                    },
-                    {
-                        dateRanges: [{ startDate: '28daysAgo', endDate: 'today' }],
-                        dimensions: [{ name: 'sessionSourceMedium' }],
-                        metrics: [{ name: 'sessions' }],
-                        orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
-                        limit: 5
-                    }
-                ], ga4Token);
+        let analyticsError: string | null = null;
+        let isDummyData = false;
+        let trafficData: any = null;
+        let sourceData: any = null;
 
-                const [trafficData, sourceData] = batchResult.reports ?? [];
-                ga4Data = { trafficData, sourceData };
+        const d28Ago = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
 
-                // Sync GA4 to DB
-                if (ga4Data?.trafficData?.rows) {
-                    const batchStatements = [];
-                    for (const row of ga4Data.trafficData.rows) {
-                        const dateStr = row.dimensionValues[0].value;
-                        const formattedDate = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-                        const sessions    = parseInt(row.metricValues[0].value, 10) || 0;
-                        const activeUsers = parseInt(row.metricValues[1].value, 10) || 0;
-                        batchStatements.push(
+        if (activeProvider === 'cf') {
+            // ── Cloudflare Web Analytics (기본 엔진 + D1 증분 캐싱) ─────────────
+            if (isCfConfigured) {
+                try {
+                    // D1에 저장된 최근 28일치 데이터 상태 확인
+                    const lastStatRow: any = await db.prepare(
+                        'SELECT MAX(date) as last_date, COUNT(*) as cnt FROM visitor_stats WHERE date >= ?'
+                    ).bind(d28Ago).first();
+                    const lastDate = lastStatRow?.last_date;
+                    const countInD1 = lastStatRow?.cnt || 0;
+
+                    // D1에 과거 27일 이상 채워져 있고 오늘 이전 데이터가 확정되어 있으면 오늘 하루치만 API 조회
+                    const needFullSync = !lastDate || countInD1 < 27;
+                    const startDate = needFullSync ? d28Ago : today;
+
+                    const cfResult = await runCfAnalyticsReport(cfConfig, startDate, today);
+
+                    // 조회된 최신 일자 데이터를 D1에 동기화
+                    if (cfResult.trafficRows.length > 0) {
+                        const batchStmts = cfResult.trafficRows.map(row => 
                             db.prepare(`
                                 INSERT INTO visitor_stats (date, unique_visitors, page_views)
                                 VALUES (?, ?, ?)
                                 ON CONFLICT(date) DO UPDATE SET
-                                    unique_visitors=excluded.unique_visitors,
-                                    page_views=excluded.page_views
-                            `).bind(formattedDate, activeUsers, sessions)
+                                    unique_visitors = excluded.unique_visitors,
+                                    page_views = excluded.page_views
+                            `).bind(row.date, row.visitors, row.pageViews)
                         );
+                        await db.batch(batchStmts);
                     }
-                    if (batchStatements.length > 0) { await db.batch(batchStatements); }
+
+                    sourceData = {
+                        rows: cfResult.sourceRows.map(s => ({
+                            dimensionValues: [{ value: s.source }],
+                            metricValues: [{ value: String(s.visits) }]
+                        }))
+                    };
+                } catch (e: any) {
+                    console.error('CF Analytics fetch error:', e);
+                    analyticsError = `Cloudflare Analytics 통신 오류: ${e.message}`;
                 }
-            } catch (e: any) {
-                console.error('GA4 Fetch error:', e);
-                ga4Error = `데이터 통신 오류: ${e.message}`;
+            } else {
+                isDummyData = true;
+            }
+
+            // 화면 차트용 일별 데이터는 D1에서 28일치 일괄 조회 (초고속 캐시 로드)
+            const { results: dbStats } = await db.prepare(
+                'SELECT date, unique_visitors, page_views FROM visitor_stats WHERE date >= ? ORDER BY date ASC'
+            ).bind(d28Ago).all();
+
+            const statsRows = (dbStats as any[]) || [];
+            if (statsRows.length > 0 && !isDummyData) {
+                trafficData = {
+                    rows: statsRows.map(r => ({
+                        dimensionValues: [{ value: String(r.date).replace(/-/g, '') }],
+                        metricValues: [{ value: String(r.page_views) }, { value: String(r.unique_visitors) }]
+                    }))
+                };
+            } else {
+                isDummyData = true;
+                trafficData = {
+                    rows: Array.from({ length: 28 }).map((_, i) => ({
+                        dimensionValues: [{ value: '202609' + (i + 1).toString().padStart(2, '0') }],
+                        metricValues: [{ value: '150' }, { value: '80' }]
+                    }))
+                };
+                sourceData = {
+                    rows: [{ dimensionValues: [{ value: 'Direct / None' }], metricValues: [{ value: '1420' }] }]
+                };
             }
         } else {
-            isDummyData = true;
-            // Dummy generator (compact)
-            ga4Data = {
-                trafficData: { rows: Array.from({ length: 28 }).map((_, i) => ({
-                    dimensionValues: [{ value: '202310' + (i+1).toString().padStart(2,'0') }],
-                    metricValues: [{ value: '150' }, { value: '80' }]
-                })) },
-                sourceData: { rows: [{ dimensionValues: [{ value: 'google / organic' }], metricValues: [{ value: '1420' }] }] }
-            };
+            // ── Google Analytics 4 (선택 엔진) ─────────────────────────────────
+            if (isGa4Configured) {
+                try {
+                    const ga4Token = await getGa4AccessToken(ga4Config);
+                    const batchResult = await runGa4BatchReport(ga4Config, [
+                        {
+                            dateRanges: [{ startDate: '28daysAgo', endDate: 'today' }],
+                            dimensions: [{ name: 'date' }],
+                            metrics: [{ name: 'sessions' }, { name: 'activeUsers' }],
+                            orderBys: [{ dimension: { dimensionName: 'date' } }]
+                        },
+                        {
+                            dateRanges: [{ startDate: '28daysAgo', endDate: 'today' }],
+                            dimensions: [{ name: 'sessionSourceMedium' }],
+                            metrics: [{ name: 'sessions' }],
+                            orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+                            limit: 5
+                        }
+                    ], ga4Token);
+
+                    const [gTraffic, gSource] = batchResult.reports ?? [];
+                    trafficData = gTraffic;
+                    sourceData = gSource;
+                } catch (e: any) {
+                    console.error('GA4 Fetch error:', e);
+                    analyticsError = `GA4 데이터 통신 오류: ${e.message}`;
+                }
+            } else {
+                isDummyData = true;
+                trafficData = {
+                    rows: Array.from({ length: 28 }).map((_, i) => ({
+                        dimensionValues: [{ value: '202609' + (i + 1).toString().padStart(2, '0') }],
+                        metricValues: [{ value: '150' }, { value: '80' }]
+                    }))
+                };
+                sourceData = {
+                    rows: [{ dimensionValues: [{ value: 'google / organic' }], metricValues: [{ value: '1420' }] }]
+                };
+            }
         }
 
         const yesterdayStats: any = await db.prepare('SELECT * FROM visitor_stats WHERE date = ?').bind(yesterday).first();
@@ -247,8 +317,13 @@ export const load: PageServerLoad = async ({ locals, platform, parent }) => {
             recentPosts,
             recentComments,
             recentGuestbooks,
-            ga4Data,
-            ga4Error,
+            activeProvider,
+            isCfConfigured,
+            isGa4Configured,
+            analyticsData: { trafficData, sourceData },
+            analyticsError,
+            ga4Data: { trafficData, sourceData }, // 하위 호환성 유지
+            ga4Error: analyticsError,
             isDummyData,
             adsenseData,
             adsenseError,

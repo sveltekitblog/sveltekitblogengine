@@ -272,6 +272,14 @@
         {@html headCode}
     {/if}
 
+    {#if data.cfAnalyticsSiteTag}
+        <script
+            defer
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            data-cf-beacon={JSON.stringify({ token: data.cfAnalyticsSiteTag })}
+        ></script>
+    {/if}
+
     {#if globalCss}
         {@html `<style>${globalCss}</style>`}
     {/if}

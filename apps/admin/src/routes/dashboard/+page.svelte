@@ -17,6 +17,7 @@
 
 <script lang="ts">
     import { onMount, tick } from "svelte";
+    import { goto } from "$app/navigation";
     import type { PageData } from "./$types";
     import { t } from "$lib/i18n.svelte";
     import {
@@ -43,7 +44,7 @@
     let adsenseChart: Chart | null = null;
 
     onMount(() => {
-        if (data.ga4Data) {
+        if (data.analyticsData || data.ga4Data) {
             initTrafficChart();
             initSourceChart();
         }
@@ -51,6 +52,17 @@
             initAdsenseChart();
         }
     });
+
+    function switchProvider(provider: string) {
+        if (data.activeProvider === provider) return;
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set("provider", provider);
+        goto(currentUrl.pathname + currentUrl.search, {
+            keepFocus: true,
+            noScroll: true,
+            invalidateAll: true
+        });
+    }
 
     function initAdsenseChart() {
         if (!adsenseChartCanvas || !data.adsenseData?.chart?.rows) return;
@@ -115,13 +127,19 @@
     }
 
     function initTrafficChart() {
-        if (!trafficChartCanvas || !data.ga4Data?.trafficData?.rows) return;
+        const trafficData = data.analyticsData?.trafficData || data.ga4Data?.trafficData;
+        if (!trafficChartCanvas || !trafficData?.rows) return;
 
-        const rows = data.ga4Data.trafficData.rows;
+        if (trafficChart) { trafficChart.destroy(); trafficChart = null; }
+
+        const rows = trafficData.rows;
         const labels = rows.map((r: any) => {
             const dateStr = r.dimensionValues[0].value;
             return `${dateStr.substring(4, 6)}/${dateStr.substring(6, 8)}`;
         });
+        const isCf = data.activeProvider === 'cf';
+        const metric1Label = isCf ? t('admin.common.views', { default: '조회수 (Page Views)' }) : t('admin.dashboard.chart.sessions', { default: '세션 (Sessions)' });
+        const metric2Label = isCf ? t('admin.common.unit_person', { default: '방문자 (Visitors)' }) : t('admin.dashboard.chart.active_users', { default: '활성 사용자 (Active Users)' });
         const sessions    = rows.map((r: any) => parseInt(r.metricValues[0].value, 10));
         const activeUsers = rows.map((r: any) => parseInt(r.metricValues[1].value, 10));
 
@@ -131,7 +149,7 @@
                 labels,
                 datasets: [
                     {
-                        label: t('admin.dashboard.chart.sessions', { default: '세션 (Sessions)' }),
+                        label: metric1Label,
                         data: sessions,
                         borderColor: "#3b82f6",
                         backgroundColor: "rgba(59, 130, 246, 0.1)",
@@ -139,7 +157,7 @@
                         fill: true,
                     },
                     {
-                        label: t('admin.dashboard.chart.active_users', { default: '활성 사용자 (Active Users)' }),
+                        label: metric2Label,
                         data: activeUsers,
                         borderColor: "#10b981",
                         backgroundColor: "rgba(16, 185, 129, 0.1)",
@@ -159,9 +177,12 @@
     }
 
     function initSourceChart() {
-        if (!sourceChartCanvas || !data.ga4Data?.sourceData?.rows) return;
+        const sourceData = data.analyticsData?.sourceData || data.ga4Data?.sourceData;
+        if (!sourceChartCanvas || !sourceData?.rows) return;
 
-        const rows     = data.ga4Data.sourceData.rows;
+        if (sourceChart) { sourceChart.destroy(); sourceChart = null; }
+
+        const rows     = sourceData.rows;
         const labels   = rows.map((r: any) => r.dimensionValues[0].value);
         const sessions = rows.map((r: any) => parseInt(r.metricValues[0].value, 10));
 
@@ -250,33 +271,63 @@
         </div>
     </section>
 
-    <!-- GA4 차트 영역 -->
+    <!-- 트래픽 리포트 영역 (Cloudflare Web Analytics / GA4) -->
     <section class="dashboard-section">
-        <div class="section-header">
-            <h2><TrendingUp size={20} /> {t('admin.dashboard.reports.ga4_title', { default: '트래픽 리포트 (GA4)' })}</h2>
+        <div class="section-header analytics-header">
+            <h2>
+                <TrendingUp size={20} /> 
+                {data.activeProvider === 'cf' 
+                    ? t('admin.dashboard.reports.cf_title', { default: '트래픽 리포트 (Cloudflare Web Analytics)' })
+                    : t('admin.dashboard.reports.ga4_title', { default: '트래픽 리포트 (GA4)' })}
+            </h2>
+            <div class="provider-toggle">
+                <button
+                    type="button"
+                    class="provider-btn"
+                    class:active={data.activeProvider === 'cf'}
+                    onclick={() => switchProvider('cf')}
+                >
+                    {t('admin.dashboard.reports.provider_cf', { default: 'Cloudflare' })}
+                </button>
+                <button
+                    type="button"
+                    class="provider-btn"
+                    class:active={data.activeProvider === 'ga4'}
+                    onclick={() => switchProvider('ga4')}
+                >
+                    {t('admin.dashboard.reports.provider_ga4', { default: 'GA4' })}
+                </button>
+            </div>
         </div>
 
         {#if data.isDummyData}
             <div class="ga4-alert warning mb-4">
                 <div class="alert-icon"><AlertCircle size={24} /></div>
                 <div class="alert-content">
-                    <h3>{t('admin.dashboard.reports.ga4_dummy_warning', { default: 'Google Analytics 4가 설정되지 않아 더미 데이터(예시)를 표시 중입니다.' })}</h3>
-                    <p>{t('admin.dashboard.reports.ga4_dummy_desc', { default: '차트 출력 확인용이며 실제 데이터가 아닙니다. 환경 변수(Secret)에 다음 키를 등록해주세요:' })} 
-                        <code>GA4_PROPERTY_ID</code>, <code>GA4_CLIENT_EMAIL</code>, <code>GA4_PRIVATE_KEY</code>
-                    </p>
+                    {#if data.activeProvider === 'cf'}
+                        <h3>{t('admin.dashboard.reports.cf_dummy_warning', { default: 'Cloudflare Web Analytics가 설정되지 않아 더미 데이터(예시)를 표시 중입니다.' })}</h3>
+                        <p>{t('admin.dashboard.reports.cf_dummy_desc', { default: '차트 출력 확인용이며 실제 데이터가 아닙니다. 환경 변수(Secret)에 다음 키를 등록해주세요:' })} 
+                            <code>CF_ACCOUNT_ID</code>, <code>CF_API_TOKEN</code>, <code>CF_WEB_ANALYTICS_SITE_TAG</code>
+                        </p>
+                    {:else}
+                        <h3>{t('admin.dashboard.reports.ga4_dummy_warning', { default: 'Google Analytics 4가 설정되지 않아 더미 데이터(예시)를 표시 중입니다.' })}</h3>
+                        <p>{t('admin.dashboard.reports.ga4_dummy_desc', { default: '차트 출력 확인용이며 실제 데이터가 아닙니다. 환경 변수(Secret)에 다음 키를 등록해주세요:' })} 
+                            <code>GA4_PROPERTY_ID</code>, <code>GA4_CLIENT_EMAIL</code>, <code>GA4_PRIVATE_KEY</code>
+                        </p>
+                    {/if}
                 </div>
             </div>
         {/if}
 
-        {#if data.ga4Error}
+        {#if data.analyticsError || data.ga4Error}
             <div class="ga4-alert error">
                 <div class="alert-icon"><AlertCircle size={24} /></div>
                 <div class="alert-content">
                     <h3>{t('admin.dashboard.reports.data_error_title', { default: '데이터를 불러오는 중 오류가 발생했습니다.' })}</h3>
-                    <p>{data.ga4Error}</p>
+                    <p>{data.analyticsError || data.ga4Error}</p>
                 </div>
             </div>
-        {:else if data.ga4Data}
+        {:else if data.analyticsData || data.ga4Data}
             <div class="ga4-charts-grid">
                 <div class="chart-card">
                     <h3 class="chart-title">{t('admin.dashboard.reports.recent_28d_traffic', { default: '최근 28일 트래픽 (일별)' })}</h3>
@@ -292,7 +343,7 @@
                 </div>
             </div>
         {:else}
-            <div class="empty-state">{t('admin.dashboard.reports.ga4_loading', { default: 'GA4 데이터를 불러오는 중입니다...' })}</div>
+            <div class="empty-state">{t('admin.dashboard.reports.ga4_loading', { default: '트래픽 데이터를 불러오는 중입니다...' })}</div>
         {/if}
     </section>
 
@@ -754,7 +805,38 @@
         color: #475569;
     }
 
-    /* GA4 Section */
+    /* Analytics Section */
+    .analytics-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+    .provider-toggle {
+        display: inline-flex;
+        background: var(--border-color, #e2e8f0);
+        border-radius: 8px;
+        padding: 3px;
+        gap: 2px;
+    }
+    .provider-btn {
+        border: none;
+        background: transparent;
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--text-muted, #64748b);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .provider-btn.active {
+        background: var(--card-bg, #ffffff);
+        color: var(--primary-color, #3b82f6);
+        font-weight: 600;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
     .ga4-alert {
         display: flex;
         align-items: flex-start;
