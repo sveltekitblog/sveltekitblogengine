@@ -44,14 +44,21 @@
     let adsenseChart: Chart | null = null;
 
     onMount(() => {
-        if (data.analyticsData || data.ga4Data) {
-            initTrafficChart();
-            initSourceChart();
-        }
-        if (data.adsenseData) {
-            initAdsenseChart();
-        }
+        initAllCharts();
     });
+
+    $effect(() => {
+        // data.activeProvider 또는 analyticsData 변경 시 차트 재초기화 (switchProvider 대응)
+        data.activeProvider;
+        data.analyticsData;
+        initAllCharts();
+    });
+
+    function initAllCharts() {
+        initTrafficChart();
+        initSourceChart();
+        if (data.adsenseData) initAdsenseChart();
+    }
 
     function switchProvider(provider: string) {
         if (data.activeProvider === provider) return;
@@ -327,7 +334,8 @@
                     <p>{data.analyticsError || data.ga4Error}</p>
                 </div>
             </div>
-        {:else if data.analyticsData || data.ga4Data}
+        {/if}
+        {#if data.analyticsData || data.ga4Data}
             <div class="ga4-charts-grid">
                 <div class="chart-card">
                     <h3 class="chart-title">{t('admin.dashboard.reports.recent_28d_traffic', { default: '최근 28일 트래픽 (일별)' })}</h3>
