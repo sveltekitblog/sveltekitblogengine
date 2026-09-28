@@ -30,6 +30,11 @@
         AlertCircle,
         TrendingUp,
         DollarSign,
+        Compass,
+        Globe,
+        Smartphone,
+        Cpu,
+        Layout,
     } from "lucide-svelte";
     import Chart from "chart.js/auto";
 
@@ -336,20 +341,152 @@
             </div>
         {/if}
         {#if data.analyticsData || data.ga4Data}
-            <div class="ga4-charts-grid">
-                <div class="chart-card">
+            {#if data.activeProvider === 'cf'}
+                <!-- Cloudflare Web Analytics 종합 현황판 -->
+                <div class="chart-card mb-4">
                     <h3 class="chart-title">{t('admin.dashboard.reports.recent_28d_traffic', { default: '최근 28일 트래픽 (일별)' })}</h3>
                     <div class="chart-wrapper">
                         <canvas bind:this={trafficChartCanvas}></canvas>
                     </div>
                 </div>
-                <div class="chart-card">
-                    <h3 class="chart-title">{t('admin.dashboard.reports.user_acquisition', { default: '사용자 획득 (소스/매체)' })}</h3>
-                    <div class="chart-wrapper">
-                        <canvas bind:this={sourceChartCanvas}></canvas>
+
+                {#if data.cfDetails}
+                    <div class="cfa-details-grid mb-4">
+                        <!-- 인기 페이지 Top 5 -->
+                        <div class="detail-card">
+                            <h4 class="detail-title"><FileText size={18} /> 인기 페이지 Top 5 (최근 7일)</h4>
+                            {#if data.cfDetails.pages.length > 0}
+                                <div class="detail-table-wrap">
+                                    <table class="detail-table">
+                                        <thead>
+                                            <tr>
+                                                <th>경로</th>
+                                                <th class="right">조회수</th>
+                                                <th class="right">방문자</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {#each data.cfDetails.pages.slice(0, 5) as p}
+                                                <tr>
+                                                    <td class="font-mono text-truncate" title={p.name}>{p.name}</td>
+                                                    <td class="right font-semibold">{p.views.toLocaleString()}</td>
+                                                    <td class="right text-muted">{p.visitors.toLocaleString()}</td>
+                                                </tr>
+                                            {/each}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {:else}
+                                <div class="no-data-text">수집된 페이지 데이터가 없습니다.</div>
+                            {/if}
+                        </div>
+
+                        <!-- 유입 참조자 Top 5 -->
+                        <div class="detail-card">
+                            <h4 class="detail-title"><Compass size={18} /> 유입 참조자 Top 5 (최근 7일)</h4>
+                            {#if data.cfDetails.referrers.length > 0}
+                                <div class="detail-table-wrap">
+                                    <table class="detail-table">
+                                        <thead>
+                                            <tr>
+                                                <th>참조자 (출처)</th>
+                                                <th class="right">방문 세션</th>
+                                                <th class="right">조회수</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {#each data.cfDetails.referrers.slice(0, 5) as r}
+                                                <tr>
+                                                    <td class="text-truncate" title={r.name}>{r.name}</td>
+                                                    <td class="right font-semibold">{r.visitors.toLocaleString()}</td>
+                                                    <td class="right text-muted">{r.views.toLocaleString()}</td>
+                                                </tr>
+                                            {/each}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {:else}
+                                <div class="no-data-text">수집된 유입 참조자 데이터가 없습니다.</div>
+                            {/if}
+                        </div>
+                    </div>
+
+                    <!-- 하단 4열 요약 현황 카드 -->
+                    <div class="cfa-summary-grid mb-4">
+                        <div class="summary-card">
+                            <div class="summary-header"><Globe size={15} /> 국가별 방문</div>
+                            <div class="summary-list">
+                                {#each data.cfDetails.countries.slice(0, 3) as c}
+                                    <div class="summary-item">
+                                        <span class="item-name" title={c.name}>{c.name}</span>
+                                        <span class="item-val">{c.visitors}명</span>
+                                    </div>
+                                {:else}
+                                    <div class="no-data-text">-</div>
+                                {/each}
+                            </div>
+                        </div>
+
+                        <div class="summary-card">
+                            <div class="summary-header"><Smartphone size={15} /> 장치 유형</div>
+                            <div class="summary-list">
+                                {#each data.cfDetails.devices.slice(0, 3) as d}
+                                    <div class="summary-item">
+                                        <span class="item-name">{d.name}</span>
+                                        <span class="item-val">{d.visitors}명</span>
+                                    </div>
+                                {:else}
+                                    <div class="no-data-text">-</div>
+                                {/each}
+                            </div>
+                        </div>
+
+                        <div class="summary-card">
+                            <div class="summary-header"><Layout size={15} /> 브라우저</div>
+                            <div class="summary-list">
+                                {#each data.cfDetails.browsers.slice(0, 3) as b}
+                                    <div class="summary-item">
+                                        <span class="item-name" title={b.name}>{b.name}</span>
+                                        <span class="item-val">{b.visitors}명</span>
+                                    </div>
+                                {:else}
+                                    <div class="no-data-text">-</div>
+                                {/each}
+                            </div>
+                        </div>
+
+                        <div class="summary-card">
+                            <div class="summary-header"><Cpu size={15} /> 운영체제</div>
+                            <div class="summary-list">
+                                {#each data.cfDetails.os.slice(0, 3) as o}
+                                    <div class="summary-item">
+                                        <span class="item-name" title={o.name}>{o.name}</span>
+                                        <span class="item-val">{o.visitors}명</span>
+                                    </div>
+                                {:else}
+                                    <div class="no-data-text">-</div>
+                                {/each}
+                            </div>
+                        </div>
+                    </div>
+                {/if}
+            {:else}
+                <!-- GA4 전용 차트 그리드 유지 -->
+                <div class="ga4-charts-grid">
+                    <div class="chart-card">
+                        <h3 class="chart-title">{t('admin.dashboard.reports.recent_28d_traffic', { default: '최근 28일 트래픽 (일별)' })}</h3>
+                        <div class="chart-wrapper">
+                            <canvas bind:this={trafficChartCanvas}></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3 class="chart-title">{t('admin.dashboard.reports.user_acquisition', { default: '사용자 획득 (소스/매체)' })}</h3>
+                        <div class="chart-wrapper">
+                            <canvas bind:this={sourceChartCanvas}></canvas>
+                        </div>
                     </div>
                 </div>
-            </div>
+            {/if}
         {:else}
             <div class="empty-state">{t('admin.dashboard.reports.ga4_loading', { default: '트래픽 데이터를 불러오는 중입니다...' })}</div>
         {/if}
@@ -920,5 +1057,117 @@
         position: relative;
         height: 300px;
         width: 100%;
+    }
+
+    /* CFA 종합 리포트 전용 스타일 */
+    .cfa-details-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 1.5rem;
+    }
+    .detail-card {
+        background: var(--card-bg, #ffffff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 1rem;
+        padding: 1.25rem 1.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+    .detail-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--text-color, #1e293b);
+        margin: 0 0 1rem 0;
+    }
+    .detail-table-wrap {
+        overflow-x: auto;
+    }
+    .detail-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8125rem;
+    }
+    .detail-table th {
+        background: #f8fafc;
+        padding: 0.625rem 0.75rem;
+        font-weight: 600;
+        font-size: 0.75rem;
+        color: #64748b;
+        border-bottom: 1px solid #e2e8f0;
+        text-align: left;
+    }
+    .detail-table td {
+        padding: 0.625rem 0.75rem;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+    }
+    .detail-table tr:last-child td {
+        border-bottom: none;
+    }
+    .text-truncate {
+        max-width: 200px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .font-semibold {
+        font-weight: 600;
+    }
+
+    /* CFA 요약 그리드 */
+    .cfa-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+    }
+    .summary-card {
+        background: var(--card-bg, #ffffff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 0.75rem;
+        padding: 1rem 1.25rem;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    }
+    .summary-header {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748b;
+        margin-bottom: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+    }
+    .summary-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .summary-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.8125rem;
+    }
+    .item-name {
+        color: #334155;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 110px;
+    }
+    .item-val {
+        color: #0f172a;
+        font-weight: 600;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .no-data-text {
+        color: #94a3b8;
+        font-size: 0.8125rem;
+        text-align: center;
+        padding: 1rem 0;
     }
 </style>
