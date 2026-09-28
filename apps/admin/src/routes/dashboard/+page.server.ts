@@ -158,8 +158,10 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
                     const cfResult = await runCfAnalyticsReport(cfConfig, startDate, today);
 
                     // 조회된 최신 일자 데이터를 D1에 동기화
-                    if (cfResult.trafficRows.length > 0) {
-                        const batchStmts = cfResult.trafficRows.map(row => 
+                    // CF API가 count=0인 row를 반환할 경우 기존 데이터를 0으로 덮어쓰지 않도록 필터
+                    const meaningfulRows = cfResult.trafficRows.filter(row => row.pageViews > 0 || row.visitors > 0);
+                    if (meaningfulRows.length > 0) {
+                        const batchStmts = meaningfulRows.map(row => 
                             db.prepare(`
                                 INSERT INTO visitor_stats (date, unique_visitors, page_views)
                                 VALUES (?, ?, ?)
