@@ -37,12 +37,24 @@ export interface CFSourceRow {
     visits: number;     // count
 }
 
+export interface CFDetailItem {
+    name: string;
+    views: number;
+    visitors: number;
+}
+
 export interface CFAnalyticsReportResult {
     trafficRows: CFTrafficRow[];
     sourceRows: CFSourceRow[];
+    pages: CFDetailItem[];        // 인기 페이지 (requestPath)
+    referrers: CFDetailItem[];    // 유입 경로 (refererHost)
+    countries: CFDetailItem[];    // 국가 (countryName)
+    devices: CFDetailItem[];      // 기기 (deviceType)
+    browsers: CFDetailItem[];     // 브라우저 (userAgentBrowser)
+    os: CFDetailItem[];           // 운영체제 (userAgentOS)
 }
 
-const RUM_QUERY = `
+export const RUM_QUERY = `
 query GetRumAnalytics($accountTag: String!, $siteTag: String!, $from: Time!, $to: Time!) {
   viewer {
     accounts(filter: {accountTag: $accountTag}) {
@@ -62,13 +74,30 @@ query GetRumAnalytics($accountTag: String!, $siteTag: String!, $from: Time!, $to
           date
         }
       }
+      pages: rumPageloadEventsAdaptiveGroups(
+        filter: {
+          siteTag: $siteTag,
+          datetime_geq: $from,
+          datetime_leq: $to
+        },
+        limit: 10,
+        orderBy: [count_DESC]
+      ) {
+        count
+        sum {
+          visits
+        }
+        dimensions {
+          requestPath
+        }
+      }
       referrers: rumPageloadEventsAdaptiveGroups(
         filter: {
           siteTag: $siteTag,
           datetime_geq: $from,
           datetime_leq: $to
         },
-        limit: 20,
+        limit: 10,
         orderBy: [count_DESC]
       ) {
         count
@@ -77,6 +106,58 @@ query GetRumAnalytics($accountTag: String!, $siteTag: String!, $from: Time!, $to
         }
         dimensions {
           refererHost
+        }
+      }
+      countries: rumPageloadEventsAdaptiveGroups(
+        filter: {
+          siteTag: $siteTag,
+          datetime_geq: $from,
+          datetime_leq: $to
+        },
+        limit: 10,
+        orderBy: [count_DESC]
+      ) {
+        count
+        sum {
+          visits
+        }
+        dimensions {
+          countryName
+        }
+      }
+      devices: rumPageloadEventsAdaptiveGroups(
+        filter: {
+          siteTag: $siteTag,
+          datetime_geq: $from,
+          datetime_leq: $to
+        },
+        limit: 5,
+        orderBy: [count_DESC]
+      ) {
+        count
+        sum {
+          visits
+        }
+        dimensions {
+          deviceType
+        }
+      }
+      environments: rumPageloadEventsAdaptiveGroups(
+        filter: {
+          siteTag: $siteTag,
+          datetime_geq: $from,
+          datetime_leq: $to
+        },
+        limit: 10,
+        orderBy: [count_DESC]
+      ) {
+        count
+        sum {
+          visits
+        }
+        dimensions {
+          userAgentBrowser
+          userAgentOS
         }
       }
     }
@@ -135,6 +216,10 @@ export async function runCfAnalyticsReport(
     const accountData = result?.data?.viewer?.accounts?.[0];
     const rawTraffic = accountData?.traffic || [];
     const rawReferrers = accountData?.referrers || [];
+    const rawPages = accountData?.pages || [];
+    const rawCountries = accountData?.countries || [];
+    const rawDevices = accountData?.devices || [];
+    const rawEnvironments = accountData?.environments || [];
 
     const trafficRows: CFTrafficRow[] = rawTraffic
         .map((row: any) => {
@@ -149,22 +234,91 @@ export async function runCfAnalyticsReport(
         // API orderBy 미지원으로 인해 TypeScript 단에서 날짜 오름차순 정렬
         .sort((a, b) => a.date.localeCompare(b.date));
 
+    // 기존 하위 호환용 sourceRows
     const sourceRows: CFSourceRow[] = rawReferrers
         .map((row: any) => {
             const rawHost = String(row.dimensions?.refererHost || '').trim();
             const source = rawHost.length > 0 ? rawHost : 'Direct / None';
-            // 실제 방문 세션(sum.visits) 우선 반영. 샘플링으로 visits가 0이어도 조회가 발생했으면 최소 1 세션으로 계산
             const visits = row.sum?.visits !== undefined && row.sum?.visits !== null
                 ? parseInt(row.sum.visits, 10)
                 : parseInt(row.count, 10) || 0;
             return { source, visits };
         })
-        // 방문 수 기준 내림차순 정렬 및 유효 방문(visits > 0)만 유지
         .filter((row: CFSourceRow) => row.visits > 0)
         .sort((a, b) => b.visits - a.visits);
 
+    // 상세 분석 1) 인기 페이지 경로 (Top Pages)
+    const pages: CFDetailItem[] = rawPages
+        .map((row: any) => ({
+            name: String(row.dimensions?.requestPath || '/'),
+            views: parseInt(row.count, 10) || 0,
+            visitors: parseInt(row.sum?.visits, 10) || 0
+        }))
+        .filter((item: CFDetailItem) => item.views > 0);
+
+    // 상세 분석 2) 유입 참조자 (Top Referrers)
+    const referrers: CFDetailItem[] = rawReferrers
+        .map((row: any) => {
+            const rawHost = String(row.dimensions?.refererHost || '').trim();
+            return {
+                name: rawHost.length > 0 ? rawHost : 'Direct / None',
+                views: parseInt(row.count, 10) || 0,
+                visitors: parseInt(row.sum?.visits, 10) || (parseInt(row.count, 10) > 0 ? 1 : 0)
+            };
+        })
+        .filter((item: CFDetailItem) => item.views > 0);
+
+    // 상세 분석 3) 국가별 (Countries)
+    const countries: CFDetailItem[] = rawCountries
+        .map((row: any) => ({
+            name: String(row.dimensions?.countryName || 'Unknown'),
+            views: parseInt(row.count, 10) || 0,
+            visitors: parseInt(row.sum?.visits, 10) || (parseInt(row.count, 10) > 0 ? 1 : 0)
+        }))
+        .filter((item: CFDetailItem) => item.views > 0);
+
+    // 상세 분석 4) 장치 유형 (Devices)
+    const devices: CFDetailItem[] = rawDevices
+        .map((row: any) => ({
+            name: String(row.dimensions?.deviceType || 'Unknown'),
+            views: parseInt(row.count, 10) || 0,
+            visitors: parseInt(row.sum?.visits, 10) || (parseInt(row.count, 10) > 0 ? 1 : 0)
+        }))
+        .filter((item: CFDetailItem) => item.views > 0);
+
+    // 상세 분석 5 & 6) 브라우저 및 운영체제 분리 집계
+    const browserMap = new Map<string, { views: number; visitors: number }>();
+    const osMap = new Map<string, { views: number; visitors: number }>();
+
+    for (const row of rawEnvironments) {
+        const bName = String(row.dimensions?.userAgentBrowser || 'Unknown');
+        const osName = String(row.dimensions?.userAgentOS || 'Unknown');
+        const v = parseInt(row.count, 10) || 0;
+        const vis = parseInt(row.sum?.visits, 10) || 0;
+
+        const curB = browserMap.get(bName) || { views: 0, visitors: 0 };
+        browserMap.set(bName, { views: curB.views + v, visitors: curB.visitors + vis });
+
+        const curOs = osMap.get(osName) || { views: 0, visitors: 0 };
+        osMap.set(osName, { views: curOs.views + v, visitors: curOs.visitors + vis });
+    }
+
+    const browsers: CFDetailItem[] = Array.from(browserMap.entries())
+        .map(([name, stat]) => ({ name, ...stat }))
+        .sort((a, b) => b.views - a.views);
+
+    const os: CFDetailItem[] = Array.from(osMap.entries())
+        .map(([name, stat]) => ({ name, ...stat }))
+        .sort((a, b) => b.views - a.views);
+
     return {
         trafficRows,
-        sourceRows
+        sourceRows,
+        pages,
+        referrers,
+        countries,
+        devices,
+        browsers,
+        os
     };
 }
