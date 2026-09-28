@@ -72,6 +72,9 @@ query GetRumAnalytics($accountTag: String!, $siteTag: String!, $from: Time!, $to
         orderBy: [count_DESC]
       ) {
         count
+        sum {
+          visits
+        }
         dimensions {
           refererHost
         }
@@ -147,12 +150,18 @@ export async function runCfAnalyticsReport(
         .sort((a, b) => a.date.localeCompare(b.date));
 
     const sourceRows: CFSourceRow[] = rawReferrers
-        // API 단 빈 문자열 필터링 미지원으로 TypeScript 단에서 처리
-        .filter((row: any) => !!row.dimensions?.refererHost)
-        .map((row: any) => ({
-            source: String(row.dimensions.refererHost),
-            visits: parseInt(row.count, 10) || 0
-        }));
+        .map((row: any) => {
+            const rawHost = String(row.dimensions?.refererHost || '').trim();
+            const source = rawHost.length > 0 ? rawHost : 'Direct / None';
+            // 실제 방문 세션(sum.visits) 우선 반영. 샘플링으로 visits가 0이어도 조회가 발생했으면 최소 1 세션으로 계산
+            const visits = row.sum?.visits !== undefined && row.sum?.visits !== null
+                ? parseInt(row.sum.visits, 10)
+                : parseInt(row.count, 10) || 0;
+            return { source, visits };
+        })
+        // 방문 수 기준 내림차순 정렬 및 유효 방문(visits > 0)만 유지
+        .filter((row: CFSourceRow) => row.visits > 0)
+        .sort((a, b) => b.visits - a.visits);
 
     return {
         trafficRows,
