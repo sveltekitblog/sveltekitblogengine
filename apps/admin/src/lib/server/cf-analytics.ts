@@ -43,7 +43,7 @@ export interface CFAnalyticsReportResult {
 }
 
 const RUM_QUERY = `
-query GetRumAnalytics($accountTag: String!, $siteTag: String!, $from: String!, $to: String!) {
+query GetRumAnalytics($accountTag: String!, $siteTag: String!, $from: Time!, $to: Time!) {
   viewer {
     accounts(filter: {accountTag: $accountTag}) {
       traffic: rumPageloadEventsAdaptiveGroups(
@@ -52,8 +52,7 @@ query GetRumAnalytics($accountTag: String!, $siteTag: String!, $from: String!, $
           datetime_geq: $from,
           datetime_leq: $to
         },
-        limit: 100,
-        orderBy: [date_ASC]
+        limit: 100
       ) {
         count
         sum {
@@ -67,10 +66,9 @@ query GetRumAnalytics($accountTag: String!, $siteTag: String!, $from: String!, $
         filter: {
           siteTag: $siteTag,
           datetime_geq: $from,
-          datetime_leq: $to,
-          refererHost_neq: ""
+          datetime_leq: $to
         },
-        limit: 10,
+        limit: 20,
         orderBy: [count_DESC]
       ) {
         count
@@ -135,20 +133,26 @@ export async function runCfAnalyticsReport(
     const rawTraffic = accountData?.traffic || [];
     const rawReferrers = accountData?.referrers || [];
 
-    const trafficRows: CFTrafficRow[] = rawTraffic.map((row: any) => {
-        const rawDate = String(row.dimensions?.date || '');
-        const date = rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate;
-        return {
-            date,
-            pageViews: parseInt(row.count, 10) || 0,
-            visitors: parseInt(row.sum?.visits, 10) || 0
-        };
-    });
+    const trafficRows: CFTrafficRow[] = rawTraffic
+        .map((row: any) => {
+            const rawDate = String(row.dimensions?.date || '');
+            const date = rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate;
+            return {
+                date,
+                pageViews: parseInt(row.count, 10) || 0,
+                visitors: parseInt(row.sum?.visits, 10) || 0
+            };
+        })
+        // API orderBy 미지원으로 인해 TypeScript 단에서 날짜 오름차순 정렬
+        .sort((a, b) => a.date.localeCompare(b.date));
 
-    const sourceRows: CFSourceRow[] = rawReferrers.map((row: any) => ({
-        source: String(row.dimensions?.refererHost || 'Direct / None'),
-        visits: parseInt(row.count, 10) || 0
-    }));
+    const sourceRows: CFSourceRow[] = rawReferrers
+        // API 단 빈 문자열 필터링 미지원으로 TypeScript 단에서 처리
+        .filter((row: any) => !!row.dimensions?.refererHost)
+        .map((row: any) => ({
+            source: String(row.dimensions.refererHost),
+            visits: parseInt(row.count, 10) || 0
+        }));
 
     return {
         trafficRows,
