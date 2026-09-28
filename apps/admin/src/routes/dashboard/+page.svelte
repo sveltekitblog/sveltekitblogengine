@@ -354,15 +354,15 @@
                     <div class="cfa-details-grid mb-4">
                         <!-- 인기 페이지 Top 5 -->
                         <div class="detail-card">
-                            <h4 class="detail-title"><FileText size={18} /> 인기 페이지 Top 5 (최근 7일)</h4>
+                            <h4 class="detail-title"><FileText size={18} /> {t('admin.dashboard.reports.cfa_top_pages', { default: '인기 페이지 Top 5 (최근 7일)' })}</h4>
                             {#if data.cfDetails.pages.length > 0}
                                 <div class="detail-table-wrap">
                                     <table class="detail-table">
                                         <thead>
                                             <tr>
-                                                <th>경로</th>
-                                                <th class="right">조회수</th>
-                                                <th class="right">방문자</th>
+                                                <th>{t('admin.dashboard.reports.col_path', { default: '경로' })}</th>
+                                                <th class="right">{t('admin.dashboard.reports.col_views', { default: '조회수' })}</th>
+                                                <th class="right">{t('admin.dashboard.reports.col_visitors', { default: '방문자' })}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -377,21 +377,21 @@
                                     </table>
                                 </div>
                             {:else}
-                                <div class="no-data-text">수집된 페이지 데이터가 없습니다.</div>
+                                <div class="no-data-text">{t('admin.dashboard.reports.no_pages', { default: '수집된 페이지 데이터가 없습니다.' })}</div>
                             {/if}
                         </div>
 
                         <!-- 유입 참조자 Top 5 -->
                         <div class="detail-card">
-                            <h4 class="detail-title"><Compass size={18} /> 유입 참조자 Top 5 (최근 7일)</h4>
+                            <h4 class="detail-title"><Compass size={18} /> {t('admin.dashboard.reports.cfa_top_referrers', { default: '유입 참조자 Top 5 (최근 7일)' })}</h4>
                             {#if data.cfDetails.referrers.length > 0}
                                 <div class="detail-table-wrap">
                                     <table class="detail-table">
                                         <thead>
                                             <tr>
-                                                <th>참조자 (출처)</th>
-                                                <th class="right">방문 세션</th>
-                                                <th class="right">조회수</th>
+                                                <th>{t('admin.dashboard.reports.col_referrer', { default: '참조자 (출처)' })}</th>
+                                                <th class="right">{t('admin.dashboard.reports.col_sessions', { default: '방문 세션' })}</th>
+                                                <th class="right">{t('admin.dashboard.reports.col_views', { default: '조회수' })}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -406,7 +406,7 @@
                                     </table>
                                 </div>
                             {:else}
-                                <div class="no-data-text">수집된 유입 참조자 데이터가 없습니다.</div>
+                                <div class="no-data-text">{t('admin.dashboard.reports.no_referrers', { default: '수집된 유입 참조자 데이터가 없습니다.' })}</div>
                             {/if}
                         </div>
                     </div>
@@ -414,12 +414,12 @@
                     <!-- 하단 4열 요약 현황 카드 -->
                     <div class="cfa-summary-grid mb-4">
                         <div class="summary-card">
-                            <div class="summary-header"><Globe size={15} /> 국가별 방문</div>
+                            <div class="summary-header"><Globe size={15} /> {t('admin.dashboard.reports.cfa_countries', { default: '국가별 방문' })}</div>
                             <div class="summary-list">
                                 {#each data.cfDetails.countries.slice(0, 3) as c}
                                     <div class="summary-item">
                                         <span class="item-name" title={c.name}>{c.name}</span>
-                                        <span class="item-val">{c.visitors}명</span>
+                                        <span class="item-val">{c.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
                                     </div>
                                 {:else}
                                     <div class="no-data-text">-</div>
@@ -428,12 +428,12 @@
                         </div>
 
                         <div class="summary-card">
-                            <div class="summary-header"><Smartphone size={15} /> 장치 유형</div>
+                            <div class="summary-header"><Smartphone size={15} /> {t('admin.dashboard.reports.cfa_devices', { default: '장치 유형' })}</div>
                             <div class="summary-list">
                                 {#each data.cfDetails.devices.slice(0, 3) as d}
                                     <div class="summary-item">
                                         <span class="item-name">{d.name}</span>
-                                        <span class="item-val">{d.visitors}명</span>
+                                        <span class="item-val">{d.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
                                     </div>
                                 {:else}
                                     <div class="no-data-text">-</div>
@@ -442,12 +442,12 @@
                         </div>
 
                         <div class="summary-card">
-                            <div class="summary-header"><Layout size={15} /> 브라우저</div>
+                            <div class="summary-header"><Layout size={15} /> {t('admin.dashboard.reports.cfa_browsers', { default: '브라우저' })}</div>
                             <div class="summary-list">
                                 {#each data.cfDetails.browsers.slice(0, 3) as b}
                                     <div class="summary-item">
                                         <span class="item-name" title={b.name}>{b.name}</span>
-                                        <span class="item-val">{b.visitors}명</span>
+                                        <span class="item-val">{b.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
                                     </div>
                                 {:else}
                                     <div class="no-data-text">-</div>
@@ -456,12 +456,12 @@
                         </div>
 
                         <div class="summary-card">
-                            <div class="summary-header"><Cpu size={15} /> 운영체제</div>
+                            <div class="summary-header"><Cpu size={15} /> {t('admin.dashboard.reports.cfa_os', { default: '운영체제' })}</div>
                             <div class="summary-list">
                                 {#each data.cfDetails.os.slice(0, 3) as o}
                                     <div class="summary-item">
                                         <span class="item-name" title={o.name}>{o.name}</span>
-                                        <span class="item-val">{o.visitors}명</span>
+                                        <span class="item-val">{o.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
                                     </div>
                                 {:else}
                                     <div class="no-data-text">-</div>
