@@ -193,9 +193,13 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             ).bind(d28Ago).all();
 
             const statsRows = (dbStats as any[]) || [];
-            if (statsRows.length > 0 && !isDummyData) {
+            // 0값 행(page_views=0 AND unique_visitors=0)은 유효 데이터로 취급하지 않음
+            // CF API가 count=0 행을 반환해 저장된 기존 오염 데이터 방어
+            const validStatsRows = statsRows.filter((r: any) => (r.page_views || 0) > 0 || (r.unique_visitors || 0) > 0);
+
+            if (validStatsRows.length > 0 && !isDummyData) {
                 trafficData = {
-                    rows: statsRows.map(r => ({
+                    rows: validStatsRows.map((r: any) => ({
                         dimensionValues: [{ value: String(r.date).replace(/-/g, '') }],
                         metricValues: [{ value: String(r.page_views) }, { value: String(r.unique_visitors) }]
                     }))
