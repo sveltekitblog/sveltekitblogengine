@@ -144,18 +144,8 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             // ── Cloudflare Web Analytics (기본 엔진 + D1 증분 캐싱) ─────────────
             if (isCfConfigured) {
                 try {
-                    // D1에 저장된 최근 28일치 데이터 상태 확인
-                    const lastStatRow: any = await db.prepare(
-                        'SELECT MAX(date) as last_date, COUNT(*) as cnt FROM visitor_stats WHERE date >= ?'
-                    ).bind(d28Ago).first();
-                    const lastDate = lastStatRow?.last_date;
-                    const countInD1 = lastStatRow?.cnt || 0;
-
-                    // D1에 과거 27일 이상 채워져 있고 오늘 이전 데이터가 확정되어 있으면 오늘 하루치만 API 조회
-                    const needFullSync = !lastDate || countInD1 < 27;
-                    const startDate = needFullSync ? d28Ago : today;
-
-                    const cfResult = await runCfAnalyticsReport(cfConfig, startDate, today);
+                    // Cloudflare Analytics에서 최근 28일치 데이터를 전수 조회하여 최신 상태로 동기화
+                    const cfResult = await runCfAnalyticsReport(cfConfig, d28Ago, today);
 
                     // 조회된 최신 일자 데이터를 D1에 동기화
                     // CF API가 count=0인 row를 반환할 경우 기존 데이터를 0으로 덮어쓰지 않도록 필터
@@ -166,8 +156,8 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
                                 INSERT INTO visitor_stats (date, unique_visitors, page_views)
                                 VALUES (?, ?, ?)
                                 ON CONFLICT(date) DO UPDATE SET
-                                    unique_visitors = excluded.unique_visitors,
-                                    page_views = excluded.page_views
+                                    unique_visitors = CASE WHEN excluded.unique_visitors > 0 THEN excluded.unique_visitors ELSE visitor_stats.unique_visitors END,
+                                    page_views = CASE WHEN excluded.page_views > 0 THEN excluded.page_views ELSE visitor_stats.page_views END
                             `).bind(row.date, row.visitors, row.pageViews)
                         );
                         await db.batch(batchStmts);
