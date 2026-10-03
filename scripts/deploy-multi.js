@@ -143,6 +143,7 @@ function deployApp(appDir, projectName, acc, label) {
 
     const env = {
         ...process.env,
+        CI: 'true',                  // wrangler 비대화형 모드 (AI agent 감지 프롬프트 억제)
         APPDATA: isolatedTempDir,
         LOCALAPPDATA: isolatedTempDir,
         CLOUDFLARE_API_TOKEN: acc.token,
