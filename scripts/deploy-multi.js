@@ -156,14 +156,12 @@ function deployApp(appDir, projectName, acc, label) {
     try {
         // D1 자동 마이그레이션 (IF NOT EXISTS 기반 멱등 실행 — 기존 테이블/데이터 무손상)
         // 새 코드 배포 이전에 테이블이 먼저 준비되도록 migrate → build → deploy 순서 보장
-        const blogDbId = blogDb.id;
-        const userDbId = userDb.id;
         const migrateSteps = [
-            blogDbId
-                ? `npx wrangler d1 execute ${blogDb.name} --database-id ${blogDbId} --remote --yes --file=packages/shared/migrations/schema-blog-db.sql`
+            blogDb.name
+                ? `npx wrangler d1 execute ${blogDb.name} --remote --yes --file=packages/shared/migrations/schema-blog-db.sql`
                 : null,
-            userDbId
-                ? `npx wrangler d1 execute ${userDb.name} --database-id ${userDbId} --remote --yes --file=packages/shared/migrations/schema-user-db.sql`
+            userDb.name
+                ? `npx wrangler d1 execute ${userDb.name} --remote --yes --file=packages/shared/migrations/schema-user-db.sql`
                 : null,
         ].filter(Boolean).join(' && ');
 
