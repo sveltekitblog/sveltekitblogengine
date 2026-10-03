@@ -65,3 +65,5 @@ vite.config.ts.timestamp-*
 
 # Auto-generated Cloudflare configs
 **/wrangler.json
+**/wrangler.generated.json
+**/secrets.generated.json

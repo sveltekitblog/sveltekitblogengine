@@ -10,17 +10,15 @@
  *   npm run deploy:cfa-sync --all            — deploy for all accounts with cfa config
  */
 
-import { existsSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { execFileSync } from 'child_process';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { syncAccounts } from './sync-accounts.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, '..');
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-
 const MIGRATION_FILE = resolve(ROOT, 'packages/shared/migrations/schema-blog-db.sql');
 const WORKER_DIR = resolve(ROOT, 'apps/cfa-sync');
 
@@ -77,6 +75,7 @@ function deployAccount(key, acc) {
 
     const workerName = cfa.workerName || `${key}-cfa-sync`;
     const generatedConfig = resolve(WORKER_DIR, 'wrangler.generated.json');
+    const secretsFile = resolve(WORKER_DIR, 'secrets.generated.json');
 
     const wranglerConfig = {
         name: workerName,
@@ -87,8 +86,13 @@ function deployAccount(key, acc) {
     };
 
     // 계정 격리용 env (deploy-multi.js와 동일 패턴)
+    const isolatedTempDir = resolve(ROOT, '.wrangler-multi-temp');
+    if (!existsSync(isolatedTempDir)) mkdirSync(isolatedTempDir, { recursive: true });
+
     const env = {
         ...process.env,
+        APPDATA: isolatedTempDir,
+        LOCALAPPDATA: isolatedTempDir,
         CLOUDFLARE_API_TOKEN: acc.token,
         CLOUDFLARE_ACCOUNT_ID: acc.accountId
     };
@@ -98,32 +102,29 @@ function deployAccount(key, acc) {
     try {
         // 1. D1 스키마 마이그레이션 (IF NOT EXISTS — 멱등 실행)
         console.log(`\n📦 [${key}] D1 스키마 마이그레이션 중... (${blogDb.name})`);
-        execFileSync(npx, [
-            'wrangler', 'd1', 'execute', blogDb.name,
-            '--remote', '--yes',
-            '--file', MIGRATION_FILE
-        ], { cwd: ROOT, stdio: 'inherit', env });
+        execSync(
+            `npx wrangler d1 execute ${blogDb.name} --remote --yes --file=${MIGRATION_FILE}`,
+            { cwd: ROOT, stdio: 'inherit', env }
+        );
 
-        // 2. Worker Secrets 주입
+        // 2. Worker Secrets 주입 (임시 파일 경유 — Windows pipe 호환성)
         console.log(`\n🔐 [${key}] Worker Secrets 주입 중...`);
-        execFileSync(npx, ['wrangler', 'secret', 'bulk', '--config', generatedConfig], {
-            cwd: WORKER_DIR,
-            input: JSON.stringify({
-                CF_ACCOUNT_ID: acc.accountId,
-                CF_API_TOKEN: cfa.cfApiToken,
-                CF_WEB_ANALYTICS_SITE_TAG: cfa.cfSiteTag
-            }),
-            stdio: ['pipe', 'inherit', 'inherit'],
-            env
-        });
+        writeFileSync(secretsFile, JSON.stringify({
+            CF_ACCOUNT_ID: acc.accountId,
+            CF_API_TOKEN: cfa.cfApiToken,
+            CF_WEB_ANALYTICS_SITE_TAG: cfa.cfSiteTag
+        }));
+        execSync(
+            `npx wrangler secret bulk --config ${generatedConfig} --file ${secretsFile}`,
+            { cwd: WORKER_DIR, stdio: 'inherit', env }
+        );
 
         // 3. Worker 배포
         console.log(`\n🌎 [${key}] Worker 배포 중... (${workerName})`);
-        execFileSync(npx, ['wrangler', 'deploy', '--config', generatedConfig], {
-            cwd: WORKER_DIR,
-            stdio: 'inherit',
-            env
-        });
+        execSync(
+            `npx wrangler deploy --config ${generatedConfig}`,
+            { cwd: WORKER_DIR, stdio: 'inherit', env }
+        );
 
         console.log(`\n✨ [${acc.name || key}] CFA Sync Worker 배포 완료! 🎉`);
         console.log(`   Worker 이름: ${workerName}`);
@@ -131,6 +132,12 @@ function deployAccount(key, acc) {
 
     } finally {
         if (existsSync(generatedConfig)) rmSync(generatedConfig);
+        if (existsSync(secretsFile)) {
+            try { rmSync(secretsFile); } catch (e) {}
+        }
+        if (existsSync(isolatedTempDir)) {
+            try { rmSync(isolatedTempDir, { recursive: true, force: true }); } catch (e) {}
+        }
     }
 }
 
