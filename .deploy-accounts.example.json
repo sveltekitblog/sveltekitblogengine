@@ -17,6 +17,11 @@
     },
     "kv": {
       "IMAGES_KV": "YOUR_IMAGES_KV_ID_HERE"
+    },
+    "cfa": {
+      "cfApiToken": "YOUR_CF_API_TOKEN_HERE",
+      "cfSiteTag": "YOUR_CF_WEB_ANALYTICS_SITE_TAG_HERE",
+      "workerName": "main-cfa-sync"
     }
   },
   "second": {
@@ -37,6 +42,11 @@
     },
     "kv": {
       "IMAGES_KV": "YOUR_IMAGES_KV_ID_HERE"
+    },
+    "cfa": {
+      "cfApiToken": "YOUR_CF_API_TOKEN_HERE",
+      "cfSiteTag": "YOUR_CF_WEB_ANALYTICS_SITE_TAG_HERE",
+      "workerName": "second-cfa-sync"
     }
   }
 }
