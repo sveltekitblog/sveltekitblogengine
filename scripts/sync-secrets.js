@@ -65,9 +65,9 @@ function checkWranglerLogin() {
 
 const isLoggedIn = checkWranglerLogin();
 if (!isLoggedIn) {
-    console.log('\n🔐 [EN] No valid Cloudflare session detected. Running secure login with minimal scopes...');
-    console.log('   [KO] 유효한 클라우드플레어 로그인 세션이 없습니다. 최소 권한으로 로그인을 실행합니다...');
-    spawnSync(NPX, ['wrangler', 'login', '--scopes', 'account:read', 'user:read', 'workers:write', 'workers_scripts:write', 'pages:write', 'd1:write', 'workers_kv:write'], {
+    console.log('\n🔐 [EN] No valid Cloudflare session detected. Running wrangler login...');
+    console.log('   [KO] 유효한 클라우드플레어 로그인 세션이 없습니다. Wrangler 로그인을 실행합니다...');
+    spawnSync(NPX, ['wrangler', 'login'], {
         stdio: 'inherit',
         shell: true
     });

@@ -445,8 +445,8 @@ async function main() {
             loginChoice = await ask('  > ');
         }
         if (loginChoice.toLowerCase() !== 'n') {
-            // Using minimal scopes to protect account security (Only D1, KV, Pages, and Account Info)
-            runInteractive(`${NPX} wrangler login --scopes account:read user:read workers:write workers_scripts:write pages:write d1:write workers_kv:write`);
+            // Wrangler handles default scopes automatically (Wrangler가 필요한 권한을 자동으로 요청합니다)
+            runInteractive(`${NPX} wrangler login`);
         } else {
             console.log('  [EN] Skipping login.');
             console.log('  [KO] 로그인을 건너뜁니다.');
