@@ -86,7 +86,8 @@ export async function autoDetectSiteTag(accountId, token) {
     }
 }
 
-export async function syncInitialDataToD1(acc, blogDb, siteTag, cfaToken, env) {
+export async function syncInitialDataToD1(acc, blogDb, siteTag, cfaToken, env, accountId) {
+    const effectiveAccId = accountId || acc.cfa?.accountId || acc.accountId;
     console.log(`\n📊 [${acc.name || 'CFA'}] 초회 7일치 CFA 데이터 D1 동기화 시작...`);
     try {
         const today = new Date();
@@ -129,7 +130,7 @@ export async function syncInitialDataToD1(acc, blogDb, siteTag, cfaToken, env) {
         const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfaToken}` },
-            body: JSON.stringify({ query, variables: { accountTag: acc.accountId, siteTag, from, to } })
+            body: JSON.stringify({ query, variables: { accountTag: effectiveAccId, siteTag, from, to } })
         });
 
         if (!res.ok) {
@@ -239,8 +240,12 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
 
     // ── 계정 기본 정보 검증 ──────────────────────────────────────────────
     const isPlaceholder = (val) => !val || val.includes('YOUR_') || val.includes('여기에_');
-    if (isPlaceholder(acc.token) || isPlaceholder(acc.accountId)) {
-        console.error(`❌ [${key}] token 또는 accountId가 설정되지 않았습니다.`);
+    let cfa = acc.cfa || {};
+    const effectiveAccountId = (!isPlaceholder(cfa.accountId)) ? cfa.accountId : acc.accountId;
+    const effectiveToken = (!isPlaceholder(cfa.cfApiToken)) ? cfa.cfApiToken : acc.token;
+
+    if (isPlaceholder(effectiveToken) || isPlaceholder(effectiveAccountId)) {
+        console.error(`❌ [${key}] token/cfApiToken 또는 accountId/cfa.accountId가 설정되지 않았습니다.`);
         return;
     }
 
@@ -250,7 +255,7 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
 
     // ── 1. 중복 생성 방지: 워커 사전 존재 확인 ─────────────────────────
     if (!isForce) {
-        const exists = await checkWorkerExists(acc.accountId, workerName, acc.token);
+        const exists = await checkWorkerExists(effectiveAccountId, workerName, effectiveToken);
         if (exists) {
             console.log(`⏩ [${key}] CFA Sync Worker ("${workerName}")가 이미 등록되어 정상 작동 중입니다.`);
             console.log(`   워커 배포는 건너뜁니다. (강제 재배포 필요 시: --force)`);
@@ -259,13 +264,12 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
     }
 
     // ── CFA 섹션 검증 및 자동 감지 ──────────────────────────────────────
-    let cfa = acc.cfa || {};
-    const cfaToken = cfa.cfApiToken || acc.token;
+    const cfaToken = effectiveToken;
     let siteTag = cfa.cfSiteTag;
 
     if (!siteTag) {
         console.log(`🔍 [${key}] cfSiteTag가 없어 Cloudflare에서 활성 사이트 태그 자동 탐색 중...`);
-        siteTag = await autoDetectSiteTag(acc.accountId, cfaToken);
+        siteTag = await autoDetectSiteTag(effectiveAccountId, cfaToken);
         if (siteTag) {
             console.log(`✅ [${key}] 활성 siteTag 자동 감지 성공: ${siteTag}`);
         } else {
@@ -302,8 +306,8 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
         CI: 'true',                  // wrangler 비대화형 모드 (AI agent 감지 프롬프트 억제)
         APPDATA: isolatedTempDir,
         LOCALAPPDATA: isolatedTempDir,
-        CLOUDFLARE_API_TOKEN: acc.token,
-        CLOUDFLARE_ACCOUNT_ID: acc.accountId
+        CLOUDFLARE_API_TOKEN: effectiveToken,
+        CLOUDFLARE_ACCOUNT_ID: effectiveAccountId
     };
 
     try {
@@ -322,7 +326,7 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
             // 2. Worker Secrets 주입 (임시 파일 경유 — Windows pipe 호환성)
             console.log(`\n🔐 [${key}] Worker Secrets 주입 중...`);
             writeFileSync(secretsFile, JSON.stringify({
-                CF_ACCOUNT_ID: acc.accountId,
+                CF_ACCOUNT_ID: effectiveAccountId,
                 CF_API_TOKEN: cfaToken,
                 CF_WEB_ANALYTICS_SITE_TAG: siteTag
             }));
@@ -345,7 +349,7 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
         }
 
         // 4. [핵심] 초회 7일치 CFA 데이터 D1 직접 적재
-        await syncInitialDataToD1(acc, blogDb, siteTag, cfaToken, env);
+        await syncInitialDataToD1(acc, blogDb, siteTag, cfaToken, env, effectiveAccountId);
 
     } finally {
         if (existsSync(generatedConfig)) rmSync(generatedConfig);
