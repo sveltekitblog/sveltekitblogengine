@@ -290,6 +290,7 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
 
     const wranglerConfig = {
         name: workerName,
+        account_id: effectiveAccountId,
         main: 'src/index.ts',
         compatibility_date: '2026-09-03',
         workers_dev: false,
@@ -307,7 +308,8 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
     const env = isWebLogin
         ? {
             ...process.env,
-            CI: 'true'
+            CI: 'true',
+            CLOUDFLARE_ACCOUNT_ID: effectiveAccountId
         }
         : {
             ...process.env,
@@ -331,7 +333,14 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
                 );
             }
 
-            // 2. Worker Secrets 주입 (임시 파일 경유 — Windows pipe 호환성)
+            // 2. Worker 배포 (코드 및 크론 트리거 등록)
+            console.log(`\n🌎 [${key}] Worker 배포 중... (${workerName})`);
+            execSync(
+                `npx wrangler deploy --config ${generatedConfig}`,
+                { cwd: WORKER_DIR, stdio: 'inherit', env }
+            );
+
+            // 3. Worker Secrets 주입 (임시 파일 경유 — Windows pipe 호환성)
             console.log(`\n🔐 [${key}] Worker Secrets 주입 중...`);
             writeFileSync(secretsFile, JSON.stringify({
                 CF_ACCOUNT_ID: effectiveAccountId,
@@ -340,13 +349,6 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
             }));
             execSync(
                 `npx wrangler secret bulk --config ${generatedConfig} --file ${secretsFile}`,
-                { cwd: WORKER_DIR, stdio: 'inherit', env }
-            );
-
-            // 3. Worker 배포
-            console.log(`\n🌎 [${key}] Worker 배포 중... (${workerName})`);
-            execSync(
-                `npx wrangler deploy --config ${generatedConfig}`,
                 { cwd: WORKER_DIR, stdio: 'inherit', env }
             );
 
