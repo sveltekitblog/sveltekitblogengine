@@ -297,18 +297,26 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
         d1_databases: [{ binding: 'BLOG_DB', database_name: blogDb.name, database_id: blogDb.id }]
     };
 
-    // 계정 격리용 env (deploy-multi.js와 동일 패턴)
-    const isolatedTempDir = resolve(ROOT, '.wrangler-multi-temp');
-    if (!existsSync(isolatedTempDir)) mkdirSync(isolatedTempDir, { recursive: true });
+    // 웹 로그인 계정(main)인지, API 토큰 서브 계정인지 판별
+    const isWebLogin = isPlaceholder(acc.token);
 
-    const env = {
-        ...process.env,
-        CI: 'true',                  // wrangler 비대화형 모드 (AI agent 감지 프롬프트 억제)
-        APPDATA: isolatedTempDir,
-        LOCALAPPDATA: isolatedTempDir,
-        CLOUDFLARE_API_TOKEN: effectiveToken,
-        CLOUDFLARE_ACCOUNT_ID: effectiveAccountId
-    };
+    // 계정 격리용 env (API 토큰 계정일 때만 환경변수 격리 적용)
+    const isolatedTempDir = resolve(ROOT, '.wrangler-multi-temp');
+    if (!isWebLogin && !existsSync(isolatedTempDir)) mkdirSync(isolatedTempDir, { recursive: true });
+
+    const env = isWebLogin
+        ? {
+            ...process.env,
+            CI: 'true'
+        }
+        : {
+            ...process.env,
+            CI: 'true',
+            APPDATA: isolatedTempDir,
+            LOCALAPPDATA: isolatedTempDir,
+            CLOUDFLARE_API_TOKEN: acc.token,
+            CLOUDFLARE_ACCOUNT_ID: acc.accountId
+        };
 
     try {
         if (needWorkerDeploy) {

@@ -104,7 +104,8 @@ export function syncAccounts(silent = false) {
         },
         kv: {
             IMAGES_KV: mainExisting.kv?.IMAGES_KV || defaultKv
-        }
+        },
+        ...(mainExisting.cfa ? { cfa: mainExisting.cfa } : {})
     };
 
     // ── 2. 루트의 모든 wrangler.backup*.json 파일 스캔 및 추가 ──
@@ -165,7 +166,8 @@ export function syncAccounts(silent = false) {
                 },
                 kv: {
                     IMAGES_KV: existing.kv?.IMAGES_KV || bKv || ''
-                }
+                },
+                ...(existing.cfa ? { cfa: existing.cfa } : {})
             };
 
             if (isNew) {
