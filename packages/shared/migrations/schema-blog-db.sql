@@ -107,6 +107,29 @@ CREATE TABLE IF NOT EXISTS visitor_stats (
     page_views INTEGER DEFAULT 0
 );
 
+-- 9. Cloudflare Web Analytics daily snapshots
+-- Detailed CFA dimensions are intentionally stored as one canonical JSON snapshot per
+-- day. This keeps refreshes atomic: only today's/yesterday's complete snapshot is
+-- replaced when Cloudflare reports a changed value.
+CREATE TABLE IF NOT EXISTS cf_daily_snapshots (
+    date TEXT PRIMARY KEY,
+    page_views INTEGER NOT NULL DEFAULT 0,
+    visitors INTEGER NOT NULL DEFAULT 0,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    data_hash TEXT NOT NULL,
+    sample_interval REAL,
+    is_exact INTEGER NOT NULL DEFAULT 0,
+    fetched_at TEXT NOT NULL
+);
+
+-- Singleton row used by the scheduled CFA synchronizer for status and bootstrap.
+CREATE TABLE IF NOT EXISTS cf_sync_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    initialized_at TEXT NOT NULL,
+    last_synced_at TEXT NOT NULL,
+    last_error TEXT
+);
+
 -- 9. Media Library (R2 images metadata)
 CREATE TABLE IF NOT EXISTS media (
     id TEXT PRIMARY KEY,

@@ -1,0 +1,13 @@
+{
+  "name": "skbe-cfa-sync",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-03",
+  "triggers": { "crons": ["10 * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "BLOG_DB",
+      "database_name": "your-blog-db",
+      "database_id": "your-d1-database-id"
+    }
+  ]
+}

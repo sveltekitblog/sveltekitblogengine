@@ -18,8 +18,34 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { runGa4Report, runGa4BatchReport, getGa4AccessToken } from '$lib/server/ga4';
-import { runCfAnalyticsReport, type CFAnalyticsConfig, type CFDetailItem } from '$lib/server/cf-analytics';
 import { runAdsenseReport, getAdsenseAccessToken, type AdSenseConfig } from '$lib/server/adsense';
+
+type CFDetailItem = { name: string; views: number; visitors: number };
+type CFDetailName = 'pages' | 'referrers' | 'countries' | 'devices' | 'browsers' | 'os';
+
+const CF_DETAIL_NAMES: CFDetailName[] = ['pages', 'referrers', 'countries', 'devices', 'browsers', 'os'];
+
+function aggregateCfDetails(rows: any[]): Record<CFDetailName, CFDetailItem[]> {
+    const totals = Object.fromEntries(CF_DETAIL_NAMES.map(name => [name, new Map<string, CFDetailItem>()])) as Record<CFDetailName, Map<string, CFDetailItem>>;
+    for (const row of rows) {
+        try {
+            const details = JSON.parse(row.details_json || '{}') as Partial<Record<CFDetailName, CFDetailItem[]>>;
+            for (const name of CF_DETAIL_NAMES) {
+                for (const item of details[name] || []) {
+                    const current = totals[name].get(item.name) || { name: item.name, views: 0, visitors: 0 };
+                    current.views += Number(item.views) || 0;
+                    current.visitors += Number(item.visitors) || 0;
+                    totals[name].set(item.name, current);
+                }
+            }
+        } catch (error) {
+            console.warn('Ignoring invalid CFA daily snapshot:', row.date, error);
+        }
+    }
+    return Object.fromEntries(CF_DETAIL_NAMES.map(name => [name,
+        Array.from(totals[name].values()).sort((a, b) => b.views - a.views || b.visitors - a.visitors)
+    ])) as Record<CFDetailName, CFDetailItem[]>;
+}
 
 export const load: PageServerLoad = async ({ locals, platform, parent, url }) => {
     const db = locals.blogDb;
@@ -116,14 +142,27 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
         // ── Visitor Analytics & AdSense ───────────────────────────────────────
         const requestedProvider = (url.searchParams.get('provider') || 'cf').toLowerCase();
         const activeProvider = requestedProvider === 'ga4' ? 'ga4' : 'cf';
+        const d28Ago = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
 
-        // 1) Cloudflare Web Analytics Config
-        const cfConfig: CFAnalyticsConfig = {
-            accountId: (platform?.env as any)?.CF_ACCOUNT_ID as string,
-            apiToken:  (platform?.env as any)?.CF_API_TOKEN  as string,
-            siteTag:   (platform?.env as any)?.CF_WEB_ANALYTICS_SITE_TAG as string
-        };
-        const isCfConfigured = Boolean(cfConfig.accountId && cfConfig.apiToken && cfConfig.siteTag);
+        // CFA data is collected by the separate scheduled Worker. The dashboard
+        // deliberately has no CFA API token and reads only durable D1 snapshots.
+        let cfSnapshots: any[] = [];
+        let cfSyncState: any = null;
+        try {
+            const { results: cfSnapshotRows } = await db.prepare(`
+                SELECT date, page_views, visitors, details_json, sample_interval, is_exact, fetched_at
+                FROM cf_daily_snapshots
+                WHERE date >= ?
+                ORDER BY date ASC
+            `).bind(d28Ago).all();
+            cfSnapshots = (cfSnapshotRows || []) as any[];
+            cfSyncState = await db.prepare(`
+                SELECT initialized_at, last_synced_at, last_error FROM cf_sync_state WHERE id = 1
+            `).first();
+        } catch (e) {
+            console.warn('[Dashboard] cf_daily_snapshots or cf_sync_state table does not exist yet. Falling back to dummy data.', e);
+        }
+        const isCfConfigured = Boolean(cfSyncState || cfSnapshots.length > 0);
 
         // 2) GA4 Config
         const ga4Config = {
@@ -144,73 +183,30 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             devices: CFDetailItem[];
             browsers: CFDetailItem[];
             os: CFDetailItem[];
+            today?: Record<CFDetailName, CFDetailItem[]>;
+            days7?: Record<CFDetailName, CFDetailItem[]>;
         } | null = null;
 
-        const d7Ago  = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-        const d28Ago = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
-
         if (activeProvider === 'cf') {
-            // ── Cloudflare Web Analytics (기본 엔진 + D1 증분 캐싱) ─────────────
-            if (isCfConfigured) {
-                try {
-                    // Cloudflare Analytics에서 정확도가 보장되는 최근 7일치 정밀 데이터 조회
-                    const cfResult = await runCfAnalyticsReport(cfConfig, d7Ago, today);
-
-                    // 조회된 7일치 일자 데이터를 D1에 동기화 (기존 28일치 누적 데이터 위에 보존 및 갱신)
-                    const meaningfulRows = cfResult.trafficRows.filter(row => row.pageViews > 0 || row.visitors > 0);
-                    if (meaningfulRows.length > 0) {
-                        const batchStmts = meaningfulRows.map(row => 
-                            db.prepare(`
-                                INSERT INTO visitor_stats (date, unique_visitors, page_views)
-                                VALUES (?, ?, ?)
-                                ON CONFLICT(date) DO UPDATE SET
-                                    unique_visitors = CASE WHEN excluded.unique_visitors > 0 THEN excluded.unique_visitors ELSE visitor_stats.unique_visitors END,
-                                    page_views = CASE WHEN excluded.page_views > 0 THEN excluded.page_views ELSE visitor_stats.page_views END
-                            `).bind(row.date, row.visitors, row.pageViews)
-                        );
-                        await db.batch(batchStmts);
-                    }
-
-                    sourceData = {
-                        rows: cfResult.sourceRows.map(s => ({
-                            dimensionValues: [{ value: s.source }],
-                            metricValues: [{ value: String(s.visits) }]
-                        }))
-                    };
-
-                    // Cloudflare 전용 6대 상세 분석 데이터 적재
-                    cfDetails = {
-                        pages: cfResult.pages || [],
-                        referrers: cfResult.referrers || [],
-                        countries: cfResult.countries || [],
-                        devices: cfResult.devices || [],
-                        browsers: cfResult.browsers || [],
-                        os: cfResult.os || []
-                    };
-                } catch (e: any) {
-                    console.error('CF Analytics fetch error:', e);
-                    analyticsError = `Cloudflare Analytics 통신 오류: ${e.message}`;
-                }
-            } else {
-                isDummyData = true;
-            }
-
-            // 화면 차트용 일별 데이터는 D1에서 28일치 일괄 조회 (초고속 캐시 로드)
-            const { results: dbStats } = await db.prepare(
-                'SELECT date, unique_visitors, page_views FROM visitor_stats WHERE date >= ? ORDER BY date ASC'
-            ).bind(d28Ago).all();
-
-            const statsRows = (dbStats as any[]) || [];
-            // 0값 행(page_views=0 AND unique_visitors=0)은 유효 데이터로 취급하지 않음
-            // CF API가 count=0 행을 반환해 저장된 기존 오염 데이터 방어
-            const validStatsRows = statsRows.filter((r: any) => (r.page_views || 0) > 0 || (r.unique_visitors || 0) > 0);
-
-            if (validStatsRows.length > 0 && !isDummyData) {
+            if (cfSnapshots.length > 0) {
+                const details7d = aggregateCfDetails(cfSnapshots.slice(-7));
+                const detailsToday = aggregateCfDetails(cfSnapshots.filter((r: any) => r.date === today));
                 trafficData = {
-                    rows: validStatsRows.map((r: any) => ({
+                    rows: cfSnapshots.map((r: any) => ({
                         dimensionValues: [{ value: String(r.date).replace(/-/g, '') }],
-                        metricValues: [{ value: String(r.page_views) }, { value: String(r.unique_visitors) }]
+                        metricValues: [{ value: String(r.page_views) }, { value: String(r.visitors) }]
                     }))
+                };
+                sourceData = {
+                    rows: details7d.referrers.map(item => ({
+                        dimensionValues: [{ value: item.name }],
+                        metricValues: [{ value: String(item.visitors || item.views) }]
+                    }))
+                };
+                cfDetails = {
+                    ...details7d,
+                    days7: details7d,
+                    today: detailsToday
                 };
             } else {
                 isDummyData = true;
@@ -346,6 +342,11 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             isGa4Configured,
             analyticsData: { trafficData, sourceData },
             cfDetails,
+            cfSync: cfSyncState ? {
+                initializedAt: cfSyncState.initialized_at,
+                lastSyncedAt: cfSyncState.last_synced_at,
+                lastError: cfSyncState.last_error
+            } : null,
             analyticsError,
             ga4Data: { trafficData, sourceData }, // 하위 호환성 유지
             ga4Error: analyticsError,

@@ -12,6 +12,7 @@ import { readFileSync, writeFileSync, existsSync, rmSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { syncAccounts } from './sync-accounts.js';
+import { deployCfaSyncAccount } from './deploy-cfa-sync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -192,7 +193,7 @@ function deployApp(appDir, projectName, acc, label) {
     }
 }
 
-function deployAccount(key, acc) {
+async function deployAccount(key, acc) {
     console.log(`\n======================================================`);
     console.log(`🚀 [${acc.name || key}] 계정 배포 시작`);
     console.log(`======================================================`);
@@ -204,14 +205,21 @@ function deployAccount(key, acc) {
         return;
     }
 
-
-
     if (!isAdminOnly && acc.blogProject) {
         deployApp('blog', acc.blogProject, acc, '1. Blog App');
     }
 
     if (!isBlogOnly && acc.adminProject) {
         deployApp('admin', acc.adminProject, acc, '2. Admin App');
+    }
+
+    // 3. CFA Sync Worker 연동 (이미 존재 시 Skip, 미생성 시 1회 안전 생성)
+    if (!isBlogOnly && (acc.cfa || acc.token)) {
+        try {
+            await deployCfaSyncAccount(key, acc, { skipMigration: true });
+        } catch (e) {
+            console.warn(`⚠ [${key}] CFA Sync Worker 처리 중 오류 (무시하고 계속):`, e.message);
+        }
     }
 
     console.log(`\n✨ [${acc.name || key}] 계정 배포 완료! 🎉`);
@@ -222,11 +230,11 @@ async function main() {
         const keys = Object.keys(accounts);
         console.log(`\n🌐 총 ${keys.length}개 계정 전체 올인원 배포를 시작합니다.`);
         for (const key of keys) {
-            deployAccount(key, accounts[key]);
+            await deployAccount(key, accounts[key]);
         }
         console.log(`\n🎉 모든 계정의 배포가 성공적으로 완료되었습니다!`);
     } else if (accounts[target]) {
-        deployAccount(target, accounts[target]);
+        await deployAccount(target, accounts[target]);
     } else {
         console.error(`\n❌ 등록되지 않은 계정입니다: "${target}"`);
         console.error(`👉 가능한 대상: ${Object.keys(accounts).join(', ')}, --all\n`);

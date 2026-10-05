@@ -48,6 +48,14 @@
     let adsenseChartCanvas: HTMLCanvasElement | undefined = $state();
     let adsenseChart: Chart | null = null;
 
+    // CFA 리포트 기간 선택 상태 (기본값: 최근 7일)
+    let cfaPeriod = $state<'today' | '7d'>('7d');
+    let activeCfDetails = $derived(
+        cfaPeriod === 'today'
+            ? (data.cfDetails?.today || data.cfDetails)
+            : (data.cfDetails?.days7 || data.cfDetails)
+    );
+
     onMount(() => {
         initAllCharts();
     });
@@ -351,11 +359,37 @@
                 </div>
 
                 {#if data.cfDetails}
+                    <!-- CFA 리포트 기간 선택 토글 바 -->
+                    <div class="cfa-period-bar mb-3">
+                        <div class="period-toggle-group">
+                            <button
+                                type="button"
+                                class="period-toggle-btn"
+                                class:active={cfaPeriod === 'today'}
+                                onclick={() => cfaPeriod = 'today'}
+                            >
+                                {t('admin.dashboard.reports.period_today', { default: '오늘' })}
+                            </button>
+                            <button
+                                type="button"
+                                class="period-toggle-btn"
+                                class:active={cfaPeriod === '7d'}
+                                onclick={() => cfaPeriod = '7d'}
+                            >
+                                {t('admin.dashboard.reports.period_7d', { default: '최근 7일' })}
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="cfa-details-grid mb-4">
                         <!-- 인기 페이지 Top 5 -->
                         <div class="detail-card">
-                            <h4 class="detail-title"><FileText size={18} /> {t('admin.dashboard.reports.cfa_top_pages', { default: '인기 페이지 Top 5 (최근 7일)' })}</h4>
-                            {#if data.cfDetails.pages.length > 0}
+                            <h4 class="detail-title">
+                                <FileText size={18} />
+                                {t('admin.dashboard.reports.cfa_top_pages', { default: '인기 페이지 Top 5' })}
+                                <span class="period-badge">({cfaPeriod === 'today' ? t('admin.dashboard.reports.period_today', { default: '오늘' }) : t('admin.dashboard.reports.period_7d', { default: '최근 7일' })})</span>
+                            </h4>
+                            {#if activeCfDetails && activeCfDetails.pages && activeCfDetails.pages.length > 0}
                                 <div class="detail-table-wrap">
                                     <table class="detail-table">
                                         <thead>
@@ -366,7 +400,7 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {#each data.cfDetails.pages.slice(0, 5) as p}
+                                            {#each activeCfDetails.pages.slice(0, 5) as p}
                                                 <tr>
                                                     <td class="font-mono text-truncate" title={p.name}>{p.name}</td>
                                                     <td class="right font-semibold">{p.views.toLocaleString()}</td>
@@ -383,8 +417,12 @@
 
                         <!-- 유입 참조자 Top 5 -->
                         <div class="detail-card">
-                            <h4 class="detail-title"><Compass size={18} /> {t('admin.dashboard.reports.cfa_top_referrers', { default: '유입 참조자 Top 5 (최근 7일)' })}</h4>
-                            {#if data.cfDetails.referrers.length > 0}
+                            <h4 class="detail-title">
+                                <Compass size={18} />
+                                {t('admin.dashboard.reports.cfa_top_referrers', { default: '유입 참조자 Top 5' })}
+                                <span class="period-badge">({cfaPeriod === 'today' ? t('admin.dashboard.reports.period_today', { default: '오늘' }) : t('admin.dashboard.reports.period_7d', { default: '최근 7일' })})</span>
+                            </h4>
+                            {#if activeCfDetails && activeCfDetails.referrers && activeCfDetails.referrers.length > 0}
                                 <div class="detail-table-wrap">
                                     <table class="detail-table">
                                         <thead>
@@ -395,7 +433,7 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {#each data.cfDetails.referrers.slice(0, 5) as r}
+                                            {#each activeCfDetails.referrers.slice(0, 5) as r}
                                                 <tr>
                                                     <td class="text-truncate" title={r.name}>{r.name}</td>
                                                     <td class="right font-semibold">{r.visitors.toLocaleString()}</td>
@@ -416,56 +454,64 @@
                         <div class="summary-card">
                             <div class="summary-header"><Globe size={15} /> {t('admin.dashboard.reports.cfa_countries', { default: '국가별 방문' })}</div>
                             <div class="summary-list">
-                                {#each data.cfDetails.countries.slice(0, 3) as c}
-                                    <div class="summary-item">
-                                        <span class="item-name" title={c.name}>{c.name}</span>
-                                        <span class="item-val">{c.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
-                                    </div>
+                                {#if activeCfDetails && activeCfDetails.countries && activeCfDetails.countries.length > 0}
+                                    {#each activeCfDetails.countries.slice(0, 3) as c}
+                                        <div class="summary-item">
+                                            <span class="item-name" title={c.name}>{c.name}</span>
+                                            <span class="item-val">{c.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
+                                        </div>
+                                    {/each}
                                 {:else}
                                     <div class="no-data-text">-</div>
-                                {/each}
+                                {/if}
                             </div>
                         </div>
 
                         <div class="summary-card">
                             <div class="summary-header"><Smartphone size={15} /> {t('admin.dashboard.reports.cfa_devices', { default: '장치 유형' })}</div>
                             <div class="summary-list">
-                                {#each data.cfDetails.devices.slice(0, 3) as d}
-                                    <div class="summary-item">
-                                        <span class="item-name">{d.name}</span>
-                                        <span class="item-val">{d.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
-                                    </div>
+                                {#if activeCfDetails && activeCfDetails.devices && activeCfDetails.devices.length > 0}
+                                    {#each activeCfDetails.devices.slice(0, 3) as d}
+                                        <div class="summary-item">
+                                            <span class="item-name">{d.name}</span>
+                                            <span class="item-val">{d.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
+                                        </div>
+                                    {/each}
                                 {:else}
                                     <div class="no-data-text">-</div>
-                                {/each}
+                                {/if}
                             </div>
                         </div>
 
                         <div class="summary-card">
                             <div class="summary-header"><Layout size={15} /> {t('admin.dashboard.reports.cfa_browsers', { default: '브라우저' })}</div>
                             <div class="summary-list">
-                                {#each data.cfDetails.browsers.slice(0, 3) as b}
-                                    <div class="summary-item">
-                                        <span class="item-name" title={b.name}>{b.name}</span>
-                                        <span class="item-val">{b.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
-                                    </div>
+                                {#if activeCfDetails && activeCfDetails.browsers && activeCfDetails.browsers.length > 0}
+                                    {#each activeCfDetails.browsers.slice(0, 3) as b}
+                                        <div class="summary-item">
+                                            <span class="item-name" title={b.name}>{b.name}</span>
+                                            <span class="item-val">{b.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
+                                        </div>
+                                    {/each}
                                 {:else}
                                     <div class="no-data-text">-</div>
-                                {/each}
+                                {/if}
                             </div>
                         </div>
 
                         <div class="summary-card">
                             <div class="summary-header"><Cpu size={15} /> {t('admin.dashboard.reports.cfa_os', { default: '운영체제' })}</div>
                             <div class="summary-list">
-                                {#each data.cfDetails.os.slice(0, 3) as o}
-                                    <div class="summary-item">
-                                        <span class="item-name" title={o.name}>{o.name}</span>
-                                        <span class="item-val">{o.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
-                                    </div>
+                                {#if activeCfDetails && activeCfDetails.os && activeCfDetails.os.length > 0}
+                                    {#each activeCfDetails.os.slice(0, 3) as o}
+                                        <div class="summary-item">
+                                            <span class="item-name" title={o.name}>{o.name}</span>
+                                            <span class="item-val">{o.visitors}{t('admin.common.unit_person', { default: '명' })}</span>
+                                        </div>
+                                    {/each}
                                 {:else}
                                     <div class="no-data-text">-</div>
-                                {/each}
+                                {/if}
                             </div>
                         </div>
                     </div>
@@ -1169,5 +1215,42 @@
         font-size: 0.8125rem;
         text-align: center;
         padding: 1rem 0;
+    }
+
+    /* CFA 기간 선택 토글 바 스타일 */
+    .cfa-period-bar {
+        display: flex;
+        justify-content: flex-end;
+    }
+    .period-toggle-group {
+        display: inline-flex;
+        background: var(--bg-hover, #f1f5f9);
+        padding: 0.25rem;
+        border-radius: 0.5rem;
+        gap: 0.25rem;
+        border: 1px solid var(--border-color, #e2e8f0);
+    }
+    .period-toggle-btn {
+        padding: 0.25rem 0.75rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        border-radius: 0.375rem;
+        border: none;
+        background: transparent;
+        color: var(--text-muted, #64748b);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .period-toggle-btn.active {
+        background: var(--card-bg, #ffffff);
+        color: var(--primary-color, #3b82f6);
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    .period-badge {
+        font-size: 0.75rem;
+        font-weight: normal;
+        color: #64748b;
+        margin-left: 0.25rem;
     }
 </style>

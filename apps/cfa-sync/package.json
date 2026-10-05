@@ -1,0 +1,14 @@
+{
+  "name": "cf-cfa-sync",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251225.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.54.0"
+  }
+}
