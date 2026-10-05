@@ -8,6 +8,7 @@
         "apps/*"
     ],
     "scripts": {
+        "login": "npx wrangler login --scopes account:read user:read workers:write workers_scripts:write pages:write d1:write workers_kv:write",
         "dev:blog": "npm run dev -w apps/blog",
         "dev:admin": "npm run dev -w apps/admin",
         "build:blog": "npm run build -w apps/blog",
