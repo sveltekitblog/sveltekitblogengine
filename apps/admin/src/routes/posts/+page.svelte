@@ -61,18 +61,20 @@
             const cleanUrl = window.location.pathname;
             window.history.replaceState({}, '', cleanUrl);
         } else {
-            // 일반 진입: localStorage에 유효한 캐시가 있으면 재활용
-            const saved = localStorage.getItem(POSTS_CACHE_KEY);
-            if (saved) {
+            // 일반 진입: 서버에서 내려준 최신 data를 즉시 화면에 반영하고 로컬스토리지를 최신 상태로 동기화
+            if (data.posts && data.posts.length > 0) {
+                cachedPosts = data.posts;
+                if (Array.isArray(data.categories)) cachedCategories = data.categories;
+                if (Array.isArray(data.languages)) cachedLanguages = data.languages;
                 try {
-                    const parsed = JSON.parse(saved);
-                    if (Array.isArray(parsed.posts) && parsed.posts.length > 0) {
-                        cachedPosts = parsed.posts;
-                        if (Array.isArray(parsed.categories)) cachedCategories = parsed.categories;
-                        if (Array.isArray(parsed.languages)) cachedLanguages = parsed.languages;
-                    }
+                    localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify({
+                        posts: data.posts,
+                        categories: data.categories || [],
+                        languages: data.languages || [],
+                        cachedAt: Date.now()
+                    }));
                 } catch (e) {
-                    console.warn('[Cache] Failed to parse cached posts:', e);
+                    console.warn('[Cache] Failed to update localStorage cache:', e);
                 }
             }
         }
