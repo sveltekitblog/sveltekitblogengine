@@ -75,22 +75,14 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
 
         // Recent Posts
         let { results: recentPostsRaw } = await db.prepare(`
-            SELECT id, title, slug, created_at, status
+            SELECT id, title, slug, created_at, status, view_count
             FROM posts ORDER BY created_at DESC LIMIT ?
         `).bind(limitPosts).all();
 
-        let recentPosts = Array.from(recentPostsRaw || []);
-        if (userDb && recentPosts.length > 0) {
-            try {
-                const postIds = recentPosts.map((p: any) => `'${p.id}'`).join(',');
-                const { results: viewResults } = await userDb.prepare(`
-                    SELECT post_id, SUM(views) as total_views FROM post_views WHERE post_id IN (${postIds}) GROUP BY post_id
-                `).all();
-                let viewMap: Record<string, number> = {};
-                for (const row of viewResults as any[]) { viewMap[row.post_id] = row.total_views || 0; }
-                recentPosts = recentPosts.map((p: any) => ({ ...p, view_count: viewMap[p.id as string] || 0 }));
-            } catch (e) { console.warn('Failed to load views for recent posts:', e); }
-        }
+        const recentPosts = (recentPostsRaw || []).map((p: any) => ({
+            ...p,
+            view_count: p.view_count || 0
+        }));
 
         // Recent Comments & Guestbooks
         let recentComments: any[]   = [];

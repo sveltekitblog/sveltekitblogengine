@@ -27,7 +27,7 @@ export const load: PageServerLoad = async ({ locals, setHeaders, url }) => {
     const isRefreshed = url.searchParams.has('refreshed');
     if (!isRefreshed) {
         setHeaders({
-            'cache-control': 'private, max-age=86400, stale-while-revalidate=3600'
+            'cache-control': 'private, max-age=1800, stale-while-revalidate=300'
         });
     } else {
         setHeaders({
