@@ -294,12 +294,17 @@
     <!-- 트래픽 리포트 영역 (Cloudflare Web Analytics / GA4) -->
     <section class="dashboard-section">
         <div class="section-header analytics-header">
-            <h2>
-                <TrendingUp size={20} /> 
-                {data.activeProvider === 'cf' 
-                    ? t('admin.dashboard.reports.cf_title', { default: '트래픽 리포트 (Cloudflare Web Analytics)' })
-                    : t('admin.dashboard.reports.ga4_title', { default: '트래픽 리포트 (GA4)' })}
-            </h2>
+            <div class="header-title-group">
+                <h2>
+                    <TrendingUp size={20} /> 
+                    {data.activeProvider === 'cf' 
+                        ? t('admin.dashboard.reports.cf_title', { default: '트래픽 리포트 (Cloudflare Web Analytics)' })
+                        : t('admin.dashboard.reports.ga4_title', { default: '트래픽 리포트 (GA4)' })}
+                </h2>
+                {#if data.siteTimezone}
+                    <span class="timezone-badge" title="사이트 대표 시간대">🕒 {data.siteTimezone}</span>
+                {/if}
+            </div>
             <div class="provider-toggle">
                 <button
                     type="button"
@@ -997,6 +1002,23 @@
     }
 
     /* Analytics Section */
+    .header-title-group {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .timezone-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.6rem;
+        background: #f1f5f9;
+        color: #475569;
+        font-size: 0.75rem;
+        font-weight: 600;
+        border-radius: 9999px;
+        border: 1px solid #e2e8f0;
+    }
     .analytics-header {
         display: flex;
         align-items: center;

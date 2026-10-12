@@ -64,12 +64,14 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
         // Load dashboard settings
         const { results: settingsResults } = await db.prepare('SELECT key, value FROM blog_settings').all();
         let limitPosts = 5, limitComments = 10, limitGuestbooks = 5;
+        let siteTimezone = 'Asia/Seoul';
 
         if (settingsResults) {
             for (const row of settingsResults as any[]) {
                 if (row.key === 'dashboard_recent_posts')      limitPosts      = parseInt(row.value, 10) || 5;
                 if (row.key === 'dashboard_recent_comments')   limitComments   = parseInt(row.value, 10) || 10;
                 if (row.key === 'dashboard_recent_guestbooks') limitGuestbooks = parseInt(row.value, 10) || 5;
+                if (row.key === 'timezone' && row.value)       siteTimezone    = row.value;
             }
         }
 
@@ -79,10 +81,26 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             FROM posts ORDER BY created_at DESC LIMIT ?
         `).bind(limitPosts).all();
 
-        const recentPosts = (recentPostsRaw || []).map((p: any) => ({
-            ...p,
-            view_count: p.view_count || 0
-        }));
+        let recentPosts = Array.from(recentPostsRaw || []);
+        if (userDb && recentPosts.length > 0) {
+            try {
+                const postIds = recentPosts.map((p: any) => `'${p.id}'`).join(',');
+                const { results: viewResults } = await userDb.prepare(`
+                    SELECT post_id, SUM(views) as total_views FROM post_views WHERE post_id IN (${postIds}) GROUP BY post_id
+                `).all();
+                let viewMap: Record<string, number> = {};
+                for (const row of (viewResults || []) as any[]) { viewMap[row.post_id] = row.total_views || 0; }
+                recentPosts = recentPosts.map((p: any) => ({
+                    ...p,
+                    view_count: (p.id in viewMap) ? viewMap[p.id as string] : (p.view_count || 0)
+                }));
+            } catch (e) { console.warn('Failed to load views for recent posts from USER_DB:', e); }
+        } else {
+            recentPosts = recentPosts.map((p: any) => ({
+                ...p,
+                view_count: p.view_count || 0
+            }));
+        }
 
         // Recent Comments & Guestbooks
         let recentComments: any[]   = [];
@@ -329,6 +347,7 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             recentPosts,
             recentComments,
             recentGuestbooks,
+            siteTimezone,
             activeProvider,
             isCfConfigured,
             isGa4Configured,

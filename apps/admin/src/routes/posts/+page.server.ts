@@ -19,9 +19,10 @@ import type { PageServerLoad, Actions } from './$types';
 import { error, fail } from '@sveltejs/kit';
 import { syncCategoryPostCounts } from '$lib/server/categorySync';
 
-export const load: PageServerLoad = async ({ locals, setHeaders, url }) => {
+export const load: PageServerLoad = async ({ locals, setHeaders, url, platform }) => {
     const db = locals.blogDb;
     if (!db) throw error(500, 'Database not found');
+    const userDb = platform?.env?.USER_DB;
 
     // 글쓰기/수정/삭제 후 강제 갱신 요청(?refreshed=...)이 아닐 때만 브라우저 캐시를 적용하여 워커스 호출 차단
     const isRefreshed = url.searchParams.has('refreshed');
@@ -62,11 +63,46 @@ export const load: PageServerLoad = async ({ locals, setHeaders, url }) => {
         const languages = (langResult as any)?.results || [];
         const categories = (catResult as any)?.results || [];
 
-        const posts = (postsRaw || []).map((p: any) => ({
-            ...p,
-            author_name: 'Admin',
-            view_count: p.view_count || 0
-        }));
+        // 진짜 원본인 USER_DB.post_views의 누적 합계 조회
+        let viewCountMap: Record<string, number> = {};
+        if (userDb) {
+            try {
+                const { results: viewResults } = await userDb.prepare(`
+                    SELECT post_id, SUM(views) as total_views FROM post_views GROUP BY post_id
+                `).all();
+                for (const row of (viewResults || []) as any[]) {
+                    viewCountMap[row.post_id] = row.total_views || 0;
+                }
+            } catch (e) {
+                console.warn('Failed to load view counts from USER_DB:', e);
+            }
+        }
+
+        // 캐시 불일치 포스트 동기화 배치 목록
+        const toSync: { id: string; view_count: number }[] = [];
+        const posts = (postsRaw || []).map((p: any) => {
+            const trueViews = (p.id in viewCountMap) ? viewCountMap[p.id] : (p.view_count || 0);
+            if (trueViews !== (p.view_count || 0)) {
+                toSync.push({ id: p.id, view_count: trueViews });
+            }
+            return {
+                ...p,
+                author_name: 'Admin',
+                view_count: trueViews
+            };
+        });
+
+        // BLOG_DB.posts.view_count 캐시 컬럼 일괄 동기화 (비동기 안전 처리)
+        if (toSync.length > 0) {
+            try {
+                const syncStatements = toSync.map(item =>
+                    db.prepare('UPDATE posts SET view_count = ? WHERE id = ?').bind(item.view_count, item.id)
+                );
+                db.batch(syncStatements).catch((err: any) => console.warn('Failed to sync view_count cache:', err));
+            } catch (err) {
+                console.warn('Failed to build sync batch:', err);
+            }
+        }
 
         return {
             posts,
