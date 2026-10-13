@@ -741,6 +741,18 @@ async function main() {
         const adminDeployOut = runCapture(`${NPX} wrangler pages deploy .svelte-kit/cloudflare --project-name ${adminProjectName}`, { cwd: resolve(ROOT, 'apps/admin') });
         console.log(adminDeployOut);
         adminDeployUrl = getRepresentativeUrl(adminDeployOut, adminProjectName);
+
+        // CFA Sync Worker 자동 확인 및 배포 (미설치 시 최초 1회 자동 배포 + 7일치 적재, 설치 시 스킵)
+        try {
+            const { syncAccounts } = await import('./sync-accounts.js');
+            const { deployCfaSyncAccount } = await import('./deploy-cfa-sync.js');
+            const accs = syncAccounts(false);
+            if (accs.main && (accs.main.cfa?.cfApiToken || accs.main.token)) {
+                await deployCfaSyncAccount('main', accs.main, { skipMigration: true });
+            }
+        } catch (e) {
+            console.log(`  ℹ [KO] CFA Sync Worker 자동 연동 건너뜀 / [EN] Skipping CFA Sync Worker auto-deploy:`, e.message);
+        }
     } else {
         console.log('  [EN] Skipping deployment. / [KO] 배포를 건너뜁니다.');
     }

@@ -45,14 +45,24 @@ if (!target) {
     process.exit(0);
 }
 
-export async function checkWorkerExists(accountId, workerName, token) {
+export async function checkWorkerExists(accountId, workerName, token, env = {}) {
     try {
-        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${workerName}`, {
-            headers: { Authorization: `Bearer ${token}` }
+        const isWin = process.platform === 'win32';
+        const npxCmd = isWin ? 'npx.cmd' : 'npx';
+        execSync(`${npxCmd} wrangler deployments list --name ${workerName}`, {
+            stdio: 'pipe',
+            env: { ...process.env, ...env }
         });
-        return res.status === 200;
+        return true;
     } catch {
-        return false;
+        try {
+            const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${workerName}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.status === 200;
+        } catch {
+            return false;
+        }
     }
 }
 
@@ -255,23 +265,13 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
     const effectiveToken = (!isPlaceholder(cfa.cfApiToken)) ? cfa.cfApiToken : acc.token;
 
     if (isPlaceholder(effectiveToken) || isPlaceholder(effectiveAccountId)) {
-        console.error(`❌ [${key}] token/cfApiToken 또는 accountId/cfa.accountId가 설정되지 않았습니다.`);
+        console.log(`ℹ [${key}] [KO] CFA 설정이 완료되지 않아 CFA Sync Worker 배포를 건너뜁니다.`);
+        console.log(`  [EN] Skipping CFA Sync Worker deployment (CFA configuration is not set).`);
         return;
     }
 
     const workerName = acc.cfa?.workerName || `${key}-cfa-sync`;
     const isForce = Boolean(options.force || args.includes('--force'));
-    let needWorkerDeploy = true;
-
-    // ── 1. 중복 생성 방지: 워커 사전 존재 확인 ─────────────────────────
-    if (!isForce) {
-        const exists = await checkWorkerExists(effectiveAccountId, workerName, effectiveToken);
-        if (exists) {
-            console.log(`⏩ [${key}] CFA Sync Worker ("${workerName}")가 이미 등록되어 정상 작동 중입니다.`);
-            console.log(`   워커 배포는 건너뜁니다. (강제 재배포 필요 시: --force)`);
-            needWorkerDeploy = false;
-        }
-    }
 
     // ── CFA 섹션 검증 및 자동 감지 ──────────────────────────────────────
     const cfaToken = effectiveToken;
@@ -330,9 +330,19 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
             CLOUDFLARE_ACCOUNT_ID: acc.accountId
         };
 
+    // ── 1. 중복 생성 방지: 워커 사전 존재 확인 ─────────────────────────
+    if (!isForce) {
+        const exists = await checkWorkerExists(effectiveAccountId, workerName, effectiveToken, env);
+        if (exists) {
+            console.log(`⏩ [${key}] [KO] CFA Sync Worker ("${workerName}")가 이미 등록되어 정상 작동 중입니다. 배포를 건너뜁니다.`);
+            console.log(`   [EN] CFA Sync Worker ("${workerName}") is already active. Skipping deployment.`);
+            console.log(`   [KO] 강제 재배포 필요 시: --force / [EN] For forced redeployment: --force`);
+            return;
+        }
+    }
+
     try {
-        if (needWorkerDeploy) {
-            writeFileSync(generatedConfig, JSON.stringify(wranglerConfig, null, 2));
+        writeFileSync(generatedConfig, JSON.stringify(wranglerConfig, null, 2));
 
             // 1. D1 스키마 마이그레이션 (옵션에 따라 중복 건너뛰기)
             if (!options.skipMigration) {
@@ -366,7 +376,6 @@ export async function deployCfaSyncAccount(key, acc, options = {}) {
             console.log(`   Worker 이름: ${workerName}`);
             console.log(`   실행 주기: 매시간 정각 (cron: 0 */1 * * *)`);
             console.log(`   외부 도메인: 비활성화 (workers_dev: false, 외부 차단)`);
-        }
 
         // 4. [핵심] 초회 7일치 CFA 데이터 D1 직접 적재
         await syncInitialDataToD1(acc, blogDb, siteTag, cfaToken, env, effectiveAccountId);
