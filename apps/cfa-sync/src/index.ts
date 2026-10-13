@@ -57,17 +57,57 @@ query GetDailyRum($accountTag: String!, $siteTag: String!, $from: Time!, $to: Ti
   }
 }`;
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+/** DB에서 사이트 대표 시간대 조회 (기본값: UTC) */
+async function getSiteTimezone(db: D1Database): Promise<string> {
+  try {
+    const row = await db.prepare('SELECT value FROM blog_settings WHERE key = ?').bind('timezone').first<{ value: string }>();
+    return row?.value?.trim() || 'UTC';
+  } catch {
+    return 'UTC';
+  }
 }
 
-function datesEndingToday(days: number): string[] {
-  const today = new Date();
-  return Array.from({ length: days }, (_, index) => {
-    const value = new Date(today);
-    value.setUTCDate(today.getUTCDate() - (days - index - 1));
-    return isoDate(value);
-  });
+/** 사이트 대표 시간대 기준 YYYY-MM-DD 날짜 문자열 산출 */
+function getSiteDateStr(timeZone: string, offsetDays = 0): string {
+  try {
+    const target = new Date(Date.now() + offsetDays * 86400 * 1000);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(target);
+  } catch {
+    const target = new Date(Date.now() + offsetDays * 86400 * 1000);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(target);
+  }
+}
+
+/** 사이트 시간대 기준 과거 N일치 날짜 목록 생성 */
+function getSiteDatesEndingToday(timeZone: string, days: number): string[] {
+  return Array.from({ length: days }, (_, i) => getSiteDateStr(timeZone, -(days - i - 1)));
+}
+
+/** 임의의 IANA 시간대 기준 특정 날짜의 00:00:00 ~ 23:59:59.999 범위를 UTC ISO로 변환 */
+function getSiteDayRangeUtc(dateStr: string, timeZone: string): { from: string; to: string } {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const baseUtcMidnight = Date.UTC(y, m - 1, d, 0, 0, 0);
+  
+  // 해당 타임존과 UTC 간의 오프셋(ms) 동적 계산
+  let offsetMs = 0;
+  try {
+    const refDate = new Date(baseUtcMidnight);
+    const invDate = new Date(refDate.toLocaleString('en-US', { timeZone }));
+    offsetMs = invDate.getTime() - refDate.getTime();
+  } catch {
+    offsetMs = 0;
+  }
+
+  const fromUtc = new Date(baseUtcMidnight - offsetMs);
+  const toUtc = new Date(baseUtcMidnight + 86400 * 1000 - 1 - offsetMs);
+  const now = new Date();
+  const effectiveTo = toUtc > now ? now : toUtc;
+  return { from: fromUtc.toISOString(), to: effectiveTo.toISOString() };
 }
 
 function asDate(value: unknown): string {
@@ -101,9 +141,8 @@ async function sha256(value: string): Promise<string> {
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function fetchSnapshots(env: Env, dates: string[]): Promise<DailySnapshot[]> {
-  const from = `${dates[0]}T00:00:00Z`;
-  const to = `${dates[dates.length - 1]}T23:59:59Z`;
+async function fetchDaySnapshot(env: Env, dateStr: string, timeZone: string): Promise<DailySnapshot> {
+  const { from, to } = getSiteDayRangeUtc(dateStr, timeZone);
   const response = await fetch('https://api.cloudflare.com/client/v4/graphql', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.CF_API_TOKEN}` },
@@ -125,23 +164,18 @@ async function fetchSnapshots(env: Env, dates: string[]): Promise<DailySnapshot[
     }
   }
 
-  const byDate = new Map<string, DailySnapshot>();
-  for (const date of dates) {
-    byDate.set(date, {
-      date,
-      pageViews: 0,
-      visitors: 0,
-      details: { pages: [], referrers: [], countries: [], devices: [], browsers: [], os: [] },
-      sampleInterval: 1,
-      isExact: true
-    });
-  }
+  const snapshot: DailySnapshot = {
+    date: dateStr,
+    pageViews: 0,
+    visitors: 0,
+    details: { pages: [], referrers: [], countries: [], devices: [], browsers: [], os: [] },
+    sampleInterval: 1,
+    isExact: true
+  };
 
   for (const row of data.traffic || []) {
-    const snapshot = byDate.get(asDate(row.dimensions?.date));
-    if (!snapshot) continue;
-    snapshot.pageViews = asCount(row.count);
-    snapshot.visitors = asCount(row.sum?.visits);
+    snapshot.pageViews += asCount(row.count);
+    snapshot.visitors += asCount(row.sum?.visits);
     const interval = asSampleInterval(row.avg?.sampleInterval);
     snapshot.sampleInterval = Math.max(snapshot.sampleInterval, interval);
     snapshot.isExact &&= interval === 1;
@@ -153,8 +187,6 @@ async function fetchSnapshots(env: Env, dates: string[]): Promise<DailySnapshot[
   };
   for (const name of DETAIL_NAMES) {
     for (const row of data[name] || []) {
-      const snapshot = byDate.get(asDate(row.dimensions?.date));
-      if (!snapshot) continue;
       const rawName = String(row.dimensions?.[dimensionKey[name]] ?? '').trim();
       const fallback = name === 'referrers' ? 'Direct / None' : 'Unknown';
       const interval = asSampleInterval(row.avg?.sampleInterval);
@@ -168,14 +200,21 @@ async function fetchSnapshots(env: Env, dates: string[]): Promise<DailySnapshot[
       snapshot.isExact &&= interval === 1;
     }
   }
-  return [...byDate.values()];
+  return snapshot;
+}
+
+async function fetchSnapshots(env: Env, dates: string[], timeZone: string): Promise<DailySnapshot[]> {
+  return await Promise.all(dates.map(date => fetchDaySnapshot(env, date, timeZone)));
 }
 
 async function sync(env: Env): Promise<{ bootstrap: boolean; written: number }> {
   const state = await env.BLOG_DB.prepare('SELECT initialized_at FROM cf_sync_state WHERE id = 1').first();
-  const bootstrap = !state;
-  const dates = datesEndingToday(bootstrap ? 7 : 2);
-  const snapshots = await fetchSnapshots(env, dates);
+  const timeZone = await getSiteTimezone(env.BLOG_DB);
+  const lastTzRow = await env.BLOG_DB.prepare("SELECT value FROM blog_settings WHERE key = 'cfa_synced_timezone'").first<{ value: string }>();
+  const isTimezoneChanged = Boolean(lastTzRow && lastTzRow.value !== timeZone);
+  const bootstrap = !state || isTimezoneChanged;
+  const dates = getSiteDatesEndingToday(timeZone, bootstrap ? 7 : 2);
+  const snapshots = await fetchSnapshots(env, dates, timeZone);
   const existing = new Map<string, string>();
   const placeholders = dates.map(() => '?').join(', ');
   const existingRows = await env.BLOG_DB.prepare(
@@ -221,6 +260,10 @@ async function sync(env: Env): Promise<{ bootstrap: boolean; written: number }> 
     VALUES (1, ?, ?, NULL)
     ON CONFLICT(id) DO UPDATE SET last_synced_at = excluded.last_synced_at, last_error = NULL
   `).bind(now, now));
+  statements.push(env.BLOG_DB.prepare(`
+    INSERT INTO blog_settings (key, value) VALUES ('cfa_synced_timezone', ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).bind(timeZone));
   await env.BLOG_DB.batch(statements);
   return { bootstrap, written };
 }

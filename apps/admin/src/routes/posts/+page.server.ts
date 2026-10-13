@@ -24,17 +24,10 @@ export const load: PageServerLoad = async ({ locals, setHeaders, url, platform }
     if (!db) throw error(500, 'Database not found');
     const userDb = platform?.env?.USER_DB;
 
-    // 글쓰기/수정/삭제 후 강제 갱신 요청(?refreshed=...)이 아닐 때만 브라우저 캐시를 적용하여 워커스 호출 차단
-    const isRefreshed = url.searchParams.has('refreshed');
-    if (!isRefreshed) {
-        setHeaders({
-            'cache-control': 'private, max-age=1800, stale-while-revalidate=300'
-        });
-    } else {
-        setHeaders({
-            'cache-control': 'no-store, no-cache, must-revalidate'
-        });
-    }
+    // 어드민 포스트 목록의 실시간 데이터 정합성을 위해 브라우저 캐시 차단
+    setHeaders({
+        'cache-control': 'no-store, no-cache, must-revalidate'
+    });
 
     try {
         // Posts 목록 & Languages 목록 & Categories 목록 병렬 조회

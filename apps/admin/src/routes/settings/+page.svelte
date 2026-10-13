@@ -377,6 +377,9 @@
                         <p style="font-size: 0.8rem; color: #64748b; margin-top: 0.4rem; line-height: 1.4;">
                             💡 {t('admin.settings.timezone_hint')}
                         </p>
+                        <p style="font-size: 0.78rem; color: #b45309; margin-top: 0.4rem; line-height: 1.45; background-color: #fef3c7; padding: 0.45rem 0.65rem; border-radius: 0.375rem; border-left: 3px solid #f59e0b;">
+                            {t('admin.settings.timezone_warning')}
+                        </p>
                     </div>
                 </div>
             </section>

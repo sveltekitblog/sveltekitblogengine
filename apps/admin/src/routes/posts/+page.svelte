@@ -26,66 +26,19 @@
 
     let deleteConfirmPost: any = $state(null);
 
-    // 브라우저 캐시 키 및 반응형 데이터 상태
-    const POSTS_CACHE_KEY = 'skbe_admin_posts_cache_v1';
-    let cachedPosts = $state<any[]>(data.posts || []);
-    let cachedCategories = $state<any[]>(data.categories || []);
-    let cachedLanguages = $state<any[]>(data.languages || []);
+    // 서버 전달 데이터 기반 반응형 상태 (브라우저 캐시 완전 배제)
+    let cachedPosts = $derived(data.posts || []);
+    let cachedCategories = $derived(data.categories || []);
+    let cachedLanguages = $derived(data.languages || []);
     let isRefreshing = $state(false);
 
-    // 브라우저 캐시 동기화 로직
-    $effect(() => {
-        if (typeof window === 'undefined') return;
-
-        const urlParams = new URLSearchParams(window.location.search);
-        const isRefreshed = urlParams.has('refreshed');
-
-        if (isRefreshed) {
-            // 글쓰기/수정/삭제 등으로 인한 강제 갱신: 서버에서 전달된 새 data로 로컬 캐시 갱신
-            const cachePayload = {
-                posts: data.posts || [],
-                categories: data.categories || [],
-                languages: data.languages || [],
-                cachedAt: Date.now()
-            };
-            try {
-                localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(cachePayload));
-            } catch (e) {
-                console.warn('[Cache] Failed to save localStorage cache:', e);
-            }
-            cachedPosts = data.posts || [];
-            cachedCategories = data.categories || [];
-            cachedLanguages = data.languages || [];
-
-            // 주소창에서 ?refreshed 파라미터 조용히 제거
-            const cleanUrl = window.location.pathname;
-            window.history.replaceState({}, '', cleanUrl);
-        } else {
-            // 일반 진입: 서버에서 내려준 최신 data를 즉시 화면에 반영하고 로컬스토리지를 최신 상태로 동기화
-            if (data.posts && data.posts.length > 0) {
-                cachedPosts = data.posts;
-                if (Array.isArray(data.categories)) cachedCategories = data.categories;
-                if (Array.isArray(data.languages)) cachedLanguages = data.languages;
-                try {
-                    localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify({
-                        posts: data.posts,
-                        categories: data.categories || [],
-                        languages: data.languages || [],
-                        cachedAt: Date.now()
-                    }));
-                } catch (e) {
-                    console.warn('[Cache] Failed to update localStorage cache:', e);
-                }
-            }
-        }
-    });
-
-    // 수동 강제 새로고침 함수
-    function handleForceRefresh() {
-        if (typeof window !== 'undefined') {
-            isRefreshing = true;
-            localStorage.removeItem(POSTS_CACHE_KEY);
-            window.location.href = `/posts?refreshed=${Date.now()}`;
+    // 수동 새로고침 함수 (SvelteKit 표준 캐시 무효화)
+    async function handleForceRefresh() {
+        isRefreshing = true;
+        try {
+            await invalidateAll();
+        } finally {
+            isRefreshing = false;
         }
     }
 

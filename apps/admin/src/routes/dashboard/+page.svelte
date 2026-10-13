@@ -48,13 +48,39 @@
     let adsenseChartCanvas: HTMLCanvasElement | undefined = $state();
     let adsenseChart: Chart | null = null;
 
-    // CFA 리포트 기간 선택 상태 (기본값: 최근 7일)
-    let cfaPeriod = $state<'today' | '7d'>('7d');
-    let activeCfDetails = $derived(
-        cfaPeriod === 'today'
-            ? (data.cfDetails?.today || data.cfDetails)
-            : (data.cfDetails?.days7 || data.cfDetails)
-    );
+    // CFA 리포트 기간 선택 상태 ('today' | 'yesterday' | '7d' | 'date:YYYY-MM-DD')
+    let cfaPeriod = $state<string>('today');
+    let selectedDateDropdown = $state<string>('');
+
+    let activeCfDetails = $derived.by(() => {
+        if (cfaPeriod === 'today') {
+            return data.cfDetails?.today || data.cfDetails;
+        }
+        if (cfaPeriod === 'yesterday') {
+            const yDate = data.stats?.yesterday?.date;
+            if (yDate && data.cfDetails?.byDate?.[yDate]) {
+                return data.cfDetails.byDate[yDate];
+            }
+        }
+        if (cfaPeriod === '7d') {
+            return data.cfDetails?.days7 || data.cfDetails;
+        }
+        if (cfaPeriod.startsWith('date:') && data.cfDetails?.byDate) {
+            const dateKey = cfaPeriod.replace('date:', '');
+            if (data.cfDetails.byDate[dateKey]) {
+                return data.cfDetails.byDate[dateKey];
+            }
+        }
+        return data.cfDetails?.today || data.cfDetails;
+    });
+
+    let currentPeriodLabel = $derived.by(() => {
+        if (cfaPeriod === 'today') return data.stats?.today?.date || '오늘';
+        if (cfaPeriod === 'yesterday') return data.stats?.yesterday?.date || '어제';
+        if (cfaPeriod === '7d') return '최근 7일';
+        if (cfaPeriod.startsWith('date:')) return cfaPeriod.replace('date:', '');
+        return cfaPeriod;
+    });
 
     onMount(() => {
         initAllCharts();
@@ -252,7 +278,10 @@
             <div class="stat-card">
                 <div class="stat-icon"><User size={24} /></div>
                 <div class="stat-info">
-                    <div class="stat-label">{t('admin.dashboard.stats.visitors_yesterday', { default: '어제 방문자' })}</div>
+                    <div class="stat-label">
+                        {t('admin.dashboard.stats.visitors_yesterday', { default: '어제 방문자' })}
+                        {#if data.stats?.yesterday?.date}<span class="text-xs text-muted font-mono font-normal">({data.stats.yesterday.date})</span>{/if}
+                    </div>
                     <div class="stat-value">
                         {data.stats.yesterday.visitors.toLocaleString()}
                         <span class="unit">{t('admin.common.unit_person', { default: '명' })}</span>
@@ -265,7 +294,10 @@
             <div class="stat-card">
                 <div class="stat-icon highlight"><UserCheck size={24} /></div>
                 <div class="stat-info">
-                    <div class="stat-label">{t('admin.dashboard.stats.visitors_today', { default: '오늘 방문자' })}</div>
+                    <div class="stat-label">
+                        {t('admin.dashboard.stats.visitors_today', { default: '오늘 방문자' })}
+                        {#if data.stats?.today?.date}<span class="text-xs text-muted font-mono font-normal">({data.stats.today.date})</span>{/if}
+                    </div>
                     <div class="stat-value">
                         {data.stats.today.visitors.toLocaleString()}
                         <span class="unit">{t('admin.common.unit_person', { default: '명' })}</span>
@@ -371,18 +403,43 @@
                                 type="button"
                                 class="period-toggle-btn"
                                 class:active={cfaPeriod === 'today'}
-                                onclick={() => cfaPeriod = 'today'}
+                                onclick={() => { cfaPeriod = 'today'; selectedDateDropdown = ''; }}
                             >
-                                {t('admin.dashboard.reports.period_today', { default: '오늘' })}
+                                오늘 ({data.stats?.today?.date || '오늘'})
+                            </button>
+                            <button
+                                type="button"
+                                class="period-toggle-btn"
+                                class:active={cfaPeriod === 'yesterday'}
+                                onclick={() => { cfaPeriod = 'yesterday'; selectedDateDropdown = ''; }}
+                            >
+                                어제 ({data.stats?.yesterday?.date || '어제'})
                             </button>
                             <button
                                 type="button"
                                 class="period-toggle-btn"
                                 class:active={cfaPeriod === '7d'}
-                                onclick={() => cfaPeriod = '7d'}
+                                onclick={() => { cfaPeriod = '7d'; selectedDateDropdown = ''; }}
                             >
                                 {t('admin.dashboard.reports.period_7d', { default: '최근 7일' })}
                             </button>
+
+                            {#if data.availableDates && data.availableDates.length > 0}
+                                <select
+                                    class="period-date-select"
+                                    bind:value={selectedDateDropdown}
+                                    onchange={() => {
+                                        if (selectedDateDropdown) {
+                                            cfaPeriod = `date:${selectedDateDropdown}`;
+                                        }
+                                    }}
+                                >
+                                    <option value="" disabled selected={!cfaPeriod.startsWith('date:')}>📅 특정 날짜 선택 (YYYY-MM-DD)</option>
+                                    {#each data.availableDates as d}
+                                        <option value={d}>{d}</option>
+                                    {/each}
+                                </select>
+                            {/if}
                         </div>
                     </div>
 
@@ -392,7 +449,7 @@
                             <h4 class="detail-title">
                                 <FileText size={18} />
                                 {t('admin.dashboard.reports.cfa_top_pages', { default: '인기 페이지 Top 5' })}
-                                <span class="period-badge">({cfaPeriod === 'today' ? t('admin.dashboard.reports.period_today', { default: '오늘' }) : t('admin.dashboard.reports.period_7d', { default: '최근 7일' })})</span>
+                                <span class="period-badge">({currentPeriodLabel})</span>
                             </h4>
                             {#if activeCfDetails && activeCfDetails.pages && activeCfDetails.pages.length > 0}
                                 <div class="detail-table-wrap">
@@ -425,7 +482,7 @@
                             <h4 class="detail-title">
                                 <Compass size={18} />
                                 {t('admin.dashboard.reports.cfa_top_referrers', { default: '유입 참조자 Top 5' })}
-                                <span class="period-badge">({cfaPeriod === 'today' ? t('admin.dashboard.reports.period_today', { default: '오늘' }) : t('admin.dashboard.reports.period_7d', { default: '최근 7일' })})</span>
+                                <span class="period-badge">({currentPeriodLabel})</span>
                             </h4>
                             {#if activeCfDetails && activeCfDetails.referrers && activeCfDetails.referrers.length > 0}
                                 <div class="detail-table-wrap">
@@ -1128,6 +1185,55 @@
     }
 
     /* CFA 종합 리포트 전용 스타일 */
+    .cfa-period-bar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        margin-bottom: 1rem;
+    }
+    .period-toggle-group {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        background: #f1f5f9;
+        padding: 0.25rem;
+        border-radius: 0.5rem;
+        border: 1px solid #e2e8f0;
+    }
+    .period-toggle-btn {
+        border: none;
+        background: transparent;
+        padding: 0.4rem 0.85rem;
+        border-radius: 0.375rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: #64748b;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .period-toggle-btn.active {
+        background: white;
+        color: #2563eb;
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    .period-date-select {
+        border: 1px solid #cbd5e1;
+        background: white;
+        color: #334155;
+        padding: 0.35rem 0.6rem;
+        border-radius: 0.375rem;
+        font-size: 0.8125rem;
+        cursor: pointer;
+        font-family: inherit;
+    }
+    .period-badge {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #64748b;
+        margin-left: 0.25rem;
+    }
     .cfa-details-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

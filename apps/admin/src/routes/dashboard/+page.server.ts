@@ -57,23 +57,33 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
         const parentData = await parent();
         const defaultLang = parentData?.dbDefaultLang || 'ko';
 
-        // Visitor Stats
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-        const today = new Date().toISOString().split('T')[0];
-
         // Load dashboard settings
         const { results: settingsResults } = await db.prepare('SELECT key, value FROM blog_settings').all();
         let limitPosts = 5, limitComments = 10, limitGuestbooks = 5;
-        let siteTimezone = 'Asia/Seoul';
+        let siteTimezone = 'UTC';
 
         if (settingsResults) {
             for (const row of settingsResults as any[]) {
                 if (row.key === 'dashboard_recent_posts')      limitPosts      = parseInt(row.value, 10) || 5;
                 if (row.key === 'dashboard_recent_comments')   limitComments   = parseInt(row.value, 10) || 10;
                 if (row.key === 'dashboard_recent_guestbooks') limitGuestbooks = parseInt(row.value, 10) || 5;
-                if (row.key === 'timezone' && row.value)       siteTimezone    = row.value;
+                if (row.key === 'timezone' && row.value?.trim()) siteTimezone   = row.value.trim();
             }
         }
+
+        // 사이트 대표 시간대 기준 오늘, 어제, 28일 전 YYYY-MM-DD 산출
+        const getSiteDate = (tz: string, offsetDays = 0): string => {
+            try {
+                const d = new Date(Date.now() + offsetDays * 86400 * 1000);
+                return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+            } catch {
+                const d = new Date(Date.now() + offsetDays * 86400 * 1000);
+                return new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+            }
+        };
+        const yesterday = getSiteDate(siteTimezone, -1);
+        const today     = getSiteDate(siteTimezone, 0);
+        const d28Ago    = getSiteDate(siteTimezone, -28);
 
         // Recent Posts
         let { results: recentPostsRaw } = await db.prepare(`
@@ -152,7 +162,6 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
         // ── Visitor Analytics & AdSense ───────────────────────────────────────
         const requestedProvider = (url.searchParams.get('provider') || 'cf').toLowerCase();
         const activeProvider = requestedProvider === 'ga4' ? 'ga4' : 'cf';
-        const d28Ago = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
 
         // CFA data is collected by the separate scheduled Worker. The dashboard
         // deliberately has no CFA API token and reads only durable D1 snapshots.
@@ -195,10 +204,17 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             os: CFDetailItem[];
             today?: Record<CFDetailName, CFDetailItem[]>;
             days7?: Record<CFDetailName, CFDetailItem[]>;
+            byDate?: Record<string, Record<CFDetailName, CFDetailItem[]>>;
         } | null = null;
+        let availableDates: string[] = [];
 
         if (activeProvider === 'cf') {
             if (cfSnapshots.length > 0) {
+                const detailsByDate: Record<string, Record<CFDetailName, CFDetailItem[]>> = {};
+                for (const row of cfSnapshots) {
+                    detailsByDate[row.date] = aggregateCfDetails([row]);
+                }
+                availableDates = cfSnapshots.map((r: any) => r.date).reverse();
                 const details7d = aggregateCfDetails(cfSnapshots.slice(-7));
                 const detailsToday = aggregateCfDetails(cfSnapshots.filter((r: any) => r.date === today));
                 trafficData = {
@@ -216,7 +232,8 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
                 cfDetails = {
                     ...details7d,
                     days7: details7d,
-                    today: detailsToday
+                    today: detailsToday,
+                    byDate: detailsByDate
                 };
             } else {
                 isDummyData = true;
@@ -286,6 +303,14 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
         const todayStats:     any = await db.prepare('SELECT * FROM visitor_stats WHERE date = ?').bind(today).first();
         const totalStats:     any = await db.prepare('SELECT SUM(unique_visitors) as total, SUM(page_views) as total_views FROM visitor_stats').first();
 
+        // 상단 카드와 하단 차트 수치 일원화: cf_daily_snapshots 우선 매핑
+        const yesterdaySnapshot = cfSnapshots.find((r: any) => r.date === yesterday);
+        const todaySnapshot     = cfSnapshots.find((r: any) => r.date === today);
+        const yesterdayVisitors = yesterdaySnapshot ? yesterdaySnapshot.visitors : (yesterdayStats?.unique_visitors || 0);
+        const yesterdayViews    = yesterdaySnapshot ? yesterdaySnapshot.page_views : (yesterdayStats?.page_views || 0);
+        const todayVisitors     = todaySnapshot     ? todaySnapshot.visitors     : (todayStats?.unique_visitors || 0);
+        const todayViews        = todaySnapshot     ? todaySnapshot.page_views     : (todayStats?.page_views || 0);
+
         // AdSense
         let adsenseData: any = null;
         let adsenseError: string | null = null;
@@ -340,10 +365,11 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
 
         return {
             stats: {
-                yesterday: { visitors: yesterdayStats?.unique_visitors || 0, views: yesterdayStats?.page_views || 0 },
-                today:     { visitors: todayStats?.unique_visitors     || 0, views: todayStats?.page_views     || 0 },
+                yesterday: { visitors: yesterdayVisitors, views: yesterdayViews, date: yesterday },
+                today:     { visitors: todayVisitors,     views: todayViews,     date: today },
                 total:     { visitors: totalStats?.total               || 0, views: totalStats?.total_views    || 0 }
             },
+            availableDates,
             recentPosts,
             recentComments,
             recentGuestbooks,

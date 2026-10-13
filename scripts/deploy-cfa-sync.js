@@ -90,107 +90,98 @@ export async function syncInitialDataToD1(acc, blogDb, siteTag, cfaToken, env, a
     const effectiveAccId = accountId || acc.cfa?.accountId || acc.accountId;
     console.log(`\n📊 [${acc.name || 'CFA'}] 초회 7일치 CFA 데이터 D1 동기화 시작...`);
     try {
-        const today = new Date();
-        const dates = Array.from({ length: 7 }, (_, i) => {
-            const d = new Date(today);
-            d.setUTCDate(today.getUTCDate() - (7 - i - 1));
-            return d.toISOString().slice(0, 10);
-        });
-        const from = `${dates[0]}T00:00:00Z`;
-        const to = `${dates[dates.length - 1]}T23:59:59Z`;
+        const timeZone = acc.timezone || 'UTC';
+        const getSiteDateStr = (offsetDays) => {
+            const d = new Date(Date.now() + offsetDays * 86400 * 1000);
+            return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+        };
+        const dates = Array.from({ length: 7 }, (_, i) => getSiteDateStr(-(7 - i - 1)));
+
+        const getSiteDayRangeUtc = (dateStr) => {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const baseUtc = Date.UTC(y, m - 1, d, 0, 0, 0);
+            let offsetMs = 0;
+            try {
+                const ref = new Date(baseUtc);
+                const inv = new Date(ref.toLocaleString('en-US', { timeZone }));
+                offsetMs = inv.getTime() - ref.getTime();
+            } catch {}
+            const fromUtc = new Date(baseUtc - offsetMs);
+            const toUtc = new Date(baseUtc + 86400 * 1000 - 1 - offsetMs);
+            const now = new Date();
+            return { from: fromUtc.toISOString(), to: (toUtc > now ? now : toUtc).toISOString() };
+        };
 
         const query = `query GetDailyRum($accountTag: String!, $siteTag: String!, $from: Time!, $to: Time!) {
           viewer {
             accounts(filter: {accountTag: $accountTag}) {
               traffic: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: 100) {
-                count sum { visits } avg { sampleInterval } dimensions { date }
+                count sum { visits } avg { sampleInterval }
               }
               pages: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: 1000) {
-                count sum { visits } avg { sampleInterval } dimensions { date requestPath }
+                count sum { visits } avg { sampleInterval } dimensions { requestPath }
               }
               referrers: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: 1000) {
-                count sum { visits } avg { sampleInterval } dimensions { date refererHost }
+                count sum { visits } avg { sampleInterval } dimensions { refererHost }
               }
               countries: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: 1000) {
-                count sum { visits } avg { sampleInterval } dimensions { date countryName }
+                count sum { visits } avg { sampleInterval } dimensions { countryName }
               }
               devices: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: 1000) {
-                count sum { visits } avg { sampleInterval } dimensions { date deviceType }
+                count sum { visits } avg { sampleInterval } dimensions { deviceType }
               }
               browsers: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: 1000) {
-                count sum { visits } avg { sampleInterval } dimensions { date userAgentBrowser }
+                count sum { visits } avg { sampleInterval } dimensions { userAgentBrowser }
               }
               os: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: 1000) {
-                count sum { visits } avg { sampleInterval } dimensions { date userAgentOS }
+                count sum { visits } avg { sampleInterval } dimensions { userAgentOS }
               }
             }
           }
         }`;
 
-        const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfaToken}` },
-            body: JSON.stringify({ query, variables: { accountTag: effectiveAccId, siteTag, from, to } })
-        });
-
-        if (!res.ok) {
-            console.warn(`⚠ CFA GraphQL 요청 실패 (${res.status}):`, await res.text());
-            return false;
-        }
-
-        const payload = await res.json();
-        const data = payload.data?.viewer?.accounts?.[0];
-        if (!data) {
-            console.warn('⚠ CFA GraphQL 응답에 계정 데이터가 없습니다.');
-            return false;
-        }
-
         const byDate = new Map();
-        for (const date of dates) {
-            byDate.set(date, {
+        const dimensionMap = {
+            pages: 'requestPath', referrers: 'refererHost', countries: 'countryName',
+            devices: 'deviceType', browsers: 'userAgentBrowser', os: 'userAgentOS'
+        };
+
+        await Promise.all(dates.map(async (date) => {
+            const { from, to } = getSiteDayRangeUtc(date);
+            const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfaToken}` },
+                body: JSON.stringify({ query, variables: { accountTag: effectiveAccId, siteTag, from, to } })
+            });
+            if (!res.ok) return;
+            const payload = await res.json();
+            const data = payload.data?.viewer?.accounts?.[0];
+            if (!data) return;
+
+            const snapshot = {
                 date,
                 pageViews: 0,
                 visitors: 0,
                 details: { pages: [], referrers: [], countries: [], devices: [], browsers: [], os: [] },
                 sampleInterval: 1,
                 isExact: 1
-            });
-        }
-
-        for (const row of data.traffic || []) {
-            const dateStr = String(row.dimensions?.date || '').slice(0, 10);
-            const snapshot = byDate.get(dateStr);
-            if (!snapshot) continue;
-            snapshot.pageViews = Number(row.count) || 0;
-            snapshot.visitors = Number(row.sum?.visits) || 0;
-            const interval = Number(row.avg?.sampleInterval) || 1;
-            snapshot.sampleInterval = Math.max(snapshot.sampleInterval, interval);
-            if (interval !== 1) snapshot.isExact = 0;
-        }
-
-        const dimensionMap = {
-            pages: 'requestPath', referrers: 'refererHost', countries: 'countryName',
-            devices: 'deviceType', browsers: 'userAgentBrowser', os: 'userAgentOS'
-        };
-
-        for (const [dimKey, field] of Object.entries(dimensionMap)) {
-            for (const row of data[dimKey] || []) {
-                const dateStr = String(row.dimensions?.date || '').slice(0, 10);
-                const snapshot = byDate.get(dateStr);
-                if (!snapshot) continue;
-                const rawName = String(row.dimensions?.[field] ?? '').trim();
-                const fallback = dimKey === 'referrers' ? 'Direct / None' : 'Unknown';
-                const interval = Number(row.avg?.sampleInterval) || 1;
-                snapshot.details[dimKey].push({
-                    name: rawName || fallback,
-                    views: Number(row.count) || 0,
-                    visitors: Number(row.sum?.visits) || 0,
-                    sampleInterval: interval
-                });
-                snapshot.sampleInterval = Math.max(snapshot.sampleInterval, interval);
-                if (interval !== 1) snapshot.isExact = 0;
+            };
+            for (const row of data.traffic || []) {
+                snapshot.pageViews += Number(row.count) || 0;
+                snapshot.visitors += Number(row.sum?.visits) || 0;
             }
-        }
+            for (const [dimKey, field] of Object.entries(dimensionMap)) {
+                for (const row of data[dimKey] || []) {
+                    snapshot.details[dimKey].push({
+                        name: String(row.dimensions?.[field] ?? (dimKey === 'referrers' ? 'Direct / None' : 'Unknown')).trim(),
+                        views: Number(row.count) || 0,
+                        visitors: Number(row.sum?.visits) || 0,
+                        sampleInterval: Number(row.avg?.sampleInterval) || 1
+                    });
+                }
+            }
+            byDate.set(date, snapshot);
+        }));
 
         const now = new Date().toISOString();
         const crypto = await import('crypto');

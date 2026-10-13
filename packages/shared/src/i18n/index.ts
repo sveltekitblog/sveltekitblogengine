@@ -344,6 +344,7 @@ export const fallbackDictionary: Record<string, Record<string, string>> = {
     "admin.settings.timezone_search_placeholder": { "ko": "도시/시간대 검색 (예: Seoul, New_York)", "en": "Search city/timezone (e.g., Seoul, New_York)", "ja": "都市/タイムゾーン検索 (例: Seoul, New_York)" },
     "admin.settings.timezone_no_match": { "ko": "일치하는 시간대가 없습니다.", "en": "No matching timezone found.", "ja": "一致するタイムゾーンが見つかりません。" },
     "admin.settings.timezone_hint": { "ko": "선택한 시간대로 게시글의 기본 작성 시간이 정렬되어 고정 표기됩니다.", "en": "The basic writing time of the post will be aligned and fixed to the selected timezone.", "ja": "選択したタイムゾーンに基づいて、投稿の作成日時が統一されて表示されます。" },
+    "admin.settings.timezone_warning": { "ko": "⚠️ 사이트 대표 시간대를 변경하면 Cloudflare 통계는 원천 API 보존 정책에 따라 최근 7일치 데이터만 새 시간대 구간으로 자동 재동기화되며, 7일 이전의 과거 누적 기록은 이전 기준 그대로 유지됩니다.", "en": "⚠️ Changing the site timezone will only automatically re-sync the last 7 days of Cloudflare analytics according to the source API retention policy. Historical data older than 7 days will be preserved as-is.", "ja": "⚠️ サイトの代表タイムゾーンを変更すると、元のAPI保持ポリシーに基づき、直近7日分のCloudflare統計のみが新しいタイムゾーンで自動的に再同期されます。7日より前の過去の累積記録は以前の基準のまま維持されます。" },
     "admin.backup.settings_path": { "ko": "설정/관리", "en": "Settings/Manage", "ja": "設定/管理" },
     "admin.backup.manage_suffix": { "ko": "에서 별도로 관리하세요.", "en": "to manage separately.", "ja": "で別途管理してください。" },
     "admin.backup.full_export_label": { "ko": "시스템 전체 내보내기 (JSON)", "en": "Full System Export (JSON)", "ja": "システム全体のエクスポート (JSON)" },
