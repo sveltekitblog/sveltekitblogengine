@@ -90,7 +90,31 @@ export async function syncInitialDataToD1(acc, blogDb, siteTag, cfaToken, env, a
     const effectiveAccId = accountId || acc.cfa?.accountId || acc.accountId;
     console.log(`\n📊 [${acc.name || 'CFA'}] 초회 7일치 CFA 데이터 D1 동기화 시작...`);
     try {
-        const timeZone = acc.timezone || 'UTC';
+        let timeZone = acc.timezone;
+        if (!timeZone) {
+            try {
+                const tzOut = execSync(`npx wrangler d1 execute ${blogDb.name} --remote --command="SELECT value FROM blog_settings WHERE key = 'timezone';" --json`, {
+                    cwd: ROOT,
+                    stdio: 'pipe',
+                    env
+                }).toString();
+                const parsed = JSON.parse(tzOut);
+                timeZone = parsed?.[0]?.results?.[0]?.value?.trim() || 'UTC';
+            } catch {
+                timeZone = 'UTC';
+            }
+        }
+
+        const getTimezoneOffsetMs = (tz, refDate) => {
+            try {
+                const utcDate = new Date(refDate.toLocaleString('en-US', { timeZone: 'UTC' }));
+                const tzDate = new Date(refDate.toLocaleString('en-US', { timeZone: tz }));
+                return tzDate.getTime() - utcDate.getTime();
+            } catch {
+                return 0;
+            }
+        };
+
         const getSiteDateStr = (offsetDays) => {
             const d = new Date(Date.now() + offsetDays * 86400 * 1000);
             return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
@@ -100,12 +124,7 @@ export async function syncInitialDataToD1(acc, blogDb, siteTag, cfaToken, env, a
         const getSiteDayRangeUtc = (dateStr) => {
             const [y, m, d] = dateStr.split('-').map(Number);
             const baseUtc = Date.UTC(y, m - 1, d, 0, 0, 0);
-            let offsetMs = 0;
-            try {
-                const ref = new Date(baseUtc);
-                const inv = new Date(ref.toLocaleString('en-US', { timeZone }));
-                offsetMs = inv.getTime() - ref.getTime();
-            } catch {}
+            const offsetMs = getTimezoneOffsetMs(timeZone, new Date(baseUtc));
             const fromUtc = new Date(baseUtc - offsetMs);
             const toUtc = new Date(baseUtc + 86400 * 1000 - 1 - offsetMs);
             const now = new Date();

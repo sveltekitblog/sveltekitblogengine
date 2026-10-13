@@ -88,20 +88,22 @@ function getSiteDatesEndingToday(timeZone: string, days: number): string[] {
   return Array.from({ length: days }, (_, i) => getSiteDateStr(timeZone, -(days - i - 1)));
 }
 
+/** 특정 IANA 시간대의 UTC 대비 오프셋(ms) 계산 */
+function getTimezoneOffsetMs(timeZone: string, refDate: Date): number {
+  try {
+    const utcDate = new Date(refDate.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const tzDate = new Date(refDate.toLocaleString('en-US', { timeZone }));
+    return tzDate.getTime() - utcDate.getTime();
+  } catch {
+    return 0;
+  }
+}
+
 /** 임의의 IANA 시간대 기준 특정 날짜의 00:00:00 ~ 23:59:59.999 범위를 UTC ISO로 변환 */
 function getSiteDayRangeUtc(dateStr: string, timeZone: string): { from: string; to: string } {
   const [y, m, d] = dateStr.split('-').map(Number);
   const baseUtcMidnight = Date.UTC(y, m - 1, d, 0, 0, 0);
-  
-  // 해당 타임존과 UTC 간의 오프셋(ms) 동적 계산
-  let offsetMs = 0;
-  try {
-    const refDate = new Date(baseUtcMidnight);
-    const invDate = new Date(refDate.toLocaleString('en-US', { timeZone }));
-    offsetMs = invDate.getTime() - refDate.getTime();
-  } catch {
-    offsetMs = 0;
-  }
+  const offsetMs = getTimezoneOffsetMs(timeZone, new Date(baseUtcMidnight));
 
   const fromUtc = new Date(baseUtcMidnight - offsetMs);
   const toUtc = new Date(baseUtcMidnight + 86400 * 1000 - 1 - offsetMs);
