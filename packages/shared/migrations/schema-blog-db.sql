@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS categories (
     slug TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT,
-    created_at TEXT DEFAULT (datetime('now', '+9 hours')),
-    updated_at TEXT DEFAULT (datetime('now', '+9 hours')),
+    created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+    updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
     lang TEXT DEFAULT 'ko',
     translation_group_id TEXT,
     post_count INTEGER DEFAULT 0,
@@ -37,8 +37,8 @@ CREATE TABLE IF NOT EXISTS posts (
     category_slug TEXT,
     featured_image TEXT,
     tags TEXT, -- JSON string
-    created_at TEXT DEFAULT (datetime('now', '+9 hours')),
-    updated_at TEXT DEFAULT (datetime('now', '+9 hours')),
+    created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+    updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
     published_at TEXT,
     lang TEXT DEFAULT 'ko',
     translation_group_id TEXT,
@@ -66,8 +66,8 @@ CREATE TABLE IF NOT EXISTS layouts (
     mobile_column_count INTEGER DEFAULT 1,
     mobile_column_widths TEXT DEFAULT '1fr',
     is_active INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now', '+9 hours')),
-    updated_at TEXT DEFAULT (datetime('now', '+9 hours'))
+    created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+    updated_at TEXT DEFAULT (CURRENT_TIMESTAMP)
 );
 
 -- 5. Widgets
@@ -76,8 +76,8 @@ CREATE TABLE IF NOT EXISTS widgets (
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     config TEXT, -- JSON string
-    created_at TEXT DEFAULT (datetime('now', '+9 hours')),
-    updated_at TEXT DEFAULT (datetime('now', '+9 hours'))
+    created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+    updated_at TEXT DEFAULT (CURRENT_TIMESTAMP)
 );
 
 -- 6. Layout Widgets (Mapping layouts to widgets)
@@ -89,15 +89,15 @@ CREATE TABLE IF NOT EXISTS layout_widgets (
     sort_order INTEGER NOT NULL,
     custom_title TEXT,
     device TEXT DEFAULT 'desktop',
-    created_at TEXT DEFAULT (datetime('now', '+9 hours')),
-    updated_at TEXT DEFAULT (datetime('now', '+9 hours'))
+    created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+    updated_at TEXT DEFAULT (CURRENT_TIMESTAMP)
 );
 
 -- 7. Blog Settings (Key-Value)
 CREATE TABLE IF NOT EXISTS blog_settings (
     key TEXT PRIMARY KEY,
     value TEXT,
-    updated_at TEXT DEFAULT (datetime('now', '+9 hours'))
+    updated_at TEXT DEFAULT (CURRENT_TIMESTAMP)
 );
 
 -- 8. Visitor Stats
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS media (
     url TEXT NOT NULL,
     size INTEGER NOT NULL,
     type TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now', '+9 hours'))
+    created_at TEXT DEFAULT (CURRENT_TIMESTAMP)
 );
 
 -- 10. UI Dictionary (Multilingual UI translations)
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS ui_dictionary (
     key TEXT NOT NULL,
     lang TEXT NOT NULL,
     value TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now', '+9 hours')),
-    updated_at TEXT DEFAULT (datetime('now', '+9 hours')),
+    created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+    updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
     PRIMARY KEY (key, lang)
 );

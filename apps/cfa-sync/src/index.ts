@@ -263,9 +263,9 @@ async function sync(env: Env): Promise<{ bootstrap: boolean; written: number }> 
     ON CONFLICT(id) DO UPDATE SET last_synced_at = excluded.last_synced_at, last_error = NULL
   `).bind(now, now));
   statements.push(env.BLOG_DB.prepare(`
-    INSERT INTO blog_settings (key, value) VALUES ('cfa_synced_timezone', ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `).bind(timeZone));
+    INSERT INTO blog_settings (key, value, updated_at) VALUES ('cfa_synced_timezone', ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `).bind(timeZone, now));
   await env.BLOG_DB.batch(statements);
   return { bootstrap, written };
 }
