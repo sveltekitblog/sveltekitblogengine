@@ -1,0 +1,24 @@
+name: "[JA] 機能提案 (Feature Request)"
+description: SKBEに追加したい新機能や改善のアイデアを提案します。
+title: "[Feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 1. 提案の背景（課題）
+      description: 現在どのような点に不便を感じており、改善が必要ですか？
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 2. 提案する機能・ソリューション
+      description: どのような機能や変更が追加されると良いか具体的に記載してください。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 3. 検討した代替案
+      description: 他に検討された代替手段があれば記載してください。

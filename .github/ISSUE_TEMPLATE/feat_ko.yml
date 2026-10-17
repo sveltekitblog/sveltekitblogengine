@@ -1,0 +1,24 @@
+name: "[KO] 기능 제안 (Feature Request)"
+description: SKBE에 추가되었으면 하는 새로운 기능이나 개선 아이디어를 제안합니다.
+title: "[Feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 1. 제안 배경 (문제 상황)
+      description: 현재 어떤 점이 불편하거나 개선이 필요한가요?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 2. 제안하는 솔루션
+      description: 어떤 기능이나 변경이 추가되면 좋을지 구체적으로 작성해 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 3. 대안 검토
+      description: 고려해보신 다른 해결 방안이 있다면 적어주세요.

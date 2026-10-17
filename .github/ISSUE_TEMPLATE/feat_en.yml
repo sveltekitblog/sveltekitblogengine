@@ -1,0 +1,24 @@
+name: "[EN] Feature Request"
+description: Suggest a new feature or improvement idea for SKBE.
+title: "[Feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 1. Problem Statement / Background
+      description: Is your feature request related to a problem or inconvenience?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 2. Proposed Solution
+      description: A clear and concise description of what you want to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 3. Alternatives Considered
+      description: Any alternative solutions or features you've considered.

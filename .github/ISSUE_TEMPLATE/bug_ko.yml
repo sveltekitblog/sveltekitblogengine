@@ -1,0 +1,45 @@
+name: "[KO] 버그 신고 (Bug Report)"
+description: SKBE 사용 중 발생한 오류나 결함을 제보합니다.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        버그 리포트를 작성하기 전에 동일한 문제가 이미 등록되어 있는지 확인해 주세요.
+  - type: textarea
+    id: description
+    attributes:
+      label: 1. 버그 설명
+      description: 어떤 문제가 발생하는지 간결하고 명확하게 작성해 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 2. 재현 경로
+      description: 문제를 재현할 수 있는 단계를 순서대로 적어주세요.
+      placeholder: |
+        1. '...' 페이지로 이동
+        2. '....' 버튼 클릭
+        3. 에러 발생
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 3. 정상 동작 (기대했던 결과)
+      description: 원래 어떻게 동작해야 하는지 작성해 주세요.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 4. 환경 정보
+      description: OS, 브라우저, 기기 정보 등을 입력해 주세요.
+      placeholder: "예: Windows 11, Chrome 124, Cloudflare Pages"
+  - type: textarea
+    id: additional
+    attributes:
+      label: 5. 추가 정보 및 스크린샷
+      description: 에러 로그나 캡처 이미지를 여기에 첨부해 주세요.

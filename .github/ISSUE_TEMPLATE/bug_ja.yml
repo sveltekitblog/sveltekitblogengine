@@ -1,0 +1,45 @@
+name: "[JA] バグ報告 (Bug Report)"
+description: SKBEの利用中に発生した不具合やエラーを報告します。
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        同様の問題が既に登録されていないかご確認の上、ご報告をお願いいたします。
+  - type: textarea
+    id: description
+    attributes:
+      label: 1. バグの説明
+      description: どのような問題が発生しているか、明確かつ簡潔に記載してください。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 2. 再現手順
+      description: 問題を再現するための手順を記載してください。
+      placeholder: |
+        1. '...' ページへ移動
+        2. '....' ボタンをクリック
+        3. エラーが発生
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 3. 期待される動作
+      description: 本来どのように動作すべきかを記載してください。
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 4. 環境情報
+      description: OS、ブラウザ、端末情報などを入力してください。
+      placeholder: "例: Windows 11, Chrome 124, Cloudflare Pages"
+  - type: textarea
+    id: additional
+    attributes:
+      label: 5. 追加情報およびスクリーンショット
+      description: エラーログやキャプチャ画像があれば添付してください。
