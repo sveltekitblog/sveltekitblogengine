@@ -33,25 +33,25 @@ query GetDailyRum($accountTag: String!, $siteTag: String!, $from: Time!, $to: Ti
   viewer {
     accounts(filter: {accountTag: $accountTag}) {
       traffic: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: 100) {
-        count sum { visits } avg { sampleInterval } dimensions { date }
+        count sum { visits } avg { sampleInterval }
       }
       pages: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: ${DETAIL_LIMIT}) {
-        count sum { visits } avg { sampleInterval } dimensions { date requestPath }
+        count sum { visits } avg { sampleInterval } dimensions { requestPath }
       }
       referrers: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: ${DETAIL_LIMIT}) {
-        count sum { visits } avg { sampleInterval } dimensions { date refererHost }
+        count sum { visits } avg { sampleInterval } dimensions { refererHost }
       }
       countries: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: ${DETAIL_LIMIT}) {
-        count sum { visits } avg { sampleInterval } dimensions { date countryName }
+        count sum { visits } avg { sampleInterval } dimensions { countryName }
       }
       devices: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: ${DETAIL_LIMIT}) {
-        count sum { visits } avg { sampleInterval } dimensions { date deviceType }
+        count sum { visits } avg { sampleInterval } dimensions { deviceType }
       }
       browsers: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: ${DETAIL_LIMIT}) {
-        count sum { visits } avg { sampleInterval } dimensions { date userAgentBrowser }
+        count sum { visits } avg { sampleInterval } dimensions { userAgentBrowser }
       }
       os: rumPageloadEventsAdaptiveGroups(filter: {siteTag: $siteTag, datetime_geq: $from, datetime_leq: $to}, limit: ${DETAIL_LIMIT}) {
-        count sum { visits } avg { sampleInterval } dimensions { date userAgentOS }
+        count sum { visits } avg { sampleInterval } dimensions { userAgentOS }
       }
     }
   }
@@ -137,6 +137,22 @@ function canonicalDetails(details: Record<DetailName, DetailItem[]>): Record<Det
   return result;
 }
 
+/** 지수 백오프(1s→2s→4s) 재시도. 네트워크/GraphQL 일시 오류 대응 */
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastError = e;
+      if (attempt < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function sha256(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value);
   const hash = await crypto.subtle.digest('SHA-256', bytes);
@@ -145,14 +161,16 @@ async function sha256(value: string): Promise<string> {
 
 async function fetchDaySnapshot(env: Env, dateStr: string, timeZone: string): Promise<DailySnapshot> {
   const { from, to } = getSiteDayRangeUtc(dateStr, timeZone);
-  const response = await fetch('https://api.cloudflare.com/client/v4/graphql', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.CF_API_TOKEN}` },
-    body: JSON.stringify({
-      query: RUM_QUERY,
-      variables: { accountTag: env.CF_ACCOUNT_ID, siteTag: env.CF_WEB_ANALYTICS_SITE_TAG, from, to }
+  const response = await withRetry(() =>
+    fetch('https://api.cloudflare.com/client/v4/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.CF_API_TOKEN}` },
+      body: JSON.stringify({
+        query: RUM_QUERY,
+        variables: { accountTag: env.CF_ACCOUNT_ID, siteTag: env.CF_WEB_ANALYTICS_SITE_TAG, from, to }
+      })
     })
-  });
+  );
 
   if (!response.ok) throw new Error(`CFA request failed: ${response.status} ${await response.text()}`);
   const payload = await response.json() as any;
@@ -206,7 +224,15 @@ async function fetchDaySnapshot(env: Env, dateStr: string, timeZone: string): Pr
 }
 
 async function fetchSnapshots(env: Env, dates: string[], timeZone: string): Promise<DailySnapshot[]> {
-  return await Promise.all(dates.map(date => fetchDaySnapshot(env, date, timeZone)));
+  const results = await Promise.allSettled(dates.map((date) => fetchDaySnapshot(env, date, timeZone)));
+  const snapshots: DailySnapshot[] = [];
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      snapshots.push(result.value);
+    }
+    // rejected: 해당 날짜만 skip하고 다음 cron 실행 시 재시도
+  }
+  return snapshots;
 }
 
 async function sync(env: Env): Promise<{ bootstrap: boolean; written: number }> {
@@ -307,6 +333,8 @@ export default {
     }
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(runSync(env));
+    // 에러는 cf_sync_state.last_error에 기록되므로 rethrow 하지 않음
+    // rethrow 시 Cloudflare가 scriptThrewException으로 집계하여 오류율 100% 표시됨
+    ctx.waitUntil(runSync(env).catch(() => {}));
   }
 } satisfies ExportedHandler<Env>;
