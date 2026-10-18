@@ -220,6 +220,28 @@ async function fetchDaySnapshot(env: Env, dateStr: string, timeZone: string): Pr
       snapshot.isExact &&= interval === 1;
     }
   }
+
+  // ── CFA 응답 완전성 및 디멘션 정합성 검증 ───────────────────────────────
+  const totalViewsByDim = Object.fromEntries(
+    DETAIL_NAMES.map((name) => [name, snapshot.details[name].reduce((acc, item) => acc + item.views, 0)])
+  ) as Record<DetailName, number>;
+
+  const maxViews = Math.max(snapshot.pageViews, ...Object.values(totalViewsByDim));
+
+  if (maxViews > 0) {
+    // 1. 조회수가 존재하는데 특정 디멘션이 빈 배열([])인 경우 스킵
+    const emptyDims = DETAIL_NAMES.filter((name) => snapshot.details[name].length === 0);
+    if (emptyDims.length > 0) {
+      throw new Error(`Incomplete CFA snapshot for ${dateStr}: empty dimensions [${emptyDims.join(', ')}] while maxViews=${maxViews}; skipping to protect existing data`);
+    }
+
+    // 2. traffic 총 조회수와 각 디멘션별 조회수 합계의 일치 여부 검증
+    const mismatchedDims = DETAIL_NAMES.filter((name) => totalViewsByDim[name] !== maxViews);
+    if (mismatchedDims.length > 0 || snapshot.pageViews !== maxViews) {
+      throw new Error(`Inconsistent CFA snapshot for ${dateStr}: view counts mismatch (traffic=${snapshot.pageViews}, max=${maxViews}, mismatched=[${mismatchedDims.map((d) => `${d}:${totalViewsByDim[d]}`).join(', ')}]); skipping`);
+    }
+  }
+
   return snapshot;
 }
 
