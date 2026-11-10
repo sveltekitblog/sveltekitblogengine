@@ -19,12 +19,38 @@
     import { page, navigating } from "$app/stores";
     import { t, adminLang } from "$lib/i18n.svelte";
     import { FULL_VERSION } from "@blog/shared";
+    import { Sun, Moon } from "lucide-svelte";
+    import { onMount } from "svelte";
     import "../app.css";
     
-    let { children } = $props();
+    let { data, children } = $props();
+
+    const isLoginPage = $derived(
+        $page.url.pathname.startsWith("/login") || 
+        $page.url.pathname.startsWith("/dashboard/login")
+    );
+    const isDashboardOnly = $derived(data?.isDashboardOnly || false);
+
+    let mobileTheme = $state<'dark' | 'light'>('dark');
+
+    onMount(() => {
+        const saved = localStorage.getItem('dash_mobile_theme') as 'dark' | 'light' | null;
+        if (saved === 'light' || saved === 'dark') {
+            mobileTheme = saved;
+        } else if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            mobileTheme = 'light';
+        }
+    });
+
+    function toggleTheme() {
+        mobileTheme = mobileTheme === 'dark' ? 'light' : 'dark';
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('dash_mobile_theme', mobileTheme);
+        }
+    }
 </script>
 
-<div class="admin-layout">
+<div class="admin-layout" class:mobile-viewer={isDashboardOnly} data-theme={isDashboardOnly ? mobileTheme : undefined}>
     {#if $navigating}
         <div class="global-loader">
             <div class="spinner"></div>
@@ -32,7 +58,42 @@
         </div>
     {/if}
 
-    {#if !$page.url.pathname.startsWith("/login")}
+    <!-- 모바일 대시보드 뷰어 전용 상단 헤더 -->
+    {#if isDashboardOnly && !isLoginPage}
+        <header class="mobile-dash-header">
+            <div class="mobile-dash-brand">
+                <span class="mobile-dash-title">{t('admin.dashboard.mobile_header_title')}</span>
+                <select bind:value={adminLang.value} class="admin-lang-select mobile-lang">
+                    <option value="ko">KO</option>
+                    <option value="en">EN</option>
+                    <option value="ja">JA</option>
+                </select>
+            </div>
+            <div class="mobile-dash-actions">
+                <button
+                    type="button"
+                    class="mobile-theme-toggle"
+                    onclick={toggleTheme}
+                    title={mobileTheme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+                    aria-label="Toggle theme"
+                >
+                    {#if mobileTheme === 'dark'}
+                        <Sun size={17} class="text-amber-400" />
+                    {:else}
+                        <Moon size={17} class="text-indigo-600" />
+                    {/if}
+                </button>
+                <form method="POST" action="/dashboard/login?/logout">
+                    <button type="submit" class="mobile-logout-btn">
+                        {t('admin.dashboard.logout')}
+                    </button>
+                </form>
+            </div>
+        </header>
+    {/if}
+
+    <!-- PC 최고 관리자 사이드바 (모바일 뷰어이거나 로그인 페이지일 때는 숨김) -->
+    {#if !isLoginPage && !isDashboardOnly}
         <nav class="sidebar">
             <div class="logo">
                 Admin
@@ -196,5 +257,120 @@
         flex: 1;
         padding: 2rem;
         overflow-y: auto;
+    }
+
+    .admin-layout.mobile-viewer {
+        flex-direction: column;
+        min-height: 100vh;
+        transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    .admin-layout.mobile-viewer[data-theme="dark"] {
+        --dash-bg: #0b1120;
+        --dash-header-bg: rgba(19, 29, 49, 0.92);
+        --dash-header-border: #26354f;
+        --dash-card-bg: #172339;
+        --dash-card-border: #26354f;
+        --dash-text-main: #f8fafc;
+        --dash-text-sub: #94a3b8;
+        --dash-text-muted: #64748b;
+        --dash-control-bg: #0f172a;
+        --dash-control-border: #334155;
+        --dash-card-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+        background-color: var(--dash-bg);
+        color: var(--dash-text-main);
+    }
+
+    .admin-layout.mobile-viewer[data-theme="light"] {
+        --dash-bg: #f8fafc;
+        --dash-header-bg: rgba(255, 255, 255, 0.92);
+        --dash-header-border: #e2e8f0;
+        --dash-card-bg: #ffffff;
+        --dash-card-border: #e2e8f0;
+        --dash-text-main: #0f172a;
+        --dash-text-sub: #64748b;
+        --dash-text-muted: #94a3b8;
+        --dash-control-bg: #f1f5f9;
+        --dash-control-border: #cbd5e1;
+        --dash-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.03);
+        background-color: var(--dash-bg);
+        color: var(--dash-text-main);
+    }
+
+    .mobile-dash-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.65rem 1rem;
+        background: var(--dash-header-bg);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--dash-header-border);
+        position: sticky;
+        top: 0;
+        z-index: 50;
+    }
+
+    .mobile-dash-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+
+    .mobile-dash-title {
+        font-weight: 700;
+        font-size: 1.05rem;
+        color: var(--dash-text-main);
+        letter-spacing: -0.02em;
+    }
+
+    .mobile-lang {
+        padding: 0.2rem 0.45rem;
+        font-size: 0.72rem;
+        background: var(--dash-control-bg);
+        border: 1px solid var(--dash-control-border);
+        border-radius: 0.375rem;
+        color: var(--dash-text-sub);
+    }
+
+    .mobile-dash-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .mobile-theme-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        background: var(--dash-control-bg);
+        border: 1px solid var(--dash-control-border);
+        border-radius: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .mobile-theme-toggle:hover {
+        opacity: 0.85;
+    }
+
+    .mobile-logout-btn {
+        padding: 0.3rem 0.65rem;
+        background: rgba(239, 68, 68, 0.12);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        border-radius: 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .mobile-viewer .content {
+        padding: 0.65rem 0.35rem;
+        max-width: 100%;
+        box-sizing: border-box;
     }
 </style>

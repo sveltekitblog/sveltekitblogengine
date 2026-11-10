@@ -638,7 +638,7 @@
                         })}
                     </button>
                 </div>
-                {#if data.activeProvider === "cf"}
+                {#if data.activeProvider === "cf" && !data.isDashboardOnly}
                     <button
                         type="button"
                         class="btn-export-csv"
@@ -1369,14 +1369,16 @@
                             </div>
                         {/each}
                     </div>
-                    <a
-                        href="/interactions?tab=comment"
-                        class="btn-text"
-                        style="display: block; padding: 1rem; text-align: center; border-top: 1px solid #f1f5f9;"
-                        >{t("admin.dashboard.recent.view_all", {
-                            default: "댓글 전체보기",
-                        })}</a
-                    >
+                    {#if !data.isDashboardOnly}
+                        <a
+                            href="/interactions?tab=comment"
+                            class="btn-text"
+                            style="display: block; padding: 1rem; text-align: center; border-top: 1px solid #f1f5f9;"
+                            >{t("admin.dashboard.recent.view_all", {
+                                default: "댓글 전체보기",
+                            })}</a
+                        >
+                    {/if}
                 {/if}
             </div>
         </section>
@@ -1422,14 +1424,16 @@
                             </div>
                         {/each}
                     </div>
-                    <a
-                        href="/interactions?tab=guestbook"
-                        class="btn-text"
-                        style="display: block; padding: 1rem; text-align: center; border-top: 1px solid #f1f5f9;"
-                        >{t("admin.dashboard.recent.view_all", {
-                            default: "방명록 전체보기",
-                        })}</a
-                    >
+                    {#if !data.isDashboardOnly}
+                        <a
+                            href="/interactions?tab=guestbook"
+                            class="btn-text"
+                            style="display: block; padding: 1rem; text-align: center; border-top: 1px solid #f1f5f9;"
+                            >{t("admin.dashboard.recent.view_all", {
+                                default: "방명록 전체보기",
+                            })}</a
+                        >
+                    {/if}
                 {/if}
             </div>
         </section>
@@ -1442,18 +1446,36 @@
                         default: "최근 포스트",
                     })}
                 </h2>
-                <a href="/posts" class="btn-text"
-                    >{t("admin.dashboard.recent.view_all", {
-                        default: "모두 보기",
-                    })}</a
-                >
+                {#if !data.isDashboardOnly}
+                    <a href="/posts" class="btn-text"
+                        >{t("admin.dashboard.recent.view_all", {
+                            default: "모두 보기",
+                        })}</a
+                    >
+                {/if}
             </div>
-            <div class="table-responsive">
+            <div class="table-responsive" class:mobile-posts-wrap={data.isDashboardOnly}>
                 {#if data.recentPosts.length === 0}
                     <div class="empty-state">
                         {t("admin.posts.main.empty", {
                             default: "작성된 포스트가 없습니다.",
                         })}
+                    </div>
+                {:else if data.isDashboardOnly}
+                    <div class="mobile-posts-list">
+                        {#each data.recentPosts as any[] as post}
+                            <div class="mobile-post-item">
+                                <div class="mobile-post-main">
+                                    <div class="mobile-post-title" title={post.title}>{post.title}</div>
+                                    <div class="mobile-post-slug">/{post.slug}</div>
+                                </div>
+                                <div class="mobile-post-meta">
+                                    <span class="badge {post.status}">{post.status}</span>
+                                    <span class="mobile-post-views">👁️ {post.view_count || 0}</span>
+                                    <span class="mobile-post-date">{formatDate(post.created_at)}</span>
+                                </div>
+                            </div>
+                        {/each}
                     </div>
                 {:else}
                     <table>
@@ -1469,11 +1491,15 @@
                             {#each data.recentPosts as any[] as post}
                                 <tr>
                                     <td>
-                                        <a
-                                            href="/posts/{post.id}"
-                                            class="post-title-link"
-                                            >{post.title}</a
-                                        >
+                                        {#if data.isDashboardOnly}
+                                            <span class="post-title-link">{post.title}</span>
+                                        {:else}
+                                            <a
+                                                href="/posts/{post.id}"
+                                                class="post-title-link"
+                                                >{post.title}</a
+                                            >
+                                        {/if}
                                         <div class="slug">/{post.slug}</div>
                                     </td>
                                     <td class="center font-mono"
@@ -1497,7 +1523,7 @@
     </div>
 </div>
 
-{#if isExportModalOpen}
+{#if isExportModalOpen && !data.isDashboardOnly}
     <div class="modal-backdrop" onclick={() => (isExportModalOpen = false)} role="presentation">
         <div class="modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
@@ -2696,5 +2722,157 @@
         to {
             transform: rotate(360deg);
         }
+    }
+
+    /* ====================================================
+       모바일 뷰어 전용 테마 및 중앙 정렬 / 폭 최적화 스타일
+       ==================================================== */
+    :global(.mobile-viewer) .chart-card,
+    :global(.mobile-viewer) .dashboard-section,
+    :global(.mobile-viewer) .cfa-summary-banner {
+        background: var(--dash-card-bg, #172339) !important;
+        border: 1px solid var(--dash-card-border, #26354f) !important;
+        color: var(--dash-text-main, #f8fafc) !important;
+        box-shadow: var(--dash-card-shadow, 0 4px 12px rgba(0,0,0,0.15)) !important;
+        border-radius: 1rem !important;
+        padding: 0.85rem 0.55rem !important;
+        margin-bottom: 1rem !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+    }
+
+    :global(.mobile-viewer) .chart-title,
+    :global(.mobile-viewer) .section-header h2,
+    :global(.mobile-viewer) .header-title-group h2 {
+        color: var(--dash-text-main, #f8fafc) !important;
+        text-align: center;
+        justify-content: center;
+    }
+
+    :global(.mobile-viewer) .header-title-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        gap: 0.35rem;
+        width: 100%;
+        margin-bottom: 0.75rem;
+    }
+
+    /* 컨트롤러 및 탭 메뉴 중앙 정렬 */
+    :global(.mobile-viewer) .cfa-period-bar,
+    :global(.mobile-viewer) .period-toggle-group,
+    :global(.mobile-viewer) .dimension-tabs,
+    :global(.mobile-viewer) .provider-toggle-wrap,
+    :global(.mobile-viewer) .provider-toggle {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        flex-wrap: wrap !important;
+        width: 100% !important;
+        gap: 0.4rem !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        text-align: center !important;
+    }
+
+    /* 모바일 뷰어 대시보드 메인 컨테이너 여백 0 통일 */
+    :global(.mobile-viewer) .dashboard {
+        padding: 0 !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+    }
+
+    :global(.mobile-viewer) .cfa-details-grid {
+        grid-template-columns: 1fr !important;
+        gap: 0.75rem !important;
+        width: 100% !important;
+    }
+
+    :global(.mobile-viewer) .detail-card {
+        padding: 0.85rem 0.55rem !important;
+        background: var(--dash-card-bg, #172339) !important;
+        border: 1px solid var(--dash-card-border, #26354f) !important;
+        border-radius: 1rem !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Top 5 테이블 가로 폭 100% 비율 기반 유연한 축소/확대 */
+    :global(.mobile-viewer) .detail-table-wrap {
+        width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+    :global(.mobile-viewer) .detail-table {
+        table-layout: fixed !important;
+        width: 100% !important;
+        font-size: 0.75rem !important;
+    }
+    :global(.mobile-viewer) .detail-table th:first-child,
+    :global(.mobile-viewer) .detail-table td:first-child {
+        width: 56% !important;
+        max-width: 0 !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+        padding-left: 0.25rem !important;
+    }
+    :global(.mobile-viewer) .detail-table th:nth-child(2),
+    :global(.mobile-viewer) .detail-table td:nth-child(2),
+    :global(.mobile-viewer) .detail-table th:nth-child(3),
+    :global(.mobile-viewer) .detail-table td:nth-child(3) {
+        width: 22% !important;
+        padding: 0.5rem 0.25rem !important;
+        font-size: 0.73rem !important;
+    }
+
+    /* 최근 포스트 모바일 폭 100% 맞춤형 리스트 카드 */
+    .mobile-posts-wrap {
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+    }
+    .mobile-posts-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        width: 100%;
+        max-width: 100%;
+    }
+    .mobile-post-item {
+        background: var(--dash-control-bg, rgba(255, 255, 255, 0.04));
+        border: 1px solid var(--dash-card-border, #334155);
+        border-radius: 0.75rem;
+        padding: 0.75rem 0.85rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .mobile-post-title {
+        font-weight: 600;
+        font-size: 0.88rem;
+        color: var(--dash-text-main, #f8fafc);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .mobile-post-slug {
+        font-size: 0.72rem;
+        color: var(--dash-text-muted, #64748b);
+        font-family: monospace;
+    }
+    .mobile-post-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        color: var(--dash-text-sub, #94a3b8);
+        padding-top: 0.35rem;
+        border-top: 1px dashed var(--dash-card-border, rgba(255, 255, 255, 0.08));
     }
 </style>

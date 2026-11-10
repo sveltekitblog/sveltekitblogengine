@@ -27,6 +27,10 @@
     import { untrack } from "svelte";
     let isSubmitting = $state(false);
 
+    // --- Dashboard Password Settings ---
+    let dashboardPassword = $state('');
+    let hasDashboardPassword = $state(untrack(() => Boolean(data.hasDashboardPassword)));
+
     // --- Multilingual Setup ---
     let languages = untrack(() => data.languages || []);
     let activeLang = $state(untrack(() => languages.length > 0 ? (languages.find((l: any) => l.is_default)?.code || languages[0].code) : 'ko'));
@@ -681,6 +685,43 @@
                             <div class="w-14 h-7 bg-blue-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-400 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-blue-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600"></div>
                         </label>
                     </div>
+                </div>
+            </section>
+
+            <!-- 대시보드 모바일/외부 열람 설정 -->
+            <section class="settings-card mb-6">
+                <div class="card-header">
+                    <LayoutDashboard size={20} />
+                    <h2>{t('admin.settings.dashboard_password')}</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-group mb-4">
+                        <label for="dashboard_password" class="block text-sm font-bold text-slate-700 mb-2">
+                            {t('admin.settings.dashboard_password')}
+                        </label>
+                        <input 
+                            type="password" 
+                            id="dashboard_password" 
+                            name="dashboard_password" 
+                            bind:value={dashboardPassword} 
+                            placeholder={hasDashboardPassword ? t('admin.settings.dashboard_password_configured') : t('admin.settings.dashboard_password_placeholder')}
+                            class="admin-name-input w-full font-mono text-sm"
+                        />
+                        <p class="text-xs text-slate-400 mt-1">
+                            📱 {t('admin.settings.dashboard_password_desc')}
+                        </p>
+                    </div>
+                    {#if hasDashboardPassword}
+                        <div class="form-group flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-xl mt-2">
+                            <span class="text-xs text-red-700 font-medium">
+                                {t('admin.settings.dashboard_password_clear_desc')}
+                            </span>
+                            <label class="inline-flex items-center gap-2 cursor-pointer text-xs text-red-800 font-bold">
+                                <input type="checkbox" name="clear_dashboard_password" value="true" class="rounded text-red-600" />
+                                {t('admin.settings.dashboard_password_clear_label')}
+                            </label>
+                        </div>
+                    {/if}
                 </div>
             </section>
 

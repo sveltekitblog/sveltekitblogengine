@@ -35,6 +35,7 @@ declare global {
         interface Locals {
             blogDb?: D1Database;
             userDb?: D1Database;
+            isDashboardOnly?: boolean;
         }
     }
 }

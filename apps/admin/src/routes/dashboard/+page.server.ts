@@ -390,7 +390,8 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
             isDummyData,
             adsenseData,
             adsenseError,
-            isAdsenseDummyData
+            isAdsenseDummyData,
+            isDashboardOnly: locals.isDashboardOnly || false
         };
 
     } catch (err) {

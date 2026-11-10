@@ -74,10 +74,15 @@ export const load: PageServerLoad = async ({ locals }) => {
             }
         }
 
+        // 대시보드 외부 비밀번호 설정 여부 확인
+        const dashPassRow = settingsResults ? (settingsResults as any[]).find(r => r.key === 'dashboard_password') : null;
+        const hasDashboardPassword = Boolean(dashPassRow?.value && String(dashPassRow.value).trim().length > 0);
+
         return {
             settings,
             languages: languages || [],
-            adminUser
+            adminUser,
+            hasDashboardPassword
         };
     } catch (err) {
         console.error('Failed to load settings:', err);
@@ -134,6 +139,26 @@ export const actions: Actions = {
                     VALUES (?, ?, ?) 
                     ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
                 `).bind(key, value, updatedAt).run();
+            }
+
+            // 대시보드 모바일 열람 비밀번호 처리
+            const clearDashPass = data.get('clear_dashboard_password') === 'true';
+            const rawDashPass = (data.get('dashboard_password') as string || '').trim();
+
+            if (clearDashPass) {
+                await db.prepare(`
+                    INSERT INTO blog_settings (key, value, updated_at) 
+                    VALUES ('dashboard_password', '', ?) 
+                    ON CONFLICT(key) DO UPDATE SET value='', updated_at=excluded.updated_at
+                `).bind(updatedAt).run();
+            } else if (rawDashPass) {
+                const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawDashPass));
+                const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+                await db.prepare(`
+                    INSERT INTO blog_settings (key, value, updated_at) 
+                    VALUES ('dashboard_password', ?, ?) 
+                    ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+                `).bind(hash, updatedAt).run();
             }
 
             return { success: true };

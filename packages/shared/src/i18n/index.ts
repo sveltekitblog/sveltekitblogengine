@@ -1460,7 +1460,26 @@ authorId: "admin"
     "admin.dashboard.export.sheet.referrers":   { "ko": "유입 출처",                "en": "Referrers",               "ja": "流入元" },
     "admin.dashboard.export.sheet.countries":   { "ko": "접속 국가",                "en": "Countries",               "ja": "国" },
     "admin.dashboard.export.sheet.browsers":    { "ko": "브라우저",                 "en": "Browsers",                "ja": "ブラウザ" },
-    "admin.dashboard.export.sheet.devices":     { "ko": "장치 유형",                "en": "Device Types",            "ja": "デバイス" }
+    "admin.dashboard.export.sheet.devices":     { "ko": "장치 유형",                "en": "Device Types",            "ja": "デバイス" },
+
+    // 대시보드 모바일 전용 뷰어 및 로그인
+    "admin.dashboard.login.title":              { "ko": "대시보드 뷰어",            "en": "Dashboard Viewer",        "ja": "ダッシュボードビューア" },
+    "admin.dashboard.login.subtitle":           { "ko": "모바일 읽기 전용 뷰어 모드입니다.", "en": "Mobile read-only viewer mode.", "ja": "モバイル専用閲覧モードです。" },
+    "admin.dashboard.login.password":           { "ko": "대시보드 비밀번호",        "en": "Dashboard Password",      "ja": "ダッシュボードパスワード" },
+    "admin.dashboard.login.submit":             { "ko": "대시보드 열람하기",        "en": "Open Dashboard",          "ja": "ダッシュボードを閲覧" },
+    "admin.dashboard.login.invalid":            { "ko": "비밀번호가 올바르지 않습니다.", "en": "Incorrect password.",     "ja": "パスワードが正しくありません。" },
+    "admin.dashboard.login.not_configured":     { "ko": "대시보드 외부 열람이 설정되지 않았습니다.", "en": "External dashboard access is not configured.", "ja": "ダッシュボードの外部アクセスが設定されていません。" },
+    "admin.dashboard.login.logging_in":         { "ko": "확인 중...",               "en": "Verifying...",            "ja": "確認中..." },
+    "admin.dashboard.mobile_header_title":      { "ko": "SKBE 통계",                "en": "SKBE Analytics",          "ja": "SKBE 統計" },
+    "admin.dashboard.logout":                   { "ko": "로그아웃",                 "en": "Logout",                  "ja": "ログアウト" },
+
+    // 사이트 설정 (대시보드 비밀번호)
+    "admin.settings.dashboard_password":        { "ko": "대시보드 모바일 열람 비밀번호", "en": "Mobile Dashboard Password", "ja": "モバイルダッシュボード閲覧パスワード" },
+    "admin.settings.dashboard_password_desc":   { "ko": "외부 어디서나 모바일로 통계를 확인할 수 있는 비밀번호입니다. 비워두면 외부 접속이 비활성화됩니다.", "en": "Password to view analytics from mobile devices outside allowed IPs. Leave blank to disable external access.", "ja": "許可IP外のモバイル等から統計を閲覧するためのパスワードです。空欄にすると外部アクセスは無効化されます。" },
+    "admin.settings.dashboard_password_placeholder": { "ko": "새 비밀번호 입력 (미설정 시 외부 차단)", "en": "Enter new password (blank to disable)", "ja": "新しいパスワードを入力（未設定時は外部遮断）" },
+    "admin.settings.dashboard_password_configured":  { "ko": "현재 비밀번호가 설정되어 있습니다. 변경하려면 새로 입력하세요.", "en": "Password is currently configured. Enter a new password to change.", "ja": "パスワードは現在設定されています。変更する場合は新しく入力してください。" },
+    "admin.settings.dashboard_password_clear_desc":  { "ko": "대시보드 외부 열람을 비활성화(비밀번호 삭제)하려면 체크하세요.", "en": "Check to disable external dashboard access (delete password).", "ja": "ダッシュボードの外部アクセスを無効化（パスワード削除）する場合はチェックしてください。" },
+    "admin.settings.dashboard_password_clear_label": { "ko": "비밀번호 해제", "en": "Remove Password", "ja": "パスワード解除" }
 
 };
 

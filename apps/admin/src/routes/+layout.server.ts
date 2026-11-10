@@ -46,6 +46,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
         ui_dictionary,
         languages,
         dbDefaultLang,
+        isDashboardOnly: locals.isDashboardOnly || false,
         i18n: {
             lang: dbDefaultLang,
             dbDefaultLang,
