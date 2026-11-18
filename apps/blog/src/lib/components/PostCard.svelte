@@ -17,7 +17,7 @@
 
 <script lang="ts">
     import type { Post } from "$lib/types";
-    import { formatDate } from "$lib/utils";
+    import { formatDate, localizePath } from "$lib/utils";
     import { page } from "$app/stores";
     import { t } from "$lib/i18n";
 
@@ -97,10 +97,7 @@
     let optimalWidth = 480;
     let optimalHeight = 270;
 
-    function getLocalizedUrl(path: string) {
-        const lang = $page.params.lang;
-        return lang ? `/${lang}${path}` : path;
-    }
+    const getLocalizedUrl = (path: string) => localizePath(path, $page.params.lang);
 
     // Svelte 5 룬(derived)으로 LCP 대상 여부를 스크립트 단에서 안전하게 연산
     const columns = $derived(Number(dConfig.columns) || 3);

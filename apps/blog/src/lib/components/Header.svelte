@@ -31,6 +31,7 @@
     import DynamicBgRenderer from "./DynamicBgRenderer.svelte";
     import { page } from "$app/stores";
     import { t } from "$lib/i18n";
+    import { getContrastTextColor } from "@blog/shared/utils";
     import {
         normalizeBackground,
         getBgValue,
@@ -54,20 +55,6 @@
 
     let baseHeader = $derived(settings?.header || {});
     let theme = $derived(settings?.theme || {});
-    function getContrastTextColor(bg: string): string {
-        const c = (bg || "").trim();
-        let r = 0, g = 0, b = 0, parsed = false;
-        if (/^#[0-9a-f]{3}$/i.test(c)) {
-            r = parseInt(c[1] + c[1], 16); g = parseInt(c[2] + c[2], 16); b = parseInt(c[3] + c[3], 16); parsed = true;
-        } else if (/^#[0-9a-f]{6}$/i.test(c)) {
-            r = parseInt(c.slice(1, 3), 16); g = parseInt(c.slice(3, 5), 16); b = parseInt(c.slice(5, 7), 16); parsed = true;
-        } else {
-            const m = c.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-            if (m) { r = +m[1]; g = +m[2]; b = +m[3]; parsed = true; }
-        }
-        if (!parsed) return "#ffffff";
-        return (r * 299 + g * 587 + b * 114) / 1000 >= 150 ? "#0f172a" : "#ffffff";
-    }
     let loginBtnBg = $derived(baseHeader.loginBgColor || theme.primary || "#3b82f6");
     let loginBtnText = $derived(baseHeader.loginTextColor || getContrastTextColor(loginBtnBg));
     // 레이아웃 설정은 항상 데스크탑 기준값(baseHeader)을 사용합니다.

@@ -21,7 +21,6 @@ import { BlogDB } from "$lib/server/db";
 import { userDb } from "@blog/shared/db";
 import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { building } from "$app/environment";
-import '$lib/server/storageAdapter';
 import { getOrSetCache } from '$lib/server/cache';
 
 export const handle: Handle = async ({ event, resolve }) => {

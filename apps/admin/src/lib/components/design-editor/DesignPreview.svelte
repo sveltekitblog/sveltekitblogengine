@@ -30,6 +30,7 @@
     import DynamicBgRenderer from "$lib/components/DynamicBgRenderer.svelte";
     import { t } from "$lib/i18n.svelte";
     import { onMount } from "svelte";
+    import { getContrastTextColor } from "@blog/shared/utils";
 
     let {
         themeConfig,
@@ -79,20 +80,6 @@
     let isScrolled = $state(false);
     let showMobileDrawer = $state(false);
 
-    function getContrastTextColor(bg: string): string {
-        const c = (bg || "").trim();
-        let r = 0, g = 0, b = 0, parsed = false;
-        if (/^#[0-9a-f]{3}$/i.test(c)) {
-            r = parseInt(c[1] + c[1], 16); g = parseInt(c[2] + c[2], 16); b = parseInt(c[3] + c[3], 16); parsed = true;
-        } else if (/^#[0-9a-f]{6}$/i.test(c)) {
-            r = parseInt(c.slice(1, 3), 16); g = parseInt(c.slice(3, 5), 16); b = parseInt(c.slice(5, 7), 16); parsed = true;
-        } else {
-            const m = c.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-            if (m) { r = +m[1]; g = +m[2]; b = +m[3]; parsed = true; }
-        }
-        if (!parsed) return "#ffffff";
-        return (r * 299 + g * 587 + b * 114) / 1000 >= 150 ? "#0f172a" : "#ffffff";
-    }
     let loginBtnBg = $derived(rawHeaderConfig?.loginBgColor || themeConfig?.primary || "#3b82f6");
     let loginBtnText = $derived(rawHeaderConfig?.loginTextColor || getContrastTextColor(loginBtnBg));
 

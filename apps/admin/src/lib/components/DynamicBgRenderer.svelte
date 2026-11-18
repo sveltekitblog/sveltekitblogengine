@@ -18,7 +18,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { browser } from '$app/environment';
-  import { validateJS } from '$lib/utils/jsValidator';
+  import { validateJS } from '@blog/shared/utils';
   import { untrack } from 'svelte';
 
   interface Props {

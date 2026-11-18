@@ -16,22 +16,7 @@
  */
 
 import type { RequestHandler } from './$types';
-
-const EXT_CONTENT_TYPE: Record<string, string> = {
-    webp: 'image/webp',
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    svg: 'image/svg+xml',
-    avif: 'image/avif',
-};
-
-function inferContentType(path: string, storedType?: string | null): string {
-    if (storedType && storedType !== 'application/octet-stream') return storedType;
-    const ext = path.split('.').pop()?.toLowerCase() ?? '';
-    return EXT_CONTENT_TYPE[ext] ?? 'application/octet-stream';
-}
+import { inferContentType } from '@blog/shared/utils';
 
 // 전역 메모리에 스토리지 설정값 캐싱 (D1 조회 병목 방지)
 let cachedSettings: Record<string, string> | null = null;

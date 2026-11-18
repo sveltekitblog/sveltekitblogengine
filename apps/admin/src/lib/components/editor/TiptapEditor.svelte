@@ -595,10 +595,6 @@
         }
     }
 
-    function triggerImageUpload() {
-        document.getElementById("tiptap-image-upload")?.click();
-    }
-
     function insertLink() {
         const url = prompt(t('admin.editor.prompt_link_url', { default: "링크 URL을 입력하세요:" }));
         if (url && editor) {

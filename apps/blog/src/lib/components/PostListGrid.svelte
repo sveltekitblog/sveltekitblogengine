@@ -20,6 +20,7 @@
     import PostCard from "$lib/components/PostCard.svelte";
     import { page as pageStore } from "$app/stores";
     import { t } from "$lib/i18n";
+    import { localizePath, parseWidgetConfig, extractDeviceConfig } from "$lib/utils";
 
     let {
         data,
@@ -45,38 +46,7 @@
         paginationStyle: "default",
     };
 
-    function getLocalizedUrl(path: string) {
-        const lang = $pageStore.params.lang;
-        if (lang) {
-            return path.startsWith('/') ? `/${lang}${path === '/' ? '' : path}` : `/${lang}/${path}`;
-        }
-        return path;
-    }
-
-    function parseWidgetConfig(rawConfig: any): any {
-        if (!rawConfig) return {};
-        if (typeof rawConfig === "string" && rawConfig.trim() !== "") {
-            try {
-                return JSON.parse(rawConfig);
-            } catch {
-                return {};
-            }
-        }
-        return rawConfig;
-    }
-
-    function extractDeviceConfig(
-        parsed: any,
-        device: "desktop" | "mobile",
-    ): any {
-        if (parsed.desktop || parsed.mobile) {
-            return {
-                ...defaultPcConfig,
-                ...(parsed[device] || parsed.desktop || {}),
-            };
-        }
-        return { ...defaultPcConfig, ...parsed };
-    }
+    const getLocalizedUrl = (path: string) => localizePath(path, $pageStore.params.lang);
 
     // Find PostContent widget
     let dWidget = $derived(
@@ -97,9 +67,9 @@
     let dParsed = $derived(parseWidgetConfig(dWidget?.config));
     let mParsed = $derived(parseWidgetConfig(mWidget?.config));
 
-    let desktopPcConfig = $derived(extractDeviceConfig(dParsed, "desktop"));
+    let desktopPcConfig = $derived(extractDeviceConfig(dParsed, "desktop", defaultPcConfig));
     let mobilePcConfig = $derived(
-        extractDeviceConfig(mParsed || dParsed, "mobile"),
+        extractDeviceConfig(mParsed || dParsed, "mobile", defaultPcConfig),
     );
 
     let desktopGridCols = $derived(

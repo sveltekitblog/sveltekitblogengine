@@ -15,78 +15,35 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-/**
- * Formats a date string or Date object to 'YYYY-MM-DD AM/PM H:MM:SS'
- * Example: 2026-02-04T05:57:41.778Z -> 2026-02-04 AM9:20:12
- * @param dateInput ISO date string, Date object, or null/undefined
- * @returns Formatted date string
- */
-export function formatDate(
-    dateInput: string | Date | null | undefined, 
-    timezone?: string, 
-    includeTime = true
-): string {
-    if (!dateInput) return '';
+export { formatDate, sanitizeHtml } from '@blog/shared/utils';
 
-    const date = new Date(dateInput);
-    if (isNaN(date.getTime())) return String(dateInput);
-
-    const targetTimezone = timezone || 'UTC';
-
-    try {
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: targetTimezone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true,
-            timeZoneName: 'short'
-        });
-
-        const parts = formatter.formatToParts(date);
-        const getPart = (type: string) => parts.find(p => p.type === type)?.value || '';
-
-        const year = getPart('year');
-        const month = getPart('month');
-        const day = getPart('day');
-
-        if (!includeTime) {
-            return `${year}-${month}-${day}`;
-        }
-
-        let hour = getPart('hour');
-        const minute = getPart('minute');
-        const second = getPart('second');
-        const dayPeriod = getPart('dayPeriod'); // "AM" or "PM"
-        let tzName = getPart('timeZoneName'); // "KST", "EST" 등
-
-        let numHour = parseInt(hour, 10);
-        
-        return `${year}-${month}-${day} ${dayPeriod}${numHour}:${minute}:${second} (${tzName})`;
-    } catch (e) {
-        console.error('Failed to format date with timezone:', timezone, e);
-        // Fallback to local default
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        if (!includeTime) return `${year}-${month}-${day}`;
-        let hours = date.getHours();
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
-        const ampm = hours >= 12 ? 'PM' : 'AM';
-        hours = hours % 12;
-        hours = hours ? hours : 12;
-        return `${year}-${month}-${day} ${ampm}${hours}:${minutes}:${seconds}`;
-    }
+export function localizePath(path: string, lang?: string | null): string {
+    if (!lang) return path;
+    return path.startsWith('/') ? `/${lang}${path === '/' ? '' : path}` : `/${lang}/${path}`;
 }
 
-/**
- * Simple HTML sanitizer to strip all tags
- */
-export function sanitizeHtml(str: string): string {
-    if (!str) return '';
-    return str.replace(/<[^>]*>/g, '').trim();
+export function parseWidgetConfig(rawConfig: any): any {
+    if (!rawConfig) return {};
+    if (typeof rawConfig === 'string' && rawConfig.trim() !== '') {
+        try {
+            return JSON.parse(rawConfig);
+        } catch {
+            return {};
+        }
+    }
+    return rawConfig;
+}
+
+export function extractDeviceConfig(
+    parsed: any,
+    device: 'desktop' | 'mobile',
+    defaults: Record<string, any> = {}
+): any {
+    if (parsed.desktop || parsed.mobile) {
+        return {
+            ...defaults,
+            ...(parsed[device] || parsed.desktop || {})
+        };
+    }
+    return { ...defaults, ...parsed };
 }

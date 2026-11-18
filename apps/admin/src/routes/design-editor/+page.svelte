@@ -65,7 +65,7 @@
         Copy,
     } from "lucide-svelte";
     import DynamicBgRenderer from "$lib/components/DynamicBgRenderer.svelte";
-    import { validateJS } from "$lib/utils/jsValidator";
+    import { validateJS } from "@blog/shared/utils";
     import { onMount } from "svelte";
     import ColorControl from "$lib/components/design-editor/ColorControl.svelte";
     import GradientBuilder from "$lib/components/design-editor/GradientBuilder.svelte";
@@ -1254,15 +1254,6 @@
         Box,
         FolderTree,
     };
-
-    function getCategorySlug(configStr: string) {
-        try {
-            const config = JSON.parse(configStr);
-            return config.category_slug || "";
-        } catch (e) {
-            return "";
-        }
-    }
 
     // Helpers
     function addColumn() {

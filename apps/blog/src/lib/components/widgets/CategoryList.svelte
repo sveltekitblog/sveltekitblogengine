@@ -17,14 +17,12 @@
 
 <script lang="ts">
     import { page } from "$app/stores";
+    import { localizePath } from "$lib/utils";
     let { categories, config }: { categories: any[]; config?: any } = $props();
 
     const showPostCount = $derived(config?.showPostCount ?? true);
 
-    function getLocalizedUrl(path: string) {
-        const lang = $page.params.lang;
-        return lang ? `/${lang}${path}` : path;
-    }
+    const getLocalizedUrl = (path: string) => localizePath(path, $page.params.lang);
 </script>
 
 <ul class="category-list-widget widget-categories-list" data-widget-list="categories">

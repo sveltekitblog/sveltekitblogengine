@@ -19,6 +19,7 @@
     import type { Layout, LayoutWidget } from "$lib/types";
     import { t } from "$lib/i18n";
     import { page } from "$app/stores";
+    import { parseWidgetConfig, extractDeviceConfig } from "$lib/utils";
     import RecentPostsWidget from "./widgets/RecentPostsWidget.svelte";
     import CategoryList from "./widgets/CategoryList.svelte";
     import PopularPostsWidget from "./widgets/PopularPostsWidget.svelte";
@@ -101,31 +102,9 @@
         cardFontSize: "1rem"
     };
 
-    function parseWidgetConfig(rawConfig: any): any {
-        if (!rawConfig) return {};
-        if (typeof rawConfig === "string" && rawConfig.trim() !== "") {
-            try {
-                return JSON.parse(rawConfig);
-            } catch {
-                return {};
-            }
-        }
-        return rawConfig;
-    }
-
-    function extractDeviceConfig(parsed: any, device: "desktop" | "mobile"): any {
-        if (parsed.desktop || parsed.mobile) {
-            return {
-                ...defaultPcConfig,
-                ...(parsed[device] || parsed.desktop || {}),
-            };
-        }
-        return { ...defaultPcConfig, ...parsed };
-    }
-
     const dWidget = $derived((allWidgets || []).find(w => w.type === 'post_content' || w.type === 'PostContent'));
     const dParsed = $derived(parseWidgetConfig(dWidget?.config));
-    const desktopPcConfig = $derived(extractDeviceConfig(dParsed, "desktop"));
+    const desktopPcConfig = $derived(extractDeviceConfig(dParsed, "desktop", defaultPcConfig));
     const desktopCardFontSize = $derived(desktopPcConfig.cardFontSize || "1rem");
 
     function isWidgetRenderable(w: any): boolean {

@@ -17,14 +17,11 @@
 
 <script lang="ts">
     import type { Post } from "$lib/types";
-    import { formatDate } from "$lib/utils";
+    import { formatDate, localizePath } from "$lib/utils";
     import { page } from "$app/stores";
     let { posts }: { posts: Post[] } = $props();
 
-    function getLocalizedUrl(path: string) {
-        const lang = $page.params.lang;
-        return lang ? `/${lang}${path}` : path;
-    }
+    const getLocalizedUrl = (path: string) => localizePath(path, $page.params.lang);
 </script>
 
 <ul class="popular-posts-widget widget-posts-list" data-widget-list="popular-posts">

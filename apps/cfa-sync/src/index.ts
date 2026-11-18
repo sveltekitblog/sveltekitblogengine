@@ -118,11 +118,6 @@ function getSiteDayRangeUtc(dateStr: string, timeZone: string): { from: string; 
   return { from: fromUtc.toISOString(), to: effectiveTo.toISOString() };
 }
 
-function asDate(value: unknown): string {
-  const raw = String(value ?? '');
-  return raw.slice(0, 10);
-}
-
 function asCount(value: unknown): number {
   const parsed = Number.parseInt(String(value ?? '0'), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
