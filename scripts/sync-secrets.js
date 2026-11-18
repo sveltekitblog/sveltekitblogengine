@@ -97,6 +97,7 @@ if (existsSync(pkgPath)) {
 const blogWranglerPath = resolve(ROOT, 'apps/blog/wrangler.json');
 let d1Config = null;
 let kvConfig = null;
+let resolvedBlogDbName = null;
 
 if (existsSync(blogWranglerPath)) {
     try {
@@ -171,6 +172,7 @@ if (!skipDb) {
     }
 
     const blogDbName = deployConfig.d1?.BLOG_DB?.name || process.env.TARGET_BLOG_DB || d1Config?.BLOG_DB?.name;
+    resolvedBlogDbName = blogDbName || null;
     if (blogDbName) {
         // ─── i18n Dictionary Interactive Sync (setup or deploy:admin prompt) ───
         let shouldSyncI18n = false;
@@ -390,6 +392,33 @@ content.split('\n').forEach(line => {
         }
     }
 });
+
+// The canonical public site URL is configured in the admin's common settings.
+// Keep Better Auth's server-only base URL in sync with it during blog deploys,
+// rather than trusting a request Host header at runtime.
+if (appPath.includes('blog') && resolvedBlogDbName) {
+    try {
+        const output = execSync(
+            `${NPX} wrangler d1 execute ${resolvedBlogDbName} --remote --json --command="SELECT value FROM blog_settings WHERE key = 'siteUrl' LIMIT 1;"`,
+            { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe', env: process.env }
+        );
+        const result = JSON.parse(output);
+        const siteUrl = result?.[0]?.results?.[0]?.value;
+        if (typeof siteUrl === 'string' && siteUrl.trim()) {
+            const canonicalUrl = new URL(siteUrl.trim());
+            if (canonicalUrl.protocol !== 'https:') throw new Error('siteUrl must use HTTPS');
+            canonicalUrl.pathname = canonicalUrl.pathname.replace(/\/$/, '');
+            canonicalUrl.search = '';
+            canonicalUrl.hash = '';
+            secrets.BETTER_AUTH_URL = canonicalUrl.toString().replace(/\/$/, '');
+            console.log(`🔐 BETTER_AUTH_URL synchronized from the common site URL for '${projectName}'.`);
+        } else {
+            console.warn('⚠ BETTER_AUTH_URL was not synchronized because the common site URL is empty.');
+        }
+    } catch (e) {
+        console.warn(`⚠ BETTER_AUTH_URL synchronization skipped: ${e.message}`);
+    }
+}
 
 // ALLOWED_IP가 DISABLE 또는 OFF로 정의되어 있으면 원격 Secret 전송 리스트에서 제외
 if (secrets['ALLOWED_IP'] && (secrets['ALLOWED_IP'].toLowerCase() === 'disable' || secrets['ALLOWED_IP'].toLowerCase() === 'off')) {

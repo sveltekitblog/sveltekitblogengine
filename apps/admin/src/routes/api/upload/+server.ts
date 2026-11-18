@@ -19,6 +19,12 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getStorageAdapter } from '$lib/server/storageAdapter';
 
+const BLOCKED_EXTENSIONS = new Set([
+    'exe', 'bat', 'cmd', 'sh', 'msi', 'dmg', 'scr', 'vbs', 'com',
+    'jar', 'bin', 'app', 'html', 'htm', 'js', 'mjs', 'cjs', 'php', 'ps1'
+]);
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
+
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
     try {
         const formData = await request.formData();
@@ -30,8 +36,27 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
             return json({ error: 'Missing file, folder, or filename' }, { status: 400 });
         }
 
+        const cleanFolder = folder.trim().replace(/^\/+|\/+$/g, '');
+        const cleanFilename = filename.trim();
+        if (
+            !cleanFolder || !cleanFilename ||
+            cleanFolder.includes('..') || cleanFolder.includes('\\') ||
+            cleanFilename.includes('..') || cleanFilename.includes('/') || cleanFilename.includes('\\')
+        ) {
+            return json({ error: 'Invalid folder or filename' }, { status: 400 });
+        }
+
+        const ext = cleanFilename.split('.').pop()?.toLowerCase() ?? '';
+        if (BLOCKED_EXTENSIONS.has(ext)) {
+            return json({ error: 'File type is not allowed' }, { status: 400 });
+        }
+
+        if (file.size > MAX_UPLOAD_BYTES) {
+            return json({ error: 'File size exceeds 25MB limit' }, { status: 413 });
+        }
+
         const buffer = await file.arrayBuffer();
-        const key = `${folder}/${filename}`;
+        const key = `${cleanFolder}/${cleanFilename}`;
 
         const db = locals.blogDb ?? null;
         const adapter = await getStorageAdapter(platform!, db);

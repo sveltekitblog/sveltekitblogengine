@@ -347,10 +347,8 @@ async function runSync(env: Env): Promise<{ bootstrap: boolean; written: number 
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext) {
-    const url = new URL(request.url);
     const authHeader = request.headers.get('Authorization') || '';
-    const queryKey = url.searchParams.get('key') || '';
-    if (authHeader !== `Bearer ${env.CF_API_TOKEN}` && queryKey !== env.CF_API_TOKEN) {
+    if (!env.CF_API_TOKEN || authHeader !== `Bearer ${env.CF_API_TOKEN}`) {
       return new Response('Unauthorized', { status: 401 });
     }
     try {

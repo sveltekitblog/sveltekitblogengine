@@ -161,6 +161,10 @@ export const GET: RequestHandler = async ({ request, params, platform, locals })
         // ── 4. Set CORS headers for public image access ──────────────
         response.headers.set('Access-Control-Allow-Origin', '*');
         response.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        response.headers.set('X-Content-Type-Options', 'nosniff');
+        if (response.headers.get('Content-Type')?.toLowerCase().includes('image/svg+xml')) {
+            response.headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+        }
 
         // ── 5. Cache successful responses at Cloudflare Edge ─────────
         if (response.status === 200 && enableCdnCache) {

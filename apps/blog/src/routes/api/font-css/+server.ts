@@ -56,6 +56,7 @@ export const GET: RequestHandler = async ({ url }) => {
             }
         });
     } catch (e: any) {
-        throw error(500, e.message || 'Server error');
+        if (e?.status && e?.body) throw e;
+        throw error(500, 'Error');
     }
 };

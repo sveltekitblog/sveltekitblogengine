@@ -58,7 +58,7 @@ export const session = sqliteTable(
         userId: text("user_id")
             .notNull()
             .references(() => user.id, { onDelete: "cascade" }),
-        impersonatedBy: text("impersonated_by"),
+        impersonated_by: text("impersonated_by"),
     },
     (table) => [index("session_userId_idx").on(table.userId)],
 );
@@ -96,7 +96,7 @@ export const account = sqliteTable(
 export const verification = sqliteTable(
     "verification",
     {
-        id: text("id").primaryKey(),
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
         identifier: text("identifier").notNull(),
         value: text("value").notNull(),
         expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),

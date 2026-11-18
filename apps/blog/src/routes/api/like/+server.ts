@@ -77,6 +77,6 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         return json({ liked, count: totalLikes });
     } catch (e: any) {
         console.error('Like toggle failed:', e);
-        return json({ error: e.message }, { status: 500 });
+        return json({ error: 'Internal server error' }, { status: 500 });
     }
 };

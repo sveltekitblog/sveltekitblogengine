@@ -21,6 +21,10 @@ import { entries, user, deletedEntries } from '@blog/shared/db/user-schema';
 import { eq, and, desc, or } from 'drizzle-orm';
 import { sanitizeHtml } from '$lib/utils';
 
+const MAX_ENTRY_LENGTH = 500;
+const MAX_TARGET_ID_LENGTH = 200;
+const MAX_TIMEZONE_LENGTH = 64;
+
 // GET /api/entries?type=comment&targetId=xxx OR ?type=guestbook
 export const GET: RequestHandler = async ({ url, locals }) => {
     const type = url.searchParams.get('type');
@@ -137,7 +141,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
         return json(results);
     } catch (e: any) {
         console.error('Failed to fetch entries:', e);
-        return json({ error: e.message }, { status: 500 });
+        return json({ error: 'Internal server error' }, { status: 500 });
     }
 };
 
@@ -190,8 +194,32 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
             return json({ error: 'Content is required' }, { status: 400 });
         }
 
+        if (body.content.trim().length > MAX_ENTRY_LENGTH) {
+            return json({ error: `Content must be ${MAX_ENTRY_LENGTH} characters or fewer` }, { status: 400 });
+        }
+
         if (body.type === 'comment' && !body.targetId) {
             return json({ error: 'targetId is required for comments' }, { status: 400 });
+        }
+
+        if (body.targetId && body.targetId.length > MAX_TARGET_ID_LENGTH) {
+            return json({ error: 'Invalid targetId' }, { status: 400 });
+        }
+
+        if (body.clientTimezone && body.clientTimezone.length > MAX_TIMEZONE_LENGTH) {
+            return json({ error: 'Invalid client timezone' }, { status: 400 });
+        }
+
+        if (body.parentId) {
+            const parent = await db.select({
+                id: entries.id,
+                type: entries.type,
+                targetId: entries.targetId,
+                parentId: entries.parentId
+            }).from(entries).where(eq(entries.id, body.parentId)).get();
+            if (!parent || parent.type !== body.type || parent.targetId !== (body.targetId || null) || parent.parentId) {
+                return json({ error: 'Invalid parent entry' }, { status: 400 });
+            }
         }
 
         const settings = await locals.db.getSettings();
@@ -227,7 +255,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
         });
     } catch (e: any) {
         console.error('Failed to create entry:', e);
-        return json({ error: e.message }, { status: 500 });
+        return json({ error: 'Internal server error' }, { status: 500 });
     }
 };
 
@@ -315,7 +343,7 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
         return json({ success: true });
     } catch (e: any) {
         console.error('Failed to delete entry:', e);
-        return json({ error: e.message }, { status: 500 });
+        return json({ error: 'Internal server error' }, { status: 500 });
     }
 };
 
@@ -335,6 +363,10 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
         const { id, content } = await request.json() as { id: string; content: string };
         if (!id || !content || !content.trim()) {
             return json({ error: 'Missing entry id or content' }, { status: 400 });
+        }
+
+        if (content.trim().length > MAX_ENTRY_LENGTH) {
+            return json({ error: `Content must be ${MAX_ENTRY_LENGTH} characters or fewer` }, { status: 400 });
         }
 
         // 대상 엔트리 존재 여부 확인
@@ -367,6 +399,6 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
         return json(updatedEntry);
     } catch (e: any) {
         console.error('Failed to update entry:', e);
-        return json({ error: e.message }, { status: 500 });
+        return json({ error: 'Internal server error' }, { status: 500 });
     }
 };

@@ -17,11 +17,39 @@
 
 import { fail, redirect } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
+import { ADMIN_SESSION_MAX_AGE, createAdminSession } from '$lib/server/adminSession';
+
+async function constantTimePasswordMatch(input: string, expected: string): Promise<boolean> {
+    const enc = new TextEncoder();
+    const [aBuf, bBuf] = await Promise.all([
+        crypto.subtle.digest('SHA-256', enc.encode(input)),
+        crypto.subtle.digest('SHA-256', enc.encode(expected))
+    ]);
+    const a = new Uint8Array(aBuf);
+    const b = new Uint8Array(bBuf);
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+    return diff === 0;
+}
 
 export const actions = {
     default: async ({ request, cookies, platform }: RequestEvent) => {
+        const kv = platform?.env?.IMAGES_KV;
+        const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
+        const rlKey = `rl:admin-login:${clientIp}`;
+        let failCount = 0;
+
+        if (kv) {
+            try {
+                failCount = parseInt((await kv.get(rlKey)) || '0', 10) || 0;
+                if (failCount >= 5) {
+                    return fail(429, { error: 'admin.login.too_many_attempts' });
+                }
+            } catch {}
+        }
+
         const data = await request.formData();
-        const password = data.get('password');
+        const password = String(data.get('password') ?? '');
 
         // 환경 변수에서 비밀번호 가져오기
         const correctPassword = platform?.env?.ADMIN_PASSWORD;
@@ -31,20 +59,36 @@ export const actions = {
             return fail(500, { error: 'admin.login.server_config_error' });
         }
 
-        if (password !== correctPassword) {
+        if (!(await constantTimePasswordMatch(password, correctPassword))) {
+            if (kv) {
+                try {
+                    await kv.put(rlKey, String(failCount + 1), { expirationTtl: 900 });
+                } catch {}
+            }
             return fail(401, { error: 'admin.login.incorrect_password' });
         }
 
-        // 세션 토큰 생성 (간단한 UUID)
-        const sessionToken = crypto.randomUUID();
+        if (kv && failCount > 0) {
+            try { await kv.delete(rlKey); } catch {}
+        }
 
-        // 쿠키 설정 (30일 유효, Cloudflare 프록시 환경의 프로토콜 감지 불일치 방지를 위해 secure: false로 조정)
+        const db = platform?.env?.BLOG_DB;
+        if (!db) {
+            console.error('BLOG_DB binding is not configured');
+            return fail(500, { error: 'admin.login.server_config_error' });
+        }
+
+        // Persist a digest of the token before issuing its cookie.  A supplied
+        // cookie must therefore correspond to a live server-side session.
+        const sessionToken = await createAdminSession(db, 'admin');
+
+        // HTTPS deployments must never send an administrator cookie over HTTP.
         cookies.set('admin_session', sessionToken, {
             path: '/',
             httpOnly: true,
-            secure: false,
-            sameSite: 'lax',
-            maxAge: 60 * 60 * 24 * 30 // 30일
+            secure: new URL(request.url).protocol === 'https:',
+            sameSite: 'strict',
+            maxAge: ADMIN_SESSION_MAX_AGE
         });
 
         throw redirect(303, '/');

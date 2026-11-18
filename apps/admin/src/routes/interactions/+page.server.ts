@@ -76,9 +76,17 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
             const cPostIds = [...new Set(comments.map((c: any) => c.post_id).filter(id => id != null))];
             
             if (cPostIds.length > 0) {
-                const safeIds = cPostIds.map(id => `'${id}'`).join(',');
-                // Search both slug and id, including lang to respect configured default language
-                const { results: postTitles } = await db.prepare(`SELECT id, title, slug, category_slug, lang FROM posts WHERE slug IN (${safeIds}) OR id IN (${safeIds})`).all();
+                // D1 바인딩 파라미터 제한(100개) 준수를 위해 40개 단위로 청크 분할 조회 (slug + id 2배 바인딩)
+                const postTitles: any[] = [];
+                for (let i = 0; i < cPostIds.length; i += 40) {
+                    const chunk = cPostIds.slice(i, i + 40);
+                    const placeholders = chunk.map(() => '?').join(',');
+                    const { results } = await db
+                        .prepare(`SELECT id, title, slug, category_slug, lang FROM posts WHERE slug IN (${placeholders}) OR id IN (${placeholders})`)
+                        .bind(...chunk, ...chunk)
+                        .all();
+                    if (results) postTitles.push(...results);
+                }
                 
                 let titleMap: Record<string, any> = {};
                 for (const row of (postTitles || []) as any[]) { 

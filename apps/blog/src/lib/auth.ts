@@ -48,7 +48,7 @@ const PROVIDER_ENV_MAP: Record<string, [string, string]> = {
     zoom: ['ZOOM_CLIENT_ID', 'ZOOM_CLIENT_SECRET'],
 };
 
-export const getAuth = (db: ReturnType<typeof userDb>, enabledProviders: string[] = [], enableEmailLogin: boolean = true, requestOrigin?: string) => {
+export const getAuth = (db: ReturnType<typeof userDb>, enabledProviders: string[] = [], enableEmailLogin: boolean = true, enableIpLogging: boolean = false) => {
     const socialProviders: Record<string, any> = {};
     const trustedList: string[] = [];
 
@@ -67,13 +67,29 @@ export const getAuth = (db: ReturnType<typeof userDb>, enabledProviders: string[
     const useEmailPassword = enableEmailLogin;
     const hasSocialProviders = Object.keys(socialProviders).length > 0;
 
-        const resolvedBaseURL = requestOrigin || env.BETTER_AUTH_URL || "http://localhost:5173";
+    // Do not derive an authentication trust boundary from a request Host/Origin.
+    // Production must set BETTER_AUTH_URL to the canonical public blog URL.
+    const resolvedBaseURL = env.BETTER_AUTH_URL || "http://localhost:5173";
 
     return betterAuth({
         secret: env.BETTER_AUTH_SECRET,
         baseURL: resolvedBaseURL,
         trustedOrigins: [resolvedBaseURL, env.BETTER_AUTH_URL].filter(Boolean) as string[],
         database: drizzleAdapter(db, { provider: 'sqlite' }),
+        logger: {
+            level: "warn"
+        },
+        onAPIError: {
+            onError: (error, ctx) => {
+                console.error("[BetterAuth Error]", error);
+            }
+        },
+        advanced: {
+            ipAddress: {
+                disableIpTracking: !enableIpLogging,
+                ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for']
+            }
+        },
         user: {
             additionalFields: {
                 banned: { type: "boolean" },
@@ -99,7 +115,7 @@ export const getAuth = (db: ReturnType<typeof userDb>, enabledProviders: string[
                         {
                             name: "PBKDF2",
                             salt: salt,
-                            iterations: 10000,
+                            iterations: 100000,
                             hash: "SHA-256",
                         },
                         keyMaterial,
@@ -109,7 +125,7 @@ export const getAuth = (db: ReturnType<typeof userDb>, enabledProviders: string[
                     // Base64 encode for storage
                     const hashBase64 = btoa(String.fromCharCode(...hashArray));
                     const saltBase64 = btoa(String.fromCharCode(...salt));
-                    return `pbkdf2:10000:${saltBase64}:${hashBase64}`;
+                    return `pbkdf2:100000:${saltBase64}:${hashBase64}`;
                 },
                 verify: async ({ hash, password }) => {
                     if (!hash.startsWith("pbkdf2:")) {
@@ -158,13 +174,31 @@ export const getAuth = (db: ReturnType<typeof userDb>, enabledProviders: string[
             accountLinking: {
                 enabled: true,
                 trustedProviders: useEmailPassword
-                    ? ["email-password"]
+                    ? ["email-password", ...trustedList]
                     : trustedList
             }
         },
         ...(hasSocialProviders ? { socialProviders } : {}),
         plugins: [
-            admin({ defaultRole: "user" }),
+            // The existing D1 schema uses snake_case physical column names.
+            // Map Better Auth Admin's logical camelCase fields to those columns
+            // so Drizzle's schema validation and the plugin agree.
+            admin({
+                defaultRole: "user",
+                schema: {
+                    user: {
+                        fields: {
+                            banReason: "ban_reason",
+                            banExpires: "ban_expires",
+                        },
+                    },
+                    session: {
+                        fields: {
+                            impersonatedBy: "impersonated_by",
+                        },
+                    },
+                },
+            }),
             sveltekitCookies(getRequestEvent),
         ],
     });

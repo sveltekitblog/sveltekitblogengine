@@ -94,10 +94,13 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
         let recentPosts = Array.from(recentPostsRaw || []);
         if (userDb && recentPosts.length > 0) {
             try {
-                const postIds = recentPosts.map((p: any) => `'${p.id}'`).join(',');
-                const { results: viewResults } = await userDb.prepare(`
-                    SELECT post_id, SUM(views) as total_views FROM post_views WHERE post_id IN (${postIds}) GROUP BY post_id
-                `).all();
+                const postIds = recentPosts.map((p: any) => p.id).filter(Boolean);
+                const placeholders = postIds.map(() => '?').join(',');
+                const { results: viewResults } = postIds.length > 0
+                    ? await userDb.prepare(`
+                        SELECT post_id, SUM(views) as total_views FROM post_views WHERE post_id IN (${placeholders}) GROUP BY post_id
+                    `).bind(...postIds).all()
+                    : { results: [] };
                 let viewMap: Record<string, number> = {};
                 for (const row of (viewResults || []) as any[]) { viewMap[row.post_id] = row.total_views || 0; }
                 recentPosts = recentPosts.map((p: any) => ({
@@ -128,8 +131,11 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
                 if (commentResults && commentResults.length > 0) {
                     const cPostIds = [...new Set(commentResults.map((c: any) => c.post_id).filter((id: any) => id != null))];
                     if (cPostIds.length > 0) {
-                        const safeIds = cPostIds.map(id => `'${id}'`).join(',');
-                        const { results: postTitles } = await db.prepare(`SELECT id, title, slug, lang FROM posts WHERE slug IN (${safeIds}) OR id IN (${safeIds})`).all();
+                        const placeholders = cPostIds.map(() => '?').join(',');
+                        const { results: postTitles } = await db
+                            .prepare(`SELECT id, title, slug, lang FROM posts WHERE slug IN (${placeholders}) OR id IN (${placeholders})`)
+                            .bind(...cPostIds, ...cPostIds)
+                            .all();
                         let titleMap: Record<string, any> = {};
                         for (const row of (postTitles || []) as any[]) {
                             const keys = [row.id, row.slug].filter(Boolean);
@@ -395,7 +401,40 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
         };
 
     } catch (err) {
-        console.error('Failed to load dashboard data:', err);
-        throw error(500, 'Failed to load dashboard data');
+        console.error('[Dashboard Load Fallback] Failed to load dashboard data:', err);
+        return {
+            stats: {
+                yesterday: { visitors: 0, views: 0, date: '' },
+                today:     { visitors: 0, views: 0, date: '' },
+                total:     { visitors: 0, views: 0 }
+            },
+            availableDates: [],
+            recentPosts: [],
+            recentComments: [],
+            recentGuestbooks: [],
+            siteTimezone: 'Asia/Seoul',
+            activeProvider: 'cf',
+            isCfConfigured: false,
+            isGa4Configured: false,
+            analyticsData: {
+                trafficData: { rows: [] },
+                sourceData: { rows: [] }
+            },
+            cfDetails: null,
+            cfSync: null,
+            analyticsError: '통계 데이터를 불러오는 중 일시적인 오류가 발생했습니다.',
+            ga4Data: { trafficData: { rows: [] }, sourceData: { rows: [] } },
+            ga4Error: null,
+            isDummyData: true,
+            adsenseData: {
+                today: { rows: [] },
+                yesterday: { rows: [] },
+                month: { rows: [] },
+                chart: { rows: [] }
+            },
+            adsenseError: null,
+            isAdsenseDummyData: true,
+            isDashboardOnly: locals.isDashboardOnly || false
+        };
     }
 };

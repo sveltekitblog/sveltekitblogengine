@@ -1,4 +1,7 @@
 BETTER_AUTH_SECRET=a_very_long_random_secret_string_for_development_only_123456789
+# Production deployments synchronize this from the admin common site URL.
+# Set it locally to the address used by the blog dev server.
+BETTER_AUTH_URL=http://localhost:5173
 GITHUB_CLIENT_ID=dummy_github_id
 GITHUB_CLIENT_SECRET=dummy_github_secret
 GOOGLE_CLIENT_ID=dummy_google_id

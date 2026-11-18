@@ -17,17 +17,18 @@
 
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { hasValidAdminSession } from '$lib/server/adminSession';
 
 export const GET: RequestHandler = async ({ cookies, locals }) => {
-    // 1. Session validation (Single admin check via cookies)
-    const session = cookies.get('admin_session');
-    if (!session) {
-        throw error(401, 'Unauthorized');
-    }
-
     const db = locals.blogDb;
     if (!db) {
         throw error(500, 'Database not found');
+    }
+
+    // 1. Server-side session validation
+    const session = cookies.get('admin_session');
+    if (!(await hasValidAdminSession(db, session, 'admin'))) {
+        throw error(401, 'Unauthorized');
     }
 
     try {

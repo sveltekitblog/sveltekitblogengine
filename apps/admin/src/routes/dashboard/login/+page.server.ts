@@ -9,16 +9,8 @@
 
 import { fail, redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
-
-// 타이밍 공격(Timing Attack) 방지를 위한 고정 시간 문자열 비교 함수
-function constantTimeCompare(a: string, b: string): boolean {
-    if (a.length !== b.length) return false;
-    let diff = 0;
-    for (let i = 0; i < a.length; i++) {
-        diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-    }
-    return diff === 0;
-}
+import { ADMIN_SESSION_MAX_AGE, createAdminSession, revokeAdminSession } from '$lib/server/adminSession';
+import { hashDashboardPassword, verifyDashboardPassword } from '$lib/server/dashboardPassword';
 
 export const load: PageServerLoad = async ({ locals }) => {
     // DB에서 대시보드 비밀번호가 설정되어 있는지 확인
@@ -28,7 +20,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         try {
             const row = await db.prepare("SELECT value FROM blog_settings WHERE key = 'dashboard_password'").first();
             const stored = (row?.value as string || '').trim();
-            isConfigured = Boolean(stored && stored.length === 64);
+            isConfigured = Boolean(stored);
         } catch (e) {
             console.error('Failed to check dashboard_password setting:', e);
         }
@@ -40,10 +32,24 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-    login: async ({ request, cookies, locals }) => {
+    login: async ({ request, cookies, locals, platform }) => {
         const db = locals.blogDb;
         if (!db) {
             return fail(500, { error: 'Database not available' });
+        }
+
+        const kv = platform?.env?.IMAGES_KV;
+        const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
+        const rlKey = `rl:dash-login:${clientIp}`;
+        let failCount = 0;
+
+        if (kv) {
+            try {
+                failCount = parseInt((await kv.get(rlKey)) || '0', 10) || 0;
+                if (failCount >= 5) {
+                    return fail(429, { error: 'admin.dashboard.login.too_many_attempts' });
+                }
+            } catch {}
         }
 
         const data = await request.formData();
@@ -63,35 +69,48 @@ export const actions: Actions = {
             return fail(500, { error: 'admin.dashboard.login.invalid' });
         }
 
-        // 비밀번호가 설정되어 있지 않거나 비정상적인 경우 외부 접속 원천 차단
-        if (!storedHash || storedHash.length !== 64) {
+        if (!storedHash) {
             return fail(403, { error: 'admin.dashboard.login.not_configured' });
         }
 
-        // 입력된 비밀번호의 SHA-256 해시 계산
-        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(inputPassword));
-        const inputHash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-        // 타이밍 공격 방지 비교 검증
-        if (!constantTimeCompare(inputHash, storedHash)) {
+        const verification = await verifyDashboardPassword(inputPassword, storedHash);
+        if (!verification.valid) {
+            if (kv) {
+                try {
+                    await kv.put(rlKey, String(failCount + 1), { expirationTtl: 900 });
+                } catch {}
+            }
             return fail(401, { error: 'admin.dashboard.login.invalid' });
         }
 
-        // 대시보드 전용 세션 토큰 발급 (암호학적 128비트 UUID)
-        const sessionToken = crypto.randomUUID();
+        if (kv && failCount > 0) {
+            try { await kv.delete(rlKey); } catch {}
+        }
+
+        if (verification.needsUpgrade) {
+            await db.prepare("UPDATE blog_settings SET value = ?, updated_at = ? WHERE key = 'dashboard_password'")
+                .bind(await hashDashboardPassword(inputPassword), new Date().toISOString()).run();
+        }
+
+        // Persist a digest of the token before issuing its cookie.
+        const sessionToken = await createAdminSession(db, 'dashboard');
         cookies.set('dashboard_session', sessionToken, {
             path: '/',
             httpOnly: true,
             secure: true,
-            sameSite: 'lax',
-            maxAge: 60 * 60 * 24 * 30 // 30일
+            sameSite: 'strict',
+            maxAge: ADMIN_SESSION_MAX_AGE
         });
 
         // try-catch 바깥에서 리다이렉트 실행 (SvelteKit 프레임워크 가로챔 방지)
         throw redirect(303, '/dashboard');
     },
 
-    logout: async ({ cookies }) => {
+    logout: async ({ cookies, locals }) => {
+        await Promise.all([
+            revokeAdminSession(locals.blogDb, cookies.get('dashboard_session')),
+            revokeAdminSession(locals.blogDb, cookies.get('admin_session'))
+        ]);
         cookies.delete('dashboard_session', { path: '/' });
         cookies.delete('admin_session', { path: '/' });
         throw redirect(303, '/dashboard/login');

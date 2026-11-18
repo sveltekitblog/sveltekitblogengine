@@ -100,6 +100,17 @@ CREATE TABLE IF NOT EXISTS blog_settings (
     updated_at TEXT DEFAULT (CURRENT_TIMESTAMP)
 );
 
+-- 7a. Server-side sessions for the standalone administration application.
+-- Only a SHA-256 digest of the cookie token is stored.
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    session_type TEXT NOT NULL CHECK (session_type IN ('admin', 'dashboard')),
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at ON admin_sessions(expires_at);
+
 -- 8. Visitor Stats
 CREATE TABLE IF NOT EXISTS visitor_stats (
     date TEXT PRIMARY KEY,

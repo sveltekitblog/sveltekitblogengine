@@ -16,6 +16,17 @@
  */
 
 import { redirect, type Handle } from '@sveltejs/kit';
+import { hasValidAdminSession } from '$lib/server/adminSession';
+
+function applySecurityHeaders(response: Response): Response {
+    response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    response.headers.set('Referrer-Policy', 'same-origin');
+    if (response.headers.get('content-type')?.includes('text/html')) {
+        response.headers.set('Cache-Control', 'private, no-store');
+    }
+    return response;
+}
 
 export const handle: Handle = async ({ event, resolve }) => {
     // 1. D1 바인딩을 최우선으로 locals에 저장 (모든 라우트에서 DB 접근 보장)
@@ -55,18 +66,26 @@ export const handle: Handle = async ({ event, resolve }) => {
         }
     }
 
-    const adminSession = event.cookies.get('admin_session');
-    const dashboardSession = event.cookies.get('dashboard_session');
+    const adminSession = await hasValidAdminSession(
+        event.locals.blogDb,
+        event.cookies.get('admin_session'),
+        'admin'
+    );
+    const dashboardSession = await hasValidAdminSession(
+        event.locals.blogDb,
+        event.cookies.get('dashboard_session'),
+        'dashboard'
+    );
 
     // 4. 대시보드 로그인 라우트 (/dashboard/login 및 하위 데이터 요청)
     const isDashLogin = pathname === '/dashboard/login' || pathname.startsWith('/dashboard/login/');
     if (isDashLogin) {
         // 외부 IP인 경우 오직 dashboard_session만 인정 (adminSession 무시)
-        const hasValidSession = isExternalIP ? !!dashboardSession : (adminSession || dashboardSession);
+        const hasValidSession = isExternalIP ? dashboardSession : (adminSession || dashboardSession);
         if (hasValidSession && event.request.method === 'GET' && pathname === '/dashboard/login') {
             throw redirect(302, '/dashboard');
         }
-        return resolve(event);
+        return applySecurityHeaders(await resolve(event));
     }
 
     // 5. 대시보드 페이지 라우트 (/dashboard 및 하위 데이터 요청)
@@ -78,21 +97,21 @@ export const handle: Handle = async ({ event, resolve }) => {
                 throw redirect(303, '/dashboard/login');
             }
             event.locals.isDashboardOnly = true;
-            return resolve(event);
+            return applySecurityHeaders(await resolve(event));
         }
 
         // [허용 IP(데스크톱)인 경우] 기존 어드민 세션 또는 대시보드 세션 허용 (풀 어드민 유지)
         if (!adminSession && !dashboardSession) {
             throw redirect(303, '/dashboard/login');
         }
-        event.locals.isDashboardOnly = Boolean(dashboardSession && !adminSession);
-        return resolve(event);
+        event.locals.isDashboardOnly = dashboardSession && !adminSession;
+        return applySecurityHeaders(await resolve(event));
     }
 
     // 6. 기본 관리자 라우트 (/login 및 기타 관리 페이지)
     // 기본 로그인 페이지는 인증 체크 패스 (단, 외부 IP는 3단계에서 이미 403 차단됨)
     if (pathname === '/login') {
-        return resolve(event);
+        return applySecurityHeaders(await resolve(event));
     }
 
     // 최고 관리자 세션이 없으면 기본 로그인으로 리다이렉트
@@ -101,5 +120,5 @@ export const handle: Handle = async ({ event, resolve }) => {
         throw redirect(303, '/login');
     }
 
-    return resolve(event);
+    return applySecurityHeaders(await resolve(event));
 };

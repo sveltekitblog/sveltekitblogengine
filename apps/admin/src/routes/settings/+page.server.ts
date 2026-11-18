@@ -17,6 +17,7 @@
 
 import type { PageServerLoad, Actions } from './$types';
 import { error, fail } from '@sveltejs/kit';
+import { hashDashboardPassword } from '$lib/server/dashboardPassword';
 
 export const load: PageServerLoad = async ({ locals }) => {
     const db = locals.blogDb;
@@ -152,8 +153,7 @@ export const actions: Actions = {
                     ON CONFLICT(key) DO UPDATE SET value='', updated_at=excluded.updated_at
                 `).bind(updatedAt).run();
             } else if (rawDashPass) {
-                const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawDashPass));
-                const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+                const hash = await hashDashboardPassword(rawDashPass);
                 await db.prepare(`
                     INSERT INTO blog_settings (key, value, updated_at) 
                     VALUES ('dashboard_password', ?, ?) 

@@ -33,7 +33,7 @@ async function hashPassword(password: string) {
         {
             name: "PBKDF2",
             salt: salt,
-            iterations: 10000,
+            iterations: 100000,
             hash: "SHA-256",
         },
         keyMaterial,
@@ -42,7 +42,7 @@ async function hashPassword(password: string) {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hashBase64 = btoa(String.fromCharCode(...hashArray));
     const saltBase64 = btoa(String.fromCharCode(...salt));
-    return `pbkdf2:10000:${saltBase64}:${hashBase64}`;
+    return `pbkdf2:100000:${saltBase64}:${hashBase64}`;
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -134,7 +134,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             adminUser: { id: adminId, name, email }
         });
     } catch (err: any) {
-        return json({ error: err.message }, { status: 500 });
+        console.error('POST /api/admin-account error:', err);
+        return json({ error: 'Internal server error' }, { status: 500 });
     }
 };
 
@@ -232,6 +233,7 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
             adminUser: { id: adminId, name, email: targetEmail }
         });
     } catch (err: any) {
-        return json({ error: err.message }, { status: 500 });
+        console.error('POST /api/admin-account error:', err);
+        return json({ error: 'Internal server error' }, { status: 500 });
     }
 };

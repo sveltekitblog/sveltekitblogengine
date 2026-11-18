@@ -19,7 +19,7 @@ import { getAuth } from "$lib/auth";
 import { svelteKitHandler } from "better-auth/svelte-kit";
 import { BlogDB } from "$lib/server/db";
 import { userDb } from "@blog/shared/db";
-import type { Handle } from "@sveltejs/kit";
+import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { building } from "$app/environment";
 import '$lib/server/storageAdapter';
 import { getOrSetCache } from '$lib/server/cache';
@@ -79,8 +79,17 @@ export const handle: Handle = async ({ event, resolve }) => {
             console.error("USER_DB not found");
             return resolve(event);
         }
-        const auth = getAuth(userDb(user_d1), enabledProviders, enableEmailLogin, event.url.origin);
-        return svelteKitHandler({ event, resolve, auth, building });
+        try {
+            const auth = getAuth(userDb(user_d1), enabledProviders, enableEmailLogin, enableIpLogging);
+            return await svelteKitHandler({ event, resolve, auth, building });
+        } catch (err: any) {
+            // 🔒 브라우저에는 민감 정보 노출을 전면 차단하고, 오직 서버 콘솔에만 스택을 기록
+            console.error("[CRITICAL_AUTH_CRASH]", err?.message, err?.stack || err);
+            return new Response(JSON.stringify({ message: "Internal Error" }), {
+                status: 500,
+                headers: { "content-type": "application/json" }
+            });
+        }
     }
 
     if (!building && user_d1 && blog_d1) {
@@ -88,7 +97,7 @@ export const handle: Handle = async ({ event, resolve }) => {
         event.locals.userDb = userDb(user_d1);
 
         try {
-            const auth = getAuth(userDb(user_d1), enabledProviders, enableEmailLogin, event.url.origin);
+            const auth = getAuth(userDb(user_d1), enabledProviders, enableEmailLogin, enableIpLogging);
             const session = await auth.api.getSession({
                 headers: event.request.headers
             });
@@ -161,10 +170,22 @@ export const handle: Handle = async ({ event, resolve }) => {
     ].join('; ');
 
     response.headers.set('Content-Security-Policy', csp);
+    // 세션 의존 HTML 페이지가 브라우저/CDN에 캐싱되면 로그인 상태가 반영 안 됨
+    if (response.headers.get('content-type')?.includes('text/html')) {
+        response.headers.set('Cache-Control', 'private, no-store');
+    }
     response.headers.set('X-Frame-Options', 'SAMEORIGIN');
     response.headers.set('X-Content-Type-Options', 'nosniff');
     response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     response.headers.set('X-XSS-Protection', '1; mode=block');
 
     return response;
+};
+
+export const handleError: HandleServerError = ({ error, event }) => {
+    const err = error as any;
+    console.error("[SVELTEKIT_GLOBAL_ERROR]", event.url.pathname, err?.message, err?.stack || err);
+    return {
+        message: "Internal Error"
+    };
 };

@@ -339,136 +339,103 @@
         ),
     );
 
-    let headerConfig = $state(
-        untrack(() => ({
+    function normalizeHeaderConfig(rawHeader: any) {
+        const h = rawHeader || {};
+        return {
+            ...h,
             logoText: ensureTranslationObj(
-                data.settings.header?.logoText || data.settings.site_title,
+                h.logoText || data.settings.site_title,
                 "Blog",
             ),
-            logoFont: data.settings.header?.logoFont || "Inter",
-            logoFontSize: data.settings.header?.logoFontSize || "1.5rem",
-            logoAlignment: data.settings.header?.logoAlignment || "left", // left, center
-            sideMargin: data.settings.header?.sideMargin || "0",
-            showBorderBottom: data.settings.header?.showBorderBottom === true,
-            logoPadding: normalizePadding(data.settings.header?.logoPadding),
-            navPadding: normalizePadding(data.settings.header?.navPadding),
-            logoColor: normalizeBackground(
-                data.settings.header?.logoColor || "#000000",
-            ),
-            logoHoverEffect: data.settings.header?.logoHoverEffect || "scale",
-            logoHoverScale: data.settings.header?.logoHoverScale ?? 1.02,
-            logoHoverColor: data.settings.header?.logoHoverColor || {
+            logoFont: h.logoFont || "Inter",
+            logoFontSize: h.logoFontSize || "1.5rem",
+            logoAlignment: h.logoAlignment || "left", // left, center
+            sideMargin: h.sideMargin || "0",
+            showBorderBottom: h.showBorderBottom === true,
+            logoPadding: normalizePadding(h.logoPadding),
+            navPadding: normalizePadding(h.navPadding),
+            logoColor: normalizeBackground(h.logoColor || "#000000"),
+            logoHoverEffect: h.logoHoverEffect || "scale",
+            logoHoverScale: h.logoHoverScale ?? 1.02,
+            logoHoverColor: h.logoHoverColor || {
                 type: "solid",
                 value: "",
             },
-            logoHoverFloatOffset:
-                data.settings.header?.logoHoverFloatOffset ?? 2,
-            logoHoverShadowEnabled:
-                data.settings.header?.logoHoverShadowEnabled === true,
-            logoHoverShadowColor: data.settings.header
-                ?.logoHoverShadowColor || {
+            logoHoverFloatOffset: h.logoHoverFloatOffset ?? 2,
+            logoHoverShadowEnabled: h.logoHoverShadowEnabled === true,
+            logoHoverShadowColor: h.logoHoverShadowColor || {
                 type: "solid",
                 value: "rgba(59, 130, 246, 0.2)",
             },
-            logoFontWeight: data.settings.header?.logoFontWeight || "700",
-            logoLetterSpacing: data.settings.header?.logoLetterSpacing || "0px",
-            navAlignment: data.settings.header?.navAlignment || "right",
-            headerLayout: data.settings.header?.headerLayout || "single-line",
-            logoVerticalAlignment:
-                data.settings.header?.logoVerticalAlignment || "middle",
-            navVerticalAlignment:
-                data.settings.header?.navVerticalAlignment || "middle",
-            scrolledLogoVerticalAlignment:
-                data.settings.header?.scrolledLogoVerticalAlignment || "middle",
-            scrolledLogoAlignment:
-                data.settings.header?.scrolledLogoAlignment || "left",
-            scrolledNavAlignment:
-                data.settings.header?.scrolledNavAlignment || "right",
-            scrolledNavVerticalAlignment:
-                data.settings.header?.scrolledNavVerticalAlignment || "middle",
-            scrolledHeight: data.settings.header?.scrolledHeight || "",
-            scrolledMaxWidth: data.settings.header?.scrolledMaxWidth || "",
-            scrolledNavSpacing: data.settings.header?.scrolledNavSpacing || "",
-            scrolledLogoPadding: normalizePadding(
-                data.settings.header?.scrolledLogoPadding,
-            ),
-            scrolledNavPadding: normalizePadding(
-                data.settings.header?.scrolledNavPadding,
-            ),
-            navSpacing: data.settings.header?.navSpacing || "1.5rem",
-            navTextColor: data.settings.header?.navTextColor || "",
-            navHoverBackground: data.settings.header?.navHoverBackground || {
+            logoFontWeight: h.logoFontWeight || "700",
+            logoLetterSpacing: h.logoLetterSpacing || "0px",
+            navAlignment: h.navAlignment || "right",
+            headerLayout: h.headerLayout || "single-line",
+            logoVerticalAlignment: h.logoVerticalAlignment || "middle",
+            navVerticalAlignment: h.navVerticalAlignment || "middle",
+            scrolledLogoVerticalAlignment: h.scrolledLogoVerticalAlignment || "middle",
+            scrolledLogoAlignment: h.scrolledLogoAlignment || "left",
+            scrolledNavAlignment: h.scrolledNavAlignment || "right",
+            scrolledNavVerticalAlignment: h.scrolledNavVerticalAlignment || "middle",
+            scrolledHeight: h.scrolledHeight || "",
+            scrolledMaxWidth: h.scrolledMaxWidth || "",
+            scrolledNavSpacing: h.scrolledNavSpacing || "",
+            scrolledLogoPadding: normalizePadding(h.scrolledLogoPadding),
+            scrolledNavPadding: normalizePadding(h.scrolledNavPadding),
+            navSpacing: h.navSpacing || "1.5rem",
+            navTextColor: h.navTextColor || "",
+            navHoverBackground: h.navHoverBackground || {
                 type: "solid",
                 value: "rgba(0,0,0,0.05)",
             },
-            navHoverTextColor: data.settings.header?.navHoverTextColor || "",
-            showCategories: data.settings.header?.showCategories !== false,
-            showLanguageSwitcher:
-                data.settings.header?.showLanguageSwitcher !== false,
-            loginLabel: ensureTranslationObj(
-                data.settings.header?.loginLabel,
-                "Login",
-            ),
-            profileLabel: ensureTranslationObj(
-                data.settings.header?.profileLabel,
-                "Profile",
-            ),
-            menuItems: ensureMenuItemStructure(
-                ensureArray(data.settings.header?.menuItems),
-            ),
+            navHoverTextColor: h.navHoverTextColor || "",
+            showCategories: h.showCategories !== false,
+            showLanguageSwitcher: h.showLanguageSwitcher !== false,
+            loginLabel: ensureTranslationObj(h.loginLabel, "Login"),
+            profileLabel: ensureTranslationObj(h.profileLabel, "Profile"),
+            menuItems: ensureMenuItemStructure(ensureArray(h.menuItems)),
             headerBackground: normalizeBackground(
-                data.settings.header?.headerBackground || "#ffffff",
-                data.settings.header?.headerBackgroundOpacity,
-                data.settings.header?.headerBackgroundBlur,
+                h.headerBackground || "#ffffff",
+                h.headerBackgroundOpacity,
+                h.headerBackgroundBlur,
             ),
-            headerBackgroundBlur:
-                data.settings.header?.headerBackgroundBlur ?? 0,
-            headerBackgroundOpacity:
-                data.settings.header?.headerBackgroundOpacity ?? 1,
-            useBottomFade: data.settings.header?.useBottomFade ?? false,
-            bottomFadeStrength: data.settings.header?.bottomFadeStrength ?? 20,
-            useTextShadow: data.settings.header?.useTextShadow ?? false,
-            headerBackgroundOverlayColor:
-                data.settings.header?.headerBackgroundOverlayColor || "#000000",
-            headerBackgroundOverlayOpacity:
-                data.settings.header?.headerBackgroundOverlayOpacity ?? 0,
-            maxWidth: data.settings.header?.maxWidth || "1200px",
-            height: data.settings.header?.height || "auto",
+            headerBackgroundBlur: h.headerBackgroundBlur ?? 0,
+            headerBackgroundOpacity: h.headerBackgroundOpacity ?? 1,
+            useBottomFade: h.useBottomFade ?? false,
+            bottomFadeStrength: h.bottomFadeStrength ?? 20,
+            useTextShadow: h.useTextShadow ?? false,
+            headerBackgroundOverlayColor: h.headerBackgroundOverlayColor || "#000000",
+            headerBackgroundOverlayOpacity: h.headerBackgroundOverlayOpacity ?? 0,
+            maxWidth: h.maxWidth || "1200px",
+            height: h.height || "auto",
             borderRadius: normalizeRadius(
-                data.settings.header?.borderRadius || {
+                h.borderRadius || {
                     topLeft: 0,
                     topRight: 0,
                     bottomLeft: 12,
                     bottomRight: 12,
                 },
             ),
-            boxShadow:
-                data.settings.header?.boxShadow ||
-                "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+            boxShadow: h.boxShadow || "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
             mobile: {
-                height: data.settings.header?.mobile?.height || "",
-                logoFontSize: data.settings.header?.mobile?.logoFontSize || "",
-                logoPadding: normalizePadding(
-                    data.settings.header?.mobile?.logoPadding,
-                ),
-                navPadding: normalizePadding(
-                    data.settings.header?.mobile?.navPadding,
-                ),
-                navSpacing: data.settings.header?.mobile?.navSpacing || "",
-                logoAlignment:
-                    data.settings.header?.mobile?.logoAlignment || "left",
-                logoVerticalAlignment: "middle",
-                navAlignment:
-                    data.settings.header?.mobile?.navAlignment || "right",
-                navVerticalAlignment: "middle",
-                showLanguageSwitcher:
-                    data.settings.header?.mobile?.showLanguageSwitcher !==
-                    false,
-                menuItems: ensureMenuItemStructure(
-                    ensureArray(data.settings.header?.mobile?.menuItems),
-                ),
+                ...(h.mobile || {}),
+                height: h.mobile?.height || "",
+                logoFontSize: h.mobile?.logoFontSize || "",
+                logoPadding: normalizePadding(h.mobile?.logoPadding),
+                navPadding: normalizePadding(h.mobile?.navPadding),
+                navSpacing: h.mobile?.navSpacing || "",
+                logoAlignment: h.mobile?.logoAlignment || "left",
+                logoVerticalAlignment: h.mobile?.logoVerticalAlignment || "middle",
+                navAlignment: h.mobile?.navAlignment || "right",
+                navVerticalAlignment: h.mobile?.navVerticalAlignment || "middle",
+                showLanguageSwitcher: h.mobile?.showLanguageSwitcher !== false,
+                menuItems: ensureMenuItemStructure(ensureArray(h.mobile?.menuItems)),
             },
-        })),
+        };
+    }
+
+    let headerConfig = $state(
+        untrack(() => normalizeHeaderConfig(data.settings.header)),
     );
 
     // 사용자가 입력한 구글 폰트 설정으로부터 동적 웹 폰트 선택지 추출 (Svelte 5 Derived Rune)
@@ -866,11 +833,7 @@
                 themeConfig = JSON.parse(JSON.stringify(slotData.theme));
             }
             if (slotData.header) {
-                headerConfig = JSON.parse(JSON.stringify(slotData.header));
-                headerConfig.menuItems = ensureMenuItemStructure(headerConfig.menuItems);
-                if (headerConfig.mobile) {
-                    headerConfig.mobile.menuItems = ensureMenuItemStructure(headerConfig.mobile.menuItems);
-                }
+                headerConfig = normalizeHeaderConfig(JSON.parse(JSON.stringify(slotData.header)));
             }
             if (slotData.footer) {
                 footerConfig = JSON.parse(JSON.stringify(slotData.footer));

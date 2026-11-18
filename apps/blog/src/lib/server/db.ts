@@ -530,11 +530,12 @@ export class BlogDB {
 
         let comments: any[] = [];
         if (rawComments && rawComments.length > 0) {
-            const postIds = rawComments.map((c: any) => `'${c.post_id}'`).filter((id: string) => id !== "'null'").join(',');
-            if (postIds) {
+            const postIds = [...new Set(rawComments.map((c: any) => c.post_id).filter((id: any) => id != null && id !== 'null'))];
+            if (postIds.length > 0) {
+                const placeholders = postIds.map(() => '?').join(',');
                 const { results: postTitles } = await this.blogD1.prepare(`
-                    SELECT id, title, slug, lang, category_slug FROM posts WHERE slug IN (${postIds})
-                `).all();
+                    SELECT id, title, slug, lang, category_slug FROM posts WHERE slug IN (${placeholders})
+                `).bind(...postIds).all();
 
                 const titleMap: Record<string, Record<string, { title: string; slug: string; categorySlug: string }>> = {};
                 for (const row of postTitles as any[]) {

@@ -27,8 +27,8 @@ export const GET: RequestHandler = async ({ url }) => {
     try {
         const targetUrl = new URL(targetUrlRaw);
         
-        // 보안: Google Fonts 도메인(gstatic) 허용
-        if (!targetUrl.hostname.endsWith('fonts.gstatic.com')) {
+        // 보안: HTTPS 프로토콜 및 정확한 Google Fonts 정적 도메인만 허용 (SSRF 방지)
+        if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== 'fonts.gstatic.com') {
             throw error(403, 'Forbidden domain proxy');
         }
 
@@ -51,6 +51,7 @@ export const GET: RequestHandler = async ({ url }) => {
             }
         });
     } catch (e: any) {
-        throw error(500, e.message || 'Server error');
+        if (e?.status && e?.body) throw e;
+        throw error(500, 'Error');
     }
 };

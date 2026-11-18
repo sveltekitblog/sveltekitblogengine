@@ -29,16 +29,19 @@
     );
 
     onMount(() => {
+        const isDashboard = typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard');
+        const fallbackUrl = isDashboard ? '/dashboard/login' : '/';
+
         // 1. Abnormal access (404, 403, 401) -> redirect instantly without showing any messages or markup
         if (status === 404 || status === 403 || status === 401) {
-            goto('/', { replaceState: true });
+            goto(fallbackUrl, { replaceState: true });
             return;
         }
 
         // 2. Normal error (500) -> redirect after 3 seconds so the user can see what happened
         if (status >= 500 && !isMainPage) {
             setTimeout(() => {
-                goto('/', { replaceState: true });
+                goto(fallbackUrl, { replaceState: true });
             }, 3000);
         }
     });

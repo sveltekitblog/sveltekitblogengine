@@ -184,6 +184,6 @@ export const GET: RequestHandler = async ({ platform }) => {
         });
     } catch (e: any) {
         console.error('Failed to export shared design settings:', e);
-        return json({ error: 'Failed to export shared design settings', details: e.message }, { status: 500 });
+        return json({ error: true }, { status: 500 });
     }
 };
