@@ -1,406 +1,161 @@
-# 🚀 SvelteKit Blog Engine
+# SvelteKit Blog Engine (SKBE)
 
 🌐 **[한국어](./README.kr.md) | [日本語](./README.ja.md)**
 
-**A self-hosted, open-source blog engine built for developers who want to own their blog, data, and infrastructure.**
+**SKBE** is a self-hosted, open-source blog engine built on **SvelteKit 5** and **Cloudflare's serverless stack (Pages, Workers, D1, KV)**.
 
-> **A blog you can deploy, own, customize, and leave running without a monthly server bill.**
+It separates the public blog, the administration console, and analytics synchronization into isolated Cloudflare deployments backed by your own D1 databases and KV/object storage.
 
-Built with **SvelteKit + Cloudflare Pages + D1 + KV**.
+- **Live Reference Deployment**: [sveltekitblog.com](https://sveltekitblog.com)
+- **License**: [AGPL-3.0](./LICENSE)
 
-[![Live Design Editor Demo](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)
-
-*Click the GIF to watch the full design editor demo on YouTube.*
-
-### Why this project?
-
-- 💸 **$0 ongoing server cost** within Cloudflare's applicable Free Tier limits
-- 🏠 **Your data stays in your Cloudflare account**
-- ⚡ **Fast by design**, running on Cloudflare's edge infrastructure
-- 🎨 **Change the design without rebuilding or redeploying**
-- 💾 **Backup & Restore** for safer updates and testing
-- 🌍 **Multilingual** — Korean, English, Japanese included, with support for adding your own languages
-- 📡 **RSS support** for content distribution and feed readers
-- 🚀 **One-command deployment** with `npm run setup`
-- 🔓 **Open source under AGPL-3.0**
-
-> **Your blog. Your data. Your infrastructure.**
-
-### 🌐 Live Demo
-
-**[sveltekitblog.com](https://sveltekitblog.com)**
-
-The live website is running the actual codebase from this repository.
-
-Want to check the performance?
-
-**[Test it yourself with Google PageSpeed Insights](https://pagespeed.web.dev/)**
+[![Design Editor Demo](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)
 
 ---
 
-## 📋 Table of Contents
+## Architecture Overview
 
-1. [Project Overview](#-project-overview)
-2. [Who Is This For?](#-who-is-this-for)
-3. [Why I Built This](#-why-i-built-this)
-4. [Zero Ongoing Infrastructure Cost](#-zero-ongoing-infrastructure-cost)
-5. [Own Your Data](#-own-your-data)
-6. [Key Features](#-key-features)
-7. [Installing & Deploying](#-installing--deploying)
-8. [Backup & Restore](#-backup--restore)
-9. [Design System](#-design-system)
-10. [Multilingual Support](#-multilingual-support)
-11. [SEO, Analytics & AdSense](#-seo-analytics--adsense)
-12. [Performance](#-performance)
-13. [Content Hub](#-content-hub)
-14. [Found a Problem?](#-found-a-problem)
-15. [License](#-license)
-16. [Support](#-support)
+SKBE is structured as an npm workspace monorepo (`apps/*`, `packages/*`) with three deployable targets and one shared core package.
 
----
+```mermaid
+flowchart LR
+    subgraph Clients
+        Visitor["Visitor Browser"]
+        AdminPC["Admin PC (ALLOWED_IP)"]
+        AdminMob["Admin Mobile (Read-Only /dashboard)"]
+    end
 
-## 🔍 Project Overview
+    subgraph Edge["Cloudflare Edge"]
+        BlogHooks["apps/blog hooks.server.ts\n(Session · CSP · Cache-Control)"]
+        AdminHooks["apps/admin hooks.server.ts\n(ALLOWED_IP · DB Session · Security Headers)"]
+    end
 
-SvelteKit Blog Engine is a monorepo containing both the public blog and its administration dashboard.
+    subgraph Apps["Deployables"]
+        Blog["apps/blog\n(CF Pages · SSR · Better Auth)"]
+        Admin["apps/admin\n(CF Pages · Editor · /dashboard)"]
+        CFA["apps/cfa-sync\n(CF Worker · Cron)"]
+        Shared["packages/shared\n(Schema · i18n · Storage Adapter)"]
+    end
 
-```text
-apps/
-├── blog/       # Public blog
-└── admin/      # Administration dashboard
+    subgraph Data["Data & Storage"]
+        BlogDB[("D1: BLOG_DB\nposts · settings · analytics · admin_sessions")]
+        UserDB[("D1: USER_DB\nusers · sessions · OAuth · entries")]
+        KV[("KV: IMAGES_KV\nmedia · login rate limit")]
+        Ext["Optional Storage\n(R2 · Supabase · ImageKit)"]
+    end
 
-packages/
-└── shared/     # Shared schemas, utilities & i18n
+    Visitor --> BlogHooks --> Blog
+    AdminPC --> AdminHooks --> Admin
+    AdminMob --> AdminHooks --> Admin
+
+    Blog --> BlogDB & UserDB & KV & Ext
+    Admin --> BlogDB & UserDB & KV & Ext
+    CFA -- "CF GraphQL RUM Sync" --> BlogDB
+    Shared -. "shared types & adapters" .-> Blog & Admin
 ```
 
-The blog and Admin are designed to be deployed separately.
+### Workspace Layout
 
-The public blog handles content and visitors, while the Admin dashboard handles posts, settings, design customization, analytics, and other management features.
-
-The project uses:
-
-- **SvelteKit**
-- **Cloudflare Pages**
-- **Cloudflare D1**
-- **Cloudflare KV**
-- **Drizzle ORM**
+| Path | Role | Deployment Target |
+| :--- | :--- | :--- |
+| `apps/blog` | Public SSR blog, multi-language routing (`[[lang=lang]]`), Better Auth endpoints, comments/guestbook, RSS/Sitemap | Cloudflare Pages |
+| `apps/admin` | Admin CMS (TipTap editor, multi-slot design editor, backup/restore, media manager, mobile read-only `/dashboard`) | Cloudflare Pages |
+| `apps/cfa-sync` | Scheduled Cloudflare Web Analytics (RUM) collector writing daily snapshots to `BLOG_DB` | Cloudflare Worker |
+| `packages/shared` | Drizzle ORM schemas, D1 SQL migrations, i18n dictionaries, storage adapters (KV/R2/Supabase/ImageKit) | Workspace package (`@blog/shared`) |
+| `scripts/` | Automated provisioning, secret sync, and multi-account deployment CLI tools | Local Node.js |
 
 ---
 
-## 🎯 Who Is This For?
+## Core Design Decisions
 
-This project is primarily for **developers and technically-oriented users**.
+### 1. Separated Public & Admin Planes
+`apps/blog` and `apps/admin` are built and deployed as separate Cloudflare Pages projects.
+- **Admin access boundary**: Full CMS operations require both an IP match (`ALLOWED_IP`) and a valid D1-backed session (`admin_sessions`) with Cloudflare KV-based login rate limiting.
+- **External mobile dashboard**: Requests from non-whitelisted IPs are restricted to `/dashboard` in read-only mode, authenticated separately via `dashboard_password_hash` (PBKDF2) and Cloudflare KV rate limiting.
 
-It's a good fit if you:
+### 2. Dual D1 Databases (`BLOG_DB` vs `USER_DB`)
+- `BLOG_DB` stores posts, categories, design slots, settings, analytics snapshots, and admin sessions.
+- `USER_DB` isolates visitor authentication tables (`user`, `session`, `account`, `verification` via Better Auth) and visitor interactions (`entries`, `likes`).
 
-- Are comfortable with a terminal
-- Want to self-host your own blog
-- Want to own your data
-- Already use Cloudflare or don't mind learning it
-- Want a full blogging system rather than a simple static site
-- Don't want a monthly VPS bill for a personal project
+### 3. Runtime Design Slots Without Rebuild
+Design configurations (`theme`, `header`, `footer`, `layout`, `widgets`, custom CSS) are stored in `BLOG_DB` (`blog_settings.design_slots`) as up to 3 independent slots. Changes saved in `apps/admin` take effect on `apps/blog` immediately without rebuilding or redeploying, and slots can be exported/imported as JSON.
 
-It is **not intended to be a no-code blogging service**.
+### 4. Pluggable Media Storage
+By default, uploaded media is served via `IMAGES_KV` (`/images/[...path]`) with `X-Content-Type-Options: nosniff` and sandboxed CSP for SVG files. External adapters for **Cloudflare R2**, **Supabase Storage**, and **ImageKit** are built into `packages/shared`.
 
-If `npm run setup` looks like alien language, this probably isn't the easiest blogging platform for you.
+### 5. Backup, Restore & Multi-Account Sync
+The admin panel exports and restores database content and settings as portable archives, allowing you to mirror production data into a staging deployment before applying updates.
 
-And that's intentional.
-
----
-
-## 🧭 Why I Built This
-
-This started as a blog I wanted to build for myself.
-
-I didn't want another blog that required:
-
-- A VPS
-- Monthly hosting fees
-- Manual server maintenance
-- Giving my data to a third-party platform
-
-I wanted something I could deploy, customize, back up, and basically leave alone.
-
-The project eventually became much larger than the original plan, so I decided to release it as open source.
-
-The bigger idea is simple:
-
-> **Build a blog you actually own.**
+### 6. No-Surprise-Bills Cost Model
+Cloudflare's Free Tier allows provisioning Pages, Workers, D1, and KV without attaching a credit card. Within Cloudflare's Free Tier limits, personal blogs run with **$0 ongoing server cost** and cannot trigger unexpected overage bills if left idle or during traffic spikes. (You still bring your own domain, and Cloudflare's Free Tier limits apply; you can explicitly upgrade only if your usage outgrows them.)
 
 ---
 
-## 💸 Zero Ongoing Infrastructure Cost
+## Tech Stack
 
-One of the main design goals was keeping infrastructure costs as close to zero as possible.
-
-For a small personal blog that stays within Cloudflare's applicable Free Tier limits:
-
-> **The ongoing server cost can be $0.**
-
-You still need a domain, and Cloudflare's usage limits and policies apply.
-
-This isn't about claiming that hosting is magically free forever.
-
-It's about this:
-
-> **If you stop updating your blog for a while, it shouldn't keep costing you money.**
-
-Even if you leave your blog untouched for a while, it shouldn't keep generating a monthly server bill.
-
-### 💳 No Surprise Bills
-
-Cloudflare's Free Tier does not require a credit card to get started.
-
-Just sign up with your email and you're ready to go. Since you don't have to add a payment method, there's no risk of accidentally getting charged just because you used too much.
-
-Start for free and use it without worrying about unexpected bills.
-
-If your blog grows enough to go beyond the Free Tier and starts costing money, that's fine. Pay for it then.
-
-If your blog has grown that much, that's actually a good thing.
-
-> **Start for free. If your blog grows enough to cost money, that's a good problem to have.**
+- **Framework**: SvelteKit 2 / Svelte 5, TypeScript, Tailwind CSS v4 (Admin)
+- **Runtime & Hosting**: Cloudflare Pages, Cloudflare Workers
+- **Database & ORM**: Cloudflare D1 (SQLite), Drizzle ORM
+- **Storage**: Cloudflare KV (default), R2 / Supabase / ImageKit (optional)
+- **Authentication**: Better Auth (OAuth & Email/Password with Web Crypto PBKDF2)
+- **Editor & Visualization**: TipTap v3, Marked, Chart.js
 
 ---
 
-## 🏠 Own Your Data
+## Getting Started
 
-Your blog runs on **your own Cloudflare account**.
+### Prerequisites
+- Node.js (v20+ recommended)
+- A Cloudflare account (Free Tier is sufficient for personal-scale usage within Cloudflare's limits)
 
-You control:
-
-- Your blog
-- Your database
-- Your media
-- Your configuration
-- Your backups
-- Your domain
-- Your deployment
-
-There is no central server operated by this project that your blog depends on for normal operation.
-
-**Your data stays yours.**
-
----
-
-## ✨ Key Features
-
-### 🚀 Simple Deployment
-
-After cloning the repository:
-
+### 1. Install & Authenticate
 ```bash
+git clone https://github.com/SvelteKit-Blog-Engine/SKBE.git
+cd SKBE
 npm install
+npm run login
+```
+
+### 2. Provision Cloudflare Resources
+Run the automated setup script to create D1 databases, KV namespaces, and initial deployment configs:
+```bash
 npm run setup
 ```
-
-The setup process provisions the required Cloudflare resources and deploys the application.
-
-For users who want more control, an interactive setup mode is also available.
-
+For interactive selection (existing resources or custom project names):
 ```bash
 npm run setup:select
 ```
 
----
-
-### 🎨 Dynamic Design
-
-The blog design is configuration-driven.
-
-You can change the appearance from the Admin dashboard without rebuilding and redeploying the application for every design change.
-
-Change it in Admin → save → the public blog uses the new configuration.
-
----
-
-### 💾 Backup & Restore
-
-Backup and restore isn't only for disaster recovery.
-
-It can also be used to safely test updates.
-
-A practical workflow is:
-
+### 3. Configure Environment Variables
+Copy the example files and fill in your credentials (`ADMIN_PASSWORD`, `BETTER_AUTH_SECRET`, `ALLOWED_IP`, OAuth keys, etc.):
 ```text
-Production Blog
-      ↓
-   Backup
-      ↓
-   Test Blog
-      ↓
-Restore Data
-      ↓
-Test New Release
-      ↓
-Deploy to Production
+apps/blog/.dev.vars.example  -> apps/blog/.dev.vars
+apps/admin/.dev.vars.example -> apps/admin/.dev.vars
 ```
 
-You can keep a separate test deployment, restore your production data into it, test a new version, and only then update the production blog.
-
----
-
-### 🎨 Design Sharing
-
-Design configurations can be shared between installations.
-
-Create a design on one blog → export it → import it into another installation.
-
-This makes it possible to reuse and share blog designs without rebuilding them from scratch.
-
----
-
-### 📡 RSS
-
-The blog supports **RSS feeds**, allowing readers to subscribe to your content using their preferred feed reader.
-
----
-
-## 🌍 Multilingual Support
-
-The project currently includes:
-
-- 🇰🇷 Korean
-- 🇺🇸 English
-- 🇯🇵 Japanese
-
-But the engine is **not limited to these languages**.
-
-Each installation can add its own languages through the built-in i18n system.
-
----
-
-## 📊 SEO, Analytics & AdSense
-
-The engine includes support for common SEO features and integrations such as:
-
-- SEO metadata
-- Canonical URLs
-- Multilingual SEO
-- Sitemap
-- RSS
-- Social metadata
-- Google Search Console
-- Google Analytics 4
-- Google AdSense
-
-Third-party services are optional and subject to their own policies and requirements.
-
----
-
-## ⚡ Performance
-
-Performance was one of the reasons for choosing SvelteKit and Cloudflare.
-
-Rather than asking you to trust a benchmark number in this README:
-
-**Test the live site yourself.**
-
-### 🌐 Live Demo
-
-**[https://sveltekitblog.com](https://sveltekitblog.com)**
-
-### 📈 PageSpeed Insights
-
-**[Test sveltekitblog.com on Google PageSpeed Insights](https://pagespeed.web.dev/)**
-
-Performance can vary depending on device, network, cache state, third-party scripts, advertising, and other conditions.
-
-So don't take a score in this README as a guarantee.
-
-**Go test it yourself.**
-
----
-
-## 🌐 Content Hub
-
-The project also includes a content hub designed around independently-owned blogs.
-
-The idea is simple:
-
-> **Help people discover real blogs written by real people.**
-
-The goal isn't to create another collection of automatically generated, low-quality content.
-
-The Hub is intended to connect independently hosted blogs and their authors with readers.
-
----
-
-## 🛠️ Installing & Deploying
-
-### Install dependencies
-
-```bash
-npm install
-npm audit fix
-```
-
-### Initial setup
-
-```bash
-npm run setup
-```
-
-Or use interactive setup:
-
-```bash
-npm run setup:select
-```
-
-Before deployment, create the required `.dev.vars` files from the provided examples and configure your credentials.
-
-```text
-apps/blog/.dev.vars.example
-apps/admin/.dev.vars.example
-```
-
-### Deploy Blog
-
+### 4. Deploy
 ```bash
 npm run deploy:blog
-```
-
-### Deploy Admin
-
-```bash
 npm run deploy:admin
 ```
-
-For detailed deployment instructions, configuration guides, and troubleshooting:
-
-**[Visit the official website → sveltekitblog.com](https://sveltekitblog.com)**
+`deploy:blog` and `deploy:admin` synchronize secrets via `scripts/sync-secrets.js`, build the SvelteKit apps, and deploy to Cloudflare Pages (`deploy:admin` also deploys `apps/cfa-sync` if not yet present; use `node scripts/deploy-cfa-sync.js main --force` to force-update the worker).
 
 ---
 
-## 🐛 Found a Problem?
+## Useful Scripts
 
-This project is currently maintained by me.
-
-If you find a bug, security issue, SEO problem, deployment problem, or documentation error, please let me know through GitHub Issues.
-
-You don't need to submit a pull request.
-
-**Found a problem? Tell me. I'll take a look.**
-
----
-
-## 📄 License
-
-This project is open-source and distributed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
-
-See the [LICENSE](LICENSE) file for the complete license text.
+| Command | Description |
+| :--- | :--- |
+| `npm run migrate:blog-db` | Apply `packages/shared/migrations/schema-blog-db.sql` to remote `BLOG_DB` |
+| `npm run restore` | Run setup script in restore mode |
+| `npm run deploy:cfa-sync` | Deploy the `apps/cfa-sync` analytics Cron Worker |
+| `npm run deploy:multi` | Deploy across multiple configured Cloudflare accounts |
+| `npm run deploy:sync` | Sync account configurations via `scripts/sync-accounts.js` |
 
 ---
 
-## ☕ Support
+## Issues & License
 
-This project is maintained as a free open-source project.
-
-If you find it useful and would like to support its development, you can buy the developer a coffee.
-
-<a href="https://buymeacoffee.com/sveltekitblogengine" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
-
-Thank you for your support!
-
----
-
-> **Your blog. Your data. Your infrastructure.**
+- **Bug Reports / Security Issues**: Please open an issue on GitHub.
+- **License**: Distributed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](./LICENSE).
+- **Support**: [Buy Me a Coffee](https://buymeacoffee.com/sveltekitblogengine)

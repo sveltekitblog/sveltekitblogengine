@@ -1,407 +1,161 @@
-# 🚀 SvelteKit Blog Engine
+# SvelteKit Blog Engine (SKBE)
 
 🌐 **[English](./README.md) | [日本語](./README.ja.md)**
 
-**블로그와 데이터, 인프라를 직접 소유하고 싶은 개발자를 위한 오픈소스 셀프호스팅 블로그 엔진입니다.**
+**SKBE**는 **SvelteKit 5**와 **Cloudflare 서버리스 스택(Pages, Workers, D1, KV)** 기반으로 구축된 오픈소스 셀프호스팅 블로그 엔진입니다.
 
-> **직접 배포하고, 직접 소유하고, 원하는 대로 꾸미고, 매달 서버 비용을 내지 않아도 되는 블로그.**
+공개 블로그, 관리자 콘솔, 통계 수집 워커를 각각 독립된 Cloudflare 배포 단위로 분리하고, 사용자 본인의 D1 데이터베이스와 KV/오브젝트 스토리지 위에서 동작하도록 설계되어 있습니다.
 
-**SvelteKit + Cloudflare Pages + D1 + KV**로 만들었습니다.
+- **라이브 레퍼런스**: [sveltekitblog.com](https://sveltekitblog.com)
+- **라이선스**: [AGPL-3.0](./LICENSE)
 
-[![Live Design Editor Demo](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)
-
-*GIF를 클릭하면 디자인 에디터 전체 기능을 담은 YouTube 영상을 볼 수 있습니다.*
-
-### 이 프로젝트의 특징
-
-- 💸 **월 서버 유지비 $0** — Cloudflare Free Tier 사용량 범위 내에서
-- 🏠 **내 데이터는 내 Cloudflare 계정에 보관**
-- ⚡ **Cloudflare Edge 기반의 빠른 성능**
-- 🎨 **재빌드나 재배포 없이 디자인 변경**
-- 💾 **백업 & 복원** — 업데이트 전 테스트에도 활용 가능
-- 🌍 **다국어 지원** — 한국어, 영어, 일본어 기본 제공 + 원하는 언어 추가 가능
-- 📡 **RSS 지원**
-- 🚀 **`npm run setup` 한 번으로 배포**
-- 🔓 **AGPL-3.0 오픈소스**
-
-> **내 블로그. 내 데이터. 내 인프라.**
-
-### 🌐 라이브 데모
-
-**[sveltekitblog.com](https://sveltekitblog.com)**
-
-이 사이트 자체가 이 저장소의 코드를 사용해 실제로 운영되고 있는 데모입니다.
-
-성능이 궁금하다면 직접 확인해보세요.
-
-**[Google PageSpeed Insights에서 직접 테스트하기](https://pagespeed.web.dev/)**
+[![디자인 에디터 데모](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)
 
 ---
 
-## 📋 목차
+## 아키텍처 개요
 
-1. [프로젝트 소개](#-프로젝트-소개)
-2. [누구에게 적합한가요?](#-누구에게-적합한가요)
-3. [만들게 된 이유](#-만들게-된-이유)
-4. [월 서버 유지비 $0](#-월-서버-유지비-0)
-5. [내 데이터는 내가 소유](#-내-데이터는-내가-소유)
-6. [주요 기능](#-주요-기능)
-7. [설치 및 배포](#-설치-및-배포)
-8. [백업 및 복원](#-백업-및-복원)
-9. [디자인](#-디자인)
-10. [다국어 지원](#-다국어-지원)
-11. [SEO, Analytics & AdSense](#-seo-analytics--adsense)
-12. [성능](#-성능)
-13. [콘텐츠 Hub](#-콘텐츠-hub)
-14. [문제가 있다면](#-문제가-있다면)
-15. [라이선스](#-라이선스)
-16. [후원](#-후원)
+SKBE는 3개의 배포 대상(`apps/*`)과 1개의 공통 코어 패키지(`packages/shared`)로 구성된 npm 워크스페이스 모노레포입니다.
 
----
+```mermaid
+flowchart LR
+    subgraph Clients["클라이언트"]
+        Visitor["방문자 브라우저"]
+        AdminPC["관리자 PC (ALLOWED_IP)"]
+        AdminMob["관리자 모바일 (외부 IP 읽기 전용 /dashboard)"]
+    end
 
-## 🔍 프로젝트 소개
+    subgraph Edge["Cloudflare Edge"]
+        BlogHooks["apps/blog hooks.server.ts\n(세션 · CSP · Cache-Control)"]
+        AdminHooks["apps/admin hooks.server.ts\n(ALLOWED_IP · DB 세션 · 보안 헤더)"]
+    end
 
-SvelteKit Blog Engine은 공개 블로그와 관리자 페이지를 하나의 저장소에서 관리하는 모노레포 프로젝트입니다.
+    subgraph Apps["배포 애플리케이션"]
+        Blog["apps/blog\n(CF Pages · SSR · Better Auth)"]
+        Admin["apps/admin\n(CF Pages · 에디터 · /dashboard)"]
+        CFA["apps/cfa-sync\n(CF Worker · Cron)"]
+        Shared["packages/shared\n(스키마 · i18n · 스토리지 어댑터)"]
+    end
 
-```text
-apps/
-├── blog/       # 공개 블로그
-└── admin/      # 관리자 페이지
+    subgraph Data["데이터 및 스토리지"]
+        BlogDB[("D1: BLOG_DB\nposts · settings · analytics · admin_sessions")]
+        UserDB[("D1: USER_DB\nusers · sessions · OAuth · entries")]
+        KV[("KV: IMAGES_KV\n미디어 · 로그인 Rate Limit")]
+        Ext["선택 스토리지\n(R2 · Supabase · ImageKit)"]
+    end
 
-packages/
-└── shared/     # 공통 스키마, 유틸리티 및 i18n
+    Visitor --> BlogHooks --> Blog
+    AdminPC --> AdminHooks --> Admin
+    AdminMob --> AdminHooks --> Admin
+
+    Blog --> BlogDB & UserDB & KV & Ext
+    Admin --> BlogDB & UserDB & KV & Ext
+    CFA -- "CF GraphQL RUM 수집" --> BlogDB
+    Shared -. "공통 타입 및 어댑터" .-> Blog & Admin
 ```
 
-블로그와 관리자 페이지는 서로 분리해서 배포할 수 있도록 구성되어 있습니다.
+### 워크스페이스 구성
 
-공개 블로그는 방문자와 콘텐츠를 처리하고, 관리자 페이지에서는 글 작성부터 블로그 설정, 디자인, 통계 등의 기능을 관리합니다.
-
-사용하는 주요 기술은 다음과 같습니다.
-
-- **SvelteKit**
-- **Cloudflare Pages**
-- **Cloudflare D1**
-- **Cloudflare KV**
-- **Drizzle ORM**
+| 경로 | 역할 | 배포 대상 |
+| :--- | :--- | :--- |
+| `apps/blog` | 공개 SSR 블로그, 다국어 라우팅(`[[lang=lang]]`), Better Auth 인증 엔드포인트, 댓글/방명록, RSS/Sitemap | Cloudflare Pages |
+| `apps/admin` | 관리자 CMS (TipTap 에디터, 멀티 슬롯 디자인 에디터, 백업/복원, 미디어 관리, 모바일 읽기 전용 `/dashboard`) | Cloudflare Pages |
+| `apps/cfa-sync` | Cloudflare Web Analytics(RUM) 일별 스냅샷을 `BLOG_DB`에 적재하는 스케줄 워커 | Cloudflare Worker |
+| `packages/shared` | Drizzle ORM 스키마, D1 SQL 마이그레이션, i18n 사전, 스토리지 어댑터(KV/R2/Supabase/ImageKit) | 워크스페이스 패키지 (`@blog/shared`) |
+| `scripts/` | 리소스 프로비저닝, 시크릿 동기화, 멀티 계정 배포 CLI 스크립트 | 로컬 Node.js |
 
 ---
 
-## 🎯 누구에게 적합한가요?
+## 핵심 설계 구조
 
-기본적으로 **개발자와 기술에 익숙한 사용자**를 대상으로 합니다.
+### 1. 공개 블로그와 관리자 영역의 물리적 분리
+`apps/blog`와 `apps/admin`은 별도의 Cloudflare Pages 프로젝트로 빌드·배포됩니다.
+- **관리자 접근 경계**: 전체 CMS 기능은 `ALLOWED_IP` 일치와 D1 `admin_sessions` 세션 검증을 모두 통과해야 하며, Cloudflare KV 기반 로그인 시도 횟수 제한이 적용됩니다.
+- **외부 모바일 대시보드**: 화이트리스트 외 IP에서 접근하면 읽기 전용 `/dashboard` 경로로만 제한되며, `dashboard_password_hash`(PBKDF2)와 Cloudflare KV 기반 로그인 시도 횟수 제한으로 별도 인증합니다.
 
-다음과 같은 사람이라면 잘 맞을 겁니다.
+### 2. 목적별 D1 데이터베이스 분리 (`BLOG_DB` / `USER_DB`)
+- `BLOG_DB`: 게시글, 카테고리, 디자인 슬롯, 설정, 통계 스냅샷, 관리자 세션을 저장합니다.
+- `USER_DB`: Better Auth 기반 방문자 인증 테이블(`user`, `session`, `account`, `verification`)과 방문자 상호작용(`entries`, `likes`)을 분리 관리합니다.
 
-- 터미널 사용이 익숙하다.
-- 직접 블로그를 운영하고 싶다.
-- 데이터를 다른 서비스에 맡기고 싶지 않다.
-- 이미 Cloudflare를 사용하고 있거나 사용해볼 생각이 있다.
-- 단순한 정적 사이트보다는 제대로 된 블로그 시스템이 필요하다.
-- 개인 블로그 하나 운영하자고 매달 VPS 비용을 내기는 아깝다.
+### 3. 재빌드 없는 런타임 디자인 슬롯
+디자인 설정(`theme`, `header`, `footer`, `layout`, `widgets`, 커스텀 CSS)은 `BLOG_DB`(`blog_settings.design_slots`)에 최대 3개의 독립 슬롯으로 저장됩니다. `apps/admin`에서 저장한 변경 사항은 재빌드나 재배포 없이 `apps/blog`에 즉시 반영되며, 슬롯 단위 JSON 내보내기/가져오기를 지원합니다.
 
-반대로 **코딩이나 서버 설정 없이 바로 사용하는 블로그 서비스**를 찾는다면 이 프로젝트는 적합하지 않습니다.
+### 4. 선택 가능한 미디어 스토리지 어댑터
+기본 설정에서는 업로드된 미디어를 `IMAGES_KV`(`/images/[...path]`)로 서빙하며, `X-Content-Type-Options: nosniff` 및 SVG 샌드박스 CSP를 적용합니다. 필요에 따라 `packages/shared`에 내장된 **Cloudflare R2**, **Supabase Storage**, **ImageKit** 어댑터로 전환할 수 있습니다.
 
-`npm run setup`이 외계어처럼 보인다면... 아마 다른 블로그 플랫폼을 찾아보는 게 편할 겁니다.
+### 5. 백업·복원 및 스테이징 검증
+관리자 콘솔에서 DB 콘텐츠와 설정을 아카이브로 내보내고 복원할 수 있어, 별도의 테스트 배포 환경에 운영 데이터를 복원한 뒤 새 버전을 검증하고 프로덕션에 반영할 수 있습니다.
 
-그게 이 프로젝트의 방향이기도 합니다.
-
----
-
-## 🧭 만들게 된 이유
-
-처음에는 그냥 제가 쓸 블로그를 만들려고 시작했습니다.
-
-VPS를 하나 사고, 매달 서버 비용을 내고, 서버를 관리하고, 데이터까지 다른 곳에 맡기는 방식이 마음에 들지 않았습니다.
-
-그냥 배포해놓고 원하는 대로 꾸미고, 백업도 해두고, 이후에는 거의 신경 쓰지 않아도 되는 블로그를 만들고 싶었습니다.
-
-그런데 만들다 보니 일이 점점 커졌고, 결국 오픈소스로 공개하게 됐습니다.
-
-제가 원했던 건 결국 하나였습니다.
-
-> **내가 만든 블로그는 내가 소유하는 것.**
+### 6. No-Surprise-Bills 비용 모델
+Cloudflare Free Tier는 신용카드를 등록하지 않고도 Pages, Workers, D1, KV를 프로비저닝할 수 있습니다. Free Tier 할당량 범위 내의 개인 블로그는 **월 서버 유지비 $0**로 동작하며, 블로그를 장기간 방치하거나 트래픽이 일시적으로 몰려도 예상치 못한 초과 과금이 발생하지 않습니다. (도메인 비용은 별도이며, Free Tier 한도를 초과할 정도로 성장한 경우에만 사용자가 직접 유료 플랜 전환을 선택할 수 있습니다.)
 
 ---
 
-## 💸 월 서버 유지비 $0
+## 기술 스택
 
-처음부터 인프라 비용을 최대한 줄이는 것을 중요한 목표로 삼았습니다.
-
-작은 개인 블로그가 Cloudflare의 해당 Free Tier 사용량 범위 안에서 운영된다면 **서버 유지비는 $0로 운영할 수 있습니다.**
-
-물론 도메인 비용은 필요하고, Cloudflare의 사용량 제한과 정책은 그대로 적용됩니다.
-
-"평생 무조건 무료"라는 이야기를 하려는 게 아닙니다.
-
-제가 중요하게 생각한 건 오히려 이쪽입니다.
-
-> **블로그를 한동안 방치해도 돈은 계속 나가지 않았으면 좋겠다.**
-
-한동안 글을 올리지 않더라도 매달 서버비가 빠져나가는 구조는 만들고 싶지 않았습니다.
-
-### 💳 실수로 돈이 나갈 걱정 없이
-
-Cloudflare Free Tier는 시작할 때 신용카드 등록이 필요하지 않습니다.
-
-이메일만 있으면 바로 시작할 수 있고, 결제 수단을 등록하지 않은 상태에서는 사용량 때문에 갑자기 요금이 청구될 걱정도 없습니다.
-
-처음에는 그냥 무료로 시작하면 됩니다.
-
-블로그가 커져서 무료 한도를 넘어가고 비용이 발생하기 시작했다면, 그때 비용을 내면 됩니다.
-
-그 정도로 블로그가 잘됐다면 오히려 좋은 일이겠죠.
-
-> **무료로 시작하세요. 돈이 들기 시작했다면, 그만큼 잘된 겁니다.**
+- **프레임워크**: SvelteKit 2 / Svelte 5, TypeScript, Tailwind CSS v4 (Admin)
+- **런타임 & 호스팅**: Cloudflare Pages, Cloudflare Workers
+- **데이터베이스 & ORM**: Cloudflare D1 (SQLite), Drizzle ORM
+- **스토리지**: Cloudflare KV (기본), R2 / Supabase / ImageKit (선택)
+- **인증**: Better Auth (소셜 OAuth 및 Web Crypto PBKDF2 기반 이메일/비밀번호)
+- **에디터 & 시각화**: TipTap v3, Marked, Chart.js
 
 ---
 
-## 🏠 내 데이터는 내가 소유
+## 시작하기
 
-블로그는 **내 Cloudflare 계정**에서 돌아갑니다.
+### 사전 요구사항
+- Node.js (v20 이상 권장)
+- Cloudflare 계정 (개인 블로그 규모에서는 Free Tier로 충분합니다)
 
-따라서 다음과 같은 것들을 직접 관리할 수 있습니다.
-
-- 블로그
-- 데이터베이스
-- 이미지 및 미디어
-- 설정
-- 백업
-- 도메인
-- 배포
-
-이 프로젝트가 운영하는 별도의 중앙 서버에 블로그 데이터를 맡기는 방식이 아닙니다.
-
-**내 데이터는 내가 갖습니다.**
-
----
-
-## ✨ 주요 기능
-
-### 🚀 간단한 배포
-
-저장소를 클론한 다음:
-
+### 1. 설치 및 Cloudflare 로그인
 ```bash
+git clone https://github.com/SvelteKit-Blog-Engine/SKBE.git
+cd SKBE
 npm install
+npm run login
+```
+
+### 2. Cloudflare 리소스 프로비저닝
+자동 설정 스크립트를 실행해 D1 데이터베이스, KV 네임스페이스, 초기 배포 설정을 생성합니다:
+```bash
 npm run setup
 ```
-
-설정 과정을 따라가면 필요한 Cloudflare 리소스를 만들고 애플리케이션까지 배포할 수 있습니다.
-
-세부 설정을 직접 선택하고 싶다면 대화형 모드도 사용할 수 있습니다.
-
+기존 리소스 선택이나 프로젝트명 직접 지정이 필요한 경우:
 ```bash
 npm run setup:select
 ```
 
----
-
-### 🎨 디자인을 바로 변경
-
-블로그 디자인은 설정값을 기반으로 동작합니다.
-
-관리자 페이지에서 디자인을 변경하고 저장하면 됩니다.
-
-디자인을 조금 바꿀 때마다 코드를 수정하고 다시 빌드하거나 배포할 필요가 없습니다.
-
-**Admin에서 변경 → 저장 → 블로그에 적용**
-
----
-
-### 💾 백업 & 복원
-
-백업과 복원은 단순히 문제가 생겼을 때 데이터를 되돌리기 위한 기능만은 아닙니다.
-
-새 버전을 배포하기 전에 테스트하는 용도로도 사용할 수 있습니다.
-
-예를 들어:
-
+### 3. 환경 변수 설정
+예제 파일을 복사해 인증 정보(`ADMIN_PASSWORD`, `BETTER_AUTH_SECRET`, `ALLOWED_IP`, OAuth 키 등)를 입력합니다:
 ```text
-운영 블로그
-    ↓
-  백업
-    ↓
-테스트 블로그
-    ↓
- 데이터 복원
-    ↓
-새 버전 테스트
-    ↓
-운영 블로그 업데이트
+apps/blog/.dev.vars.example  -> apps/blog/.dev.vars
+apps/admin/.dev.vars.example -> apps/admin/.dev.vars
 ```
 
-별도의 테스트 환경을 만들어 운영 데이터를 복원한 뒤 새 버전을 먼저 테스트할 수 있습니다.
-
-문제가 없다는 걸 확인한 다음 운영 블로그를 업데이트하면 됩니다.
-
----
-
-### 🎨 디자인 공유
-
-블로그에서 사용하는 디자인 설정을 다른 설치 환경으로 공유할 수 있습니다.
-
-한 블로그에서 디자인을 만든 뒤 내보내고, 다른 블로그의 관리자 페이지에서 가져오면 동일한 디자인을 적용할 수 있습니다.
-
----
-
-### 📡 RSS
-
-RSS 피드를 지원합니다.
-
-독자는 원하는 RSS 리더에서 블로그의 새 글을 구독할 수 있습니다.
-
----
-
-## 🌍 다국어 지원
-
-현재 기본으로 제공되는 언어는:
-
-- 🇰🇷 한국어
-- 🇺🇸 영어
-- 🇯🇵 일본어
-
-입니다.
-
-하지만 이 세 언어만 사용할 수 있는 것은 아닙니다.
-
-각 설치 환경에서 필요한 언어를 직접 추가할 수 있도록 i18n 구조를 만들어두었습니다.
-
-현재 제공되는 세 언어는 이 프로젝트에서 기본으로 제공하는 번역입니다.
-
----
-
-## 📊 SEO, Analytics & AdSense
-
-실제로 블로그를 운영하는 데 필요한 SEO 기능과 외부 서비스 연동을 지원합니다.
-
-- SEO 메타데이터
-- Canonical URL
-- 다국어 SEO
-- Sitemap
-- RSS
-- Social Metadata
-- Google Search Console
-- Google Analytics 4
-- Google AdSense
-
-외부 서비스 연동은 선택 사항이며, 각각의 서비스 정책과 요구사항이 적용됩니다.
-
----
-
-## ⚡ 성능
-
-SvelteKit과 Cloudflare를 선택한 이유 중 하나가 성능입니다.
-
-하지만 README에 숫자 몇 개 적어놓고 "빠릅니다"라고 주장하고 싶지는 않습니다.
-
-**직접 확인해보세요.**
-
-### 🌐 라이브 데모
-
-**[https://sveltekitblog.com](https://sveltekitblog.com)**
-
-### 📈 PageSpeed Insights
-
-**[sveltekitblog.com을 Google PageSpeed Insights에서 직접 테스트하기](https://pagespeed.web.dev/)**
-
-PageSpeed 점수는 기기, 네트워크, 캐시 상태, 광고나 기타 서드파티 스크립트 등에 따라 달라질 수 있습니다.
-
-따라서 README에 특정 점수를 적어놓고 보장하지 않습니다.
-
-**궁금하면 직접 돌려보세요.**
-
----
-
-## 🌐 콘텐츠 Hub
-
-이 프로젝트에는 독립적으로 운영되는 블로그들을 위한 콘텐츠 Hub도 포함되어 있습니다.
-
-목표는 단순합니다.
-
-> **실제로 사람이 운영하는 좋은 블로그를 발견할 수 있게 하자.**
-
-자동 생성된 저품질 글을 잔뜩 모아놓은 또 하나의 콘텐츠 사이트를 만들고 싶은 것은 아닙니다.
-
-각자의 블로그를 직접 운영하는 작성자와 독자를 연결하는 것이 Hub의 목적입니다.
-
----
-
-## 🛠️ 설치 및 배포
-
-### 의존성 설치
-
-```bash
-npm install
-npm audit fix
-```
-
-### 최초 설정
-
-```bash
-npm run setup
-```
-
-또는:
-
-```bash
-npm run setup:select
-```
-
-배포 전에 각 앱의 `.dev.vars.example`을 참고해 필요한 `.dev.vars` 파일을 만들고 인증 정보를 설정해야 합니다.
-
-```text
-apps/blog/.dev.vars.example
-apps/admin/.dev.vars.example
-```
-
-### Blog 배포
-
+### 4. 배포
 ```bash
 npm run deploy:blog
-```
-
-### Admin 배포
-
-```bash
 npm run deploy:admin
 ```
-
-자세한 배포 방법과 설정 가이드는 공식 사이트에서 확인할 수 있습니다.
-
-**[공식 사이트 → sveltekitblog.com](https://sveltekitblog.com)**
+`deploy:blog`와 `deploy:admin`은 `scripts/sync-secrets.js`로 시크릿을 동기화한 뒤 SvelteKit 앱을 빌드하여 Cloudflare Pages에 배포합니다 (`deploy:admin`은 `apps/cfa-sync` 워커가 없을 경우 함께 배포하며, 기존 워커 강제 업데이트 시 `node scripts/deploy-cfa-sync.js main --force`를 사용합니다).
 
 ---
 
-## 🐛 문제가 있다면
+## 주요 스크립트
 
-현재 이 프로젝트는 제가 직접 유지보수하고 있습니다.
-
-버그나 보안 문제, SEO 문제, 배포 문제, 문서 오류 등을 발견했다면 GitHub Issues로 알려주세요.
-
-Pull Request를 직접 작성하지 않아도 됩니다.
-
-**문제를 발견했다면 알려주세요. 제가 확인해보겠습니다.**
-
----
-
-## 📄 라이선스
-
-이 프로젝트는 **GNU Affero General Public License v3.0 (AGPL-3.0)**으로 배포되는 오픈소스 프로젝트입니다.
-
-자세한 내용은 저장소의 [LICENSE](LICENSE) 파일을 확인해주세요.
+| 명령어 | 설명 |
+| :--- | :--- |
+| `npm run migrate:blog-db` | 원격 `BLOG_DB`에 `packages/shared/migrations/schema-blog-db.sql` 적용 |
+| `npm run restore` | 복원 모드로 설정 스크립트 실행 |
+| `npm run deploy:cfa-sync` | `apps/cfa-sync` 통계 수집 Cron 워커 배포 |
+| `npm run deploy:multi` | 설정된 다중 Cloudflare 계정 일괄 배포 |
+| `npm run deploy:sync` | `scripts/sync-accounts.js`를 통한 계정 설정 동기화 |
 
 ---
 
-## ☕ 후원
+## 이슈 및 라이선스
 
-이 프로젝트는 무료 오픈소스 프로젝트로 유지하고 있습니다.
-
-유용하게 사용하셨거나 개발을 응원하고 싶다면 커피 한 잔 사주셔도 좋습니다.
-
-<a href="https://buymeacoffee.com/sveltekitblogengine" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
-
-응원해주셔서 감사합니다.
-
----
-
-> **내 블로그. 내 데이터. 내 인프라.**
+- **버그 제보 / 보안 이슈**: GitHub Issues를 통해 등록해 주세요.
+- **라이선스**: [GNU Affero General Public License v3.0 (AGPL-3.0)](./LICENSE) 라이선스로 배포됩니다.
+- **후원**: [Buy Me a Coffee](https://buymeacoffee.com/sveltekitblogengine)

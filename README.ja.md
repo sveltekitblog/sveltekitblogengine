@@ -1,417 +1,161 @@
-# 🚀 SvelteKit Blog Engine
+# SvelteKit Blog Engine (SKBE)
 
 🌐 **[English](./README.md) | [한국어](./README.kr.md)**
 
-**ブログもデータもインフラも、自分で管理したい開発者のためのオープンソース・セルフホスト型ブログエンジンです。**
+**SKBE**は、**SvelteKit 5** と **Cloudflare のサーバーレススタック（Pages、Workers、D1、KV）** 上に構築された、セルフホスト型のオープンソースブログエンジンです。
 
-> **自分でデプロイして、自分で所有して、好きなようにカスタマイズして、毎月のサーバー代を気にせず運用できるブログ。**
+公開ブログ、管理コンソール、アナリティクス同期ワーカーをそれぞれ独立した Cloudflare デプロイ単位として分離し、自身の D1 データベースと KV／オブジェクトストレージ上で動作するように設計されています。
 
-**SvelteKit + Cloudflare Pages + D1 + KV** で作っています。
+- **ライブ参照デプロイ**: [sveltekitblog.com](https://sveltekitblog.com)
+- **ライセンス**: [AGPL-3.0](./LICENSE)
 
-[![Live Design Editor Demo](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)
-
-*GIFをクリックすると、デザインエディターの全機能を紹介するYouTube動画を見ることができます。*
-
-### このプロジェクトの特徴
-
-- 💸 **月額サーバー維持費 $0** — Cloudflare Free Tierの利用範囲内で
-- 🏠 **データは自分のCloudflareアカウントに保存**
-- ⚡ **Cloudflare Edgeを利用した高速な構成**
-- 🎨 **再ビルド・再デプロイなしでデザインを変更**
-- 💾 **バックアップ & リストア** — アップデート前のテストにも利用可能
-- 🌍 **多言語対応** — 韓国語・英語・日本語を標準搭載。必要な言語を追加可能
-- 📡 **RSS対応**
-- 🚀 **`npm run setup` 一つでデプロイ**
-- 🔓 **AGPL-3.0 オープンソース**
-
-> **自分のブログ。自分のデータ。自分のインフラ。**
-
-### 🌐 ライブデモ
-
-**[sveltekitblog.com](https://sveltekitblog.com)**
-
-このサイト自体が、このリポジトリのコードを使って実際に運用しているデモです。
-
-パフォーマンスが気になる方は、ぜひ自分で確認してみてください。
-
-**[Google PageSpeed Insightsで直接テストする](https://pagespeed.web.dev/)**
+[![デザインエディタデモ](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)
 
 ---
 
-## 📋 目次
+## アーキテクチャ概要
 
-1. [プロジェクトについて](#-プロジェクトについて)
-2. [どんな人に向いている？](#-どんな人に向いている)
-3. [なぜ作ったのか](#-なぜ作ったのか)
-4. [月額サーバー維持費 $0](#-月額サーバー維持費-0)
-5. [データを自分で所有する](#-データを自分で所有する)
-6. [主な機能](#-主な機能)
-7. [インストールとデプロイ](#-インストールとデプロイ)
-8. [バックアップとリストア](#-バックアップとリストア)
-9. [デザイン](#-デザイン)
-10. [多言語対応](#-多言語対応)
-11. [SEO、Analytics & AdSense](#-seo-analytics--adsense)
-12. [パフォーマンス](#-パフォーマンス)
-13. [コンテンツ Hub](#-コンテンツ-hub)
-14. [問題を見つけたら](#-問題を見つけたら)
-15. [ライセンス](#-ライセンス)
-16. [サポート](#-サポート)
+SKBE は 3つのデプロイ対象（`apps/*`）と 1つの共通コアパッケージ（`packages/shared`）で構成される npm workspace モノレポです。
+
+```mermaid
+flowchart LR
+    subgraph Clients["クライアント"]
+        Visitor["訪問者ブラウザ"]
+        AdminPC["管理者 PC (ALLOWED_IP)"]
+        AdminMob["管理者モバイル (外部 IP 読み取り専用 /dashboard)"]
+    end
+
+    subgraph Edge["Cloudflare Edge"]
+        BlogHooks["apps/blog hooks.server.ts\n(セッション · CSP · Cache-Control)"]
+        AdminHooks["apps/admin hooks.server.ts\n(ALLOWED_IP · DB セッション · セキュリティヘッダー)"]
+    end
+
+    subgraph Apps["デプロイ対象"]
+        Blog["apps/blog\n(CF Pages · SSR · Better Auth)"]
+        Admin["apps/admin\n(CF Pages · エディタ · /dashboard)"]
+        CFA["apps/cfa-sync\n(CF Worker · Cron)"]
+        Shared["packages/shared\n(スキーマ · i18n · ストレージアダプタ)"]
+    end
+
+    subgraph Data["データ & ストレージ"]
+        BlogDB[("D1: BLOG_DB\nposts · settings · analytics · admin_sessions")]
+        UserDB[("D1: USER_DB\nusers · sessions · OAuth · entries")]
+        KV[("KV: IMAGES_KV\nメディア · ログイン Rate Limit")]
+        Ext["オプションストレージ\n(R2 · Supabase · ImageKit)"]
+    end
+
+    Visitor --> BlogHooks --> Blog
+    AdminPC --> AdminHooks --> Admin
+    AdminMob --> AdminHooks --> Admin
+
+    Blog --> BlogDB & UserDB & KV & Ext
+    Admin --> BlogDB & UserDB & KV & Ext
+    CFA -- "CF GraphQL RUM 収集" --> BlogDB
+    Shared -. "共通型・アダプタ" .-> Blog & Admin
+```
+
+### ワークスペース構成
+
+| パス | 役割 | デプロイ先 |
+| :--- | :--- | :--- |
+| `apps/blog` | 公開 SSR ブログ、多言語ルーティング（`[[lang=lang]]`）、Better Auth エンドポイント、コメント／ゲストブック、RSS／サイトマップ | Cloudflare Pages |
+| `apps/admin` | 管理 CMS（TipTap エディタ、マルチスロットデザインエディタ、バックアップ／復元、メディア管理、モバイル読み取り専用 `/dashboard`） | Cloudflare Pages |
+| `apps/cfa-sync` | Cloudflare Web Analytics（RUM）の日次スナップショットを `BLOG_DB` に保存する定期実行ワーカー | Cloudflare Worker |
+| `packages/shared` | Drizzle ORM スキーマ、D1 SQL マイグレーション、i18n 辞書、ストレージアダプタ（KV／R2／Supabase／ImageKit） | ワークスペースパッケージ（`@blog/shared`） |
+| `scripts/` | リソースプロビジョニング、シークレット同期、マルチアカウントデプロイ用 CLI ツール | ローカル Node.js |
 
 ---
 
-## 🔍 プロジェクトについて
+## 主な設計方針
 
-SvelteKit Blog Engineは、公開ブログと管理画面を1つのリポジトリで管理するモノレポ構成になっています。
+### 1. 公開ブログと管理画面の分離デプロイ
+`apps/blog` と `apps/admin` は個別の Cloudflare Pages プロジェクトとしてビルド・デプロイされます。
+- **管理アクセス境界**: フル CMS 操作には `ALLOWED_IP` の一致と D1 `admin_sessions` によるセッション検証の両方が必要で、Cloudflare KV ベースのログイン試行回数制限が適用されます。
+- **外部モバイルダッシュボード**: ホワイトリスト外の IP からのアクセスは読み取り専用の `/dashboard` に制限され、`dashboard_password_hash`（PBKDF2）と Cloudflare KV ベースのレートリミットで個別に認証します。
 
+### 2. 用途別の D1 データベース分離（`BLOG_DB` / `USER_DB`）
+- `BLOG_DB`: 記事、カテゴリ、デザインスロット、各種設定、アナリティクススナップショット、管理者セッションを保持します。
+- `USER_DB`: Better Auth による訪問者認証テーブル（`user`, `session`, `account`, `verification`）および訪問者インタラクション（`entries`, `likes`）を分離して管理します。
+
+### 3. 再ビルド不要のランタイムデザインスロット
+デザイン設定（`theme`, `header`, `footer`, `layout`, `widgets`, カスタム CSS）は `BLOG_DB`（`blog_settings.design_slots`）に最大 3つの独立したスロットとして保存されます。`apps/admin` での保存内容は再ビルドや再デプロイなしで `apps/blog` に即時反映され、スロット単位での JSON エクスポート／インポートにも対応しています。
+
+### 4. 切り替え可能なメディアストレージ
+デフォルトではアップロードされたメディアを `IMAGES_KV`（`/images/[...path]`）から配信し、`X-Content-Type-Options: nosniff` および SVG 向けサンドボックス CSP を付与します。必要に応じて `packages/shared` に組み込まれた **Cloudflare R2**、**Supabase Storage**、**ImageKit** アダプタへ切り替え可能です。
+
+### 5. バックアップ・復元とステージング検証
+管理コンソールからデータベースの内容と設定をアーカイブとしてエクスポート・復元できるため、別の検証環境に本番データを復元して新バージョンをテストした後に本番環境へ反映できます。
+
+### 6. No-Surprise-Bills コストモデル
+Cloudflare Free Tier ではクレジットカードを登録せずに Pages、Workers、D1、KV をプロビジョニングできます。Free Tier の上限内であれば個人ブログの**継続サーバー費用は $0** で動作し、更新を止めて放置した場合や一時的なトラフィック増加でも予期せぬ超過請求が発生しません。（独自ドメイン費用は別途必要であり、Free Tier の上限を超える規模になった場合のみ明示的に有料プランへ移行する形をとれます。）
+
+---
+
+## 技術スタック
+
+- **フレームワーク**: SvelteKit 2 / Svelte 5、TypeScript、Tailwind CSS v4（Admin）
+- **ランタイム & ホスティング**: Cloudflare Pages、Cloudflare Workers
+- **データベース & ORM**: Cloudflare D1（SQLite）、Drizzle ORM
+- **ストレージ**: Cloudflare KV（デフォルト）、R2 / Supabase / ImageKit（オプション）
+- **認証**: Better Auth（ソーシャル OAuth および Web Crypto PBKDF2 によるメール／パスワード）
+- **エディタ & 可視化**: TipTap v3、Marked、Chart.js
+
+---
+
+## はじめに
+
+### 前提条件
+- Node.js（v20 以上推奨）
+- Cloudflare アカウント（個人規模であれば Free Tier で動作します）
+
+### 1. インストールと認証
+```bash
+git clone https://github.com/SvelteKit-Blog-Engine/SKBE.git
+cd SKBE
+npm install
+npm run login
+```
+
+### 2. Cloudflare リソースのプロビジョニング
+自動セットアップスクリプトを実行して D1 データベース、KV ネームスペース、初期デプロイ設定を作成します：
+```bash
+npm run setup
+```
+既存リソースの選択やプロジェクト名の指定を行う場合：
+```bash
+npm run setup:select
+```
+
+### 3. 環境変数の設定
+サンプルファイルをコピーして認証情報（`ADMIN_PASSWORD`, `BETTER_AUTH_SECRET`, `ALLOWED_IP`, OAuth キーなど）を入力します：
 ```text
-apps/
-├── blog/       # 公開ブログ
-└── admin/      # 管理画面
-
-packages/
-└── shared/     # 共通スキーマ、ユーティリティ、i18n
+apps/blog/.dev.vars.example  -> apps/blog/.dev.vars
+apps/admin/.dev.vars.example -> apps/admin/.dev.vars
 ```
 
-ブログと管理画面は、それぞれ分離してデプロイできます。
-
-公開ブログでは訪問者やコンテンツを扱い、管理画面では記事の作成、各種設定、デザイン変更、アクセス解析などを管理します。
-
-主な使用技術:
-
-- **SvelteKit**
-- **Cloudflare Pages**
-- **Cloudflare D1**
-- **Cloudflare KV**
-- **Drizzle ORM**
-
----
-
-## 🎯 どんな人に向いている？
-
-基本的には、**開発者や技術に慣れている人**を対象にしています。
-
-こんな人には特に向いています。
-
-- ターミナル操作に慣れている
-- 自分でブログを運用したい
-- データを他のサービスに預けたくない
-- すでにCloudflareを使っている、または使ってみたい
-- シンプルな静的サイトではなく、ちゃんとしたブログシステムが欲しい
-- 個人ブログのために毎月VPS代を払うのはちょっともったいない
-
-逆に、**コードを書いたりサーバーを設定したりせず、すぐ使えるブログサービス**を探しているなら、このプロジェクトは向いていません。
-
-`npm run setup` が宇宙語に見えるなら……たぶん、他のブログサービスを探したほうが楽です。
-
-それも、このプロジェクトが目指している方向の一つです。
-
----
-
-## 🧭 なぜ作ったのか
-
-最初は、単純に自分で使うブログを作ろうとして始めました。
-
-VPSを用意して毎月サーバー代を払い、サーバーを管理して、さらに自分のデータまで他のサービスに預ける。
-
-そういう運用はあまり好きではありませんでした。
-
-デプロイして、好きなようにカスタマイズして、バックアップも取って、あとはほとんど放置しておける。
-
-そんなブログが欲しかったんです。
-
-ところが作っているうちに、最初に考えていたよりずっと大きなプロジェクトになりました。
-
-そこで、オープンソースとして公開することにしました。
-
-結局、作りたかったものはシンプルです。
-
-> **自分のブログは、自分で所有する。**
-
----
-
-## 💸 月額サーバー維持費 $0
-
-このプロジェクトでは、最初からインフラのコストをできるだけ抑えることを重視しました。
-
-小規模な個人ブログで、CloudflareのFree Tierの利用範囲内に収まるのであれば、**サーバーの維持費は $0 で運用できます。**
-
-もちろん、ドメイン代は別途必要です。
-
-また、Cloudflareの利用制限やポリシーが適用されます。
-
-「永久に何があっても無料」という意味ではありません。
-
-自分が重視したのは、むしろこちらです。
-
-> **ブログをしばらく放置しても、お金だけは出ていってほしくない。**
-
-しばらく更新しなくなったとしても、毎月サーバー代がかかり続けるような構成にはしたくありませんでした。
-
-### 💳 知らないうちにお金がかかる心配はありません
-
-Cloudflare Free Tierは、利用を始めるときにクレジットカードの登録を求められません。
-
-メールアドレスだけで始められるので、支払い方法を登録していない状態で、使いすぎて突然料金を請求されるような心配もありません。
-
-最初は気軽に無料で始めてください。
-
-ブログが大きくなってFree Tierの範囲を超え、料金がかかるようになったら、そのときに払えばいいと思っています。
-
-そこまでブログが成長したなら、むしろ嬉しいことですよね。
-
-> **まずは無料で始めてください。お金がかかるようになったなら、それだけうまくいったということです。**
-
----
-
-## 🏠 データを自分で所有する
-
-ブログは**自分のCloudflareアカウント**上で動作します。
-
-そのため、以下を自分で管理できます。
-
-- ブログ
-- データベース
-- 画像・メディア
-- 設定
-- バックアップ
-- ドメイン
-- デプロイ
-
-このプロジェクトが運営する中央サーバーにブログのデータを預ける仕組みではありません。
-
-**自分のデータは、自分で持つ。**
-
----
-
-## ✨ 主な機能
-
-### 🚀 シンプルなデプロイ
-
-リポジトリをクローンしたら:
-
-```bash id="9flx6w"
-npm install
-npm run setup
-```
-
-セットアップに従って進めるだけで、必要なCloudflareリソースの作成からアプリケーションのデプロイまで行えます。
-
-細かい設定を自分で選びたい場合は、対話式モードも利用できます。
-
-```bash id="0t9p9b"
-npm run setup:select
-```
-
----
-
-### 🎨 デザインをすぐに変更
-
-ブログのデザインは設定値をもとに動作します。
-
-管理画面からデザインを変更して保存するだけで反映できます。
-
-ちょっと色やレイアウトを変えるたびにコードを変更して、ビルドし直したり再デプロイしたりする必要はありません。
-
-**Adminで変更 → 保存 → ブログに反映**
-
----
-
-### 💾 バックアップ & リストア
-
-バックアップとリストアは、単なるデータ復旧のためだけの機能ではありません。
-
-新しいバージョンをデプロイする前のテストにも使えます。
-
-例えば:
-
-```text id="w8y4q1"
-本番ブログ
-    ↓
-  バックアップ
-    ↓
-テストブログ
-    ↓
- データを復元
-    ↓
-新バージョンをテスト
-    ↓
-本番ブログを更新
-```
-
-別のテスト環境に本番データを復元して、新しいバージョンを先に試すことができます。
-
-問題がないことを確認してから、本番ブログを更新できます。
-
----
-
-### 🎨 デザイン共有
-
-ブログで使用しているデザイン設定を、別のインストール環境と共有できます。
-
-1つのブログでデザインを作成 → エクスポート → 別のブログでインポート。
-
-同じデザインを最初から作り直す必要はありません。
-
----
-
-### 📡 RSS
-
-RSSフィードに対応しています。
-
-読者は好きなRSSリーダーからブログの新着記事を購読できます。
-
----
-
-## 🌍 多言語対応
-
-現在、標準で以下の言語を提供しています。
-
-- 🇰🇷 韓国語
-- 🇺🇸 英語
-- 🇯🇵 日本語
-
-ただし、この3言語だけに限定されているわけではありません。
-
-i18nの仕組みを使って、各インストール環境で必要な言語を追加できます。
-
-現在提供している3言語は、このプロジェクトで標準提供している翻訳です。
-
----
-
-## 📊 SEO、Analytics & AdSense
-
-実際にブログを運用するために必要なSEO機能や外部サービスとの連携に対応しています。
-
-- SEOメタデータ
-- Canonical URL
-- 多言語SEO
-- Sitemap
-- RSS
-- Social Metadata
-- Google Search Console
-- Google Analytics 4
-- Google AdSense
-
-外部サービスとの連携は任意です。
-
-各サービスのポリシーや利用条件が適用されます。
-
----
-
-## ⚡ パフォーマンス
-
-SvelteKitとCloudflareを選んだ理由の一つが、パフォーマンスです。
-
-ただ、READMEに数字を並べて「速いです」と言うつもりはありません。
-
-**実際に試してみてください。**
-
-### 🌐 ライブデモ
-
-**[https://sveltekitblog.com](https://sveltekitblog.com)**
-
-### 📈 PageSpeed Insights
-
-**[sveltekitblog.comをGoogle PageSpeed Insightsでテストする](https://pagespeed.web.dev/)**
-
-PageSpeedのスコアは、デバイス、ネットワーク、キャッシュの状態、広告やその他のサードパーティスクリプトなどによって変わります。
-
-そのため、READMEに特定のスコアを載せて保証することはしていません。
-
-**気になるなら、自分で試してみてください。**
-
----
-
-## 🌐 コンテンツ Hub
-
-このプロジェクトには、個人で運営されているブログをつなぐためのコンテンツHubも含まれています。
-
-目的はシンプルです。
-
-> **実際に人が書いている、良いブログを見つけてもらう。**
-
-自動生成された低品質な記事を大量に集めた、もう一つのコンテンツサイトを作りたいわけではありません。
-
-それぞれのブログを自分で運営している作者と、読者をつなぐことをHubの目的としています。
-
----
-
-## 🛠️ インストールとデプロイ
-
-### 依存関係のインストール
-
-```bash id="1td1km"
-npm install
-npm audit fix
-```
-
-### 初回セットアップ
-
-```bash id="j94qwe"
-npm run setup
-```
-
-または:
-
-```bash id="aq9x2g"
-npm run setup:select
-```
-
-デプロイする前に、各アプリの`.dev.vars.example`を参考に必要な`.dev.vars`を作成し、認証情報を設定してください。
-
-```text id="yqz3g7"
-apps/blog/.dev.vars.example
-apps/admin/.dev.vars.example
-```
-
-### Blogのデプロイ
-
-```bash id="6xj1ki"
+### 4. デプロイ
+```bash
 npm run deploy:blog
-```
-
-### Adminのデプロイ
-
-```bash id="4k7h5s"
 npm run deploy:admin
 ```
-
-詳しいデプロイ方法や設定については、公式サイトをご覧ください。
-
-**[公式サイト → sveltekitblog.com](https://sveltekitblog.com)**
+`deploy:blog` と `deploy:admin` は `scripts/sync-secrets.js` でシークレットを同期したうえで SvelteKit アプリをビルドし、Cloudflare Pages にデプロイします（`deploy:admin` は未作成の場合 `apps/cfa-sync` もデプロイします。既存ワーカーを強制更新する場合は `node scripts/deploy-cfa-sync.js main --force` を実行してください）。
 
 ---
 
-## 🐛 問題を見つけたら
+## 主なスクリプト
 
-現在、このプロジェクトは自分でメンテナンスしています。
-
-バグ、セキュリティ問題、SEOの問題、デプロイの問題、ドキュメントの間違いなどを見つけた場合は、GitHub Issuesから知らせてください。
-
-Pull Requestを送る必要はありません。
-
-**問題を見つけたら教えてください。こちらで確認します。**
-
----
-
-## 📄 ライセンス
-
-このプロジェクトは **GNU Affero General Public License v3.0 (AGPL-3.0)** のオープンソースプロジェクトです。
-
-詳しくはリポジトリの [LICENSE](LICENSE) ファイルをご覧ください。
+| コマンド | 説明 |
+| :--- | :--- |
+| `npm run migrate:blog-db` | リモートの `BLOG_DB` に `packages/shared/migrations/schema-blog-db.sql` を適用 |
+| `npm run restore` | 復元モードでセットアップスクリプトを実行 |
+| `npm run deploy:cfa-sync` | `apps/cfa-sync` アナリティクス Cron ワーカーをデプロイ |
+| `npm run deploy:multi` | 設定された複数の Cloudflare アカウントへ一括デプロイ |
+| `npm run deploy:sync` | `scripts/sync-accounts.js` によるアカウント設定同期 |
 
 ---
 
-## ☕ サポート
+## 不具合報告・ライセンス
 
-このプロジェクトは無料のオープンソースプロジェクトとして運営しています。
-
-役に立った、あるいは開発を応援したいと思っていただけたら、コーヒー一杯分のサポートをしてもらえるとうれしいです。
-
-<a href="https://buymeacoffee.com/sveltekitblogengine" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
-
-応援していただき、ありがとうございます。
-
----
-
-> **自分のブログ。自分のデータ。自分のインフラ。**
+- **バグ報告 / セキュリティ問題**: GitHub Issues よりお知らせください。
+- **ライセンス**: [GNU Affero General Public License v3.0 (AGPL-3.0)](./LICENSE) の下で配布されています。
+- **サポート**: [Buy Me a Coffee](https://buymeacoffee.com/sveltekitblogengine)
