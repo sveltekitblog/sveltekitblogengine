@@ -67,3 +67,6 @@ vite.config.ts.timestamp-*
 **/wrangler.json
 **/wrangler.generated.json
 **/secrets.generated.json
+
+# Issue templates (local only)
+.github/ISSUE_TEMPLATE/
