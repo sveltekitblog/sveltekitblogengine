@@ -25,7 +25,7 @@
     let { comment, currentUser, onDelete, onEdit, onReply, isReply = false } = $props();
 
     let isEditing = $state(false);
-    let editContent = $state(comment.content);
+    let editContent = $state("");
     let isEditingSubmitting = $state(false);
 
     function handleDelete() {

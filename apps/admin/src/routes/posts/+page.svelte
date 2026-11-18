@@ -535,7 +535,6 @@
                             if (result.type === "success") {
                                 deleteConfirmPost = null;
                                 if (typeof window !== 'undefined') {
-                                    localStorage.removeItem(POSTS_CACHE_KEY);
                                     window.location.href = `/posts?refreshed=${Date.now()}`;
                                 } else {
                                     await invalidateAll();

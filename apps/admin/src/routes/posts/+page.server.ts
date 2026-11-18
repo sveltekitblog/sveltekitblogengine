@@ -125,24 +125,12 @@ export const actions: Actions = {
             if (!post) {
                 return fail(404, { error: 'Post not found' });
             }
+            const isPublished = (post as any).status === 'published';
 
-            // 0. 허브에 등록된 카드 철회(삭제) 요청
-            try {
-                const { removePostFromHub, buildPostUrl } = await import('$lib/server/hub');
-                const { results: sRows } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'siteUrl'").all();
-                const siteUrl = (sRows?.[0] as any)?.value || 'https://sveltekitblog.com';
-                const pSlug = (post as any).slug;
-                const pCategory = (post as any).category_slug || '일반';
-                const pLang = (post as any).lang || 'ko';
-                const postUrl = buildPostUrl(siteUrl, pLang, pCategory, pSlug);
-                await removePostFromHub(postUrl, db);
-            } catch (hubErr) {
-                console.warn('[Hub Delete Warning] Failed to remove post from hub:', hubErr);
-            }
-
-            // 1. Delete associated images using StorageAdapter
+            // 1. 이미지 정리 작업을 비동기 태스크로 준비 (DB 삭제와 병렬 실행)
             const slug = (post as any).slug;
-            if (slug && platform) {
+            const cleanupStorageTask = (async () => {
+                if (!slug || !platform) return;
                 try {
                     const { getStorageAdapter } = await import('$lib/server/storageAdapter');
                     const adapter = await getStorageAdapter(platform, db);
@@ -154,8 +142,13 @@ export const actions: Actions = {
                     const keysToDelete: string[] = [];
                     let isDisabled = false;
 
-                    for (const p of pathsToCheck) {
-                        const list = await adapter.list(p);
+                    const listResults = await Promise.all(
+                        pathsToCheck.map(async (p) => ({
+                            p,
+                            list: await adapter.list(p).catch(() => ({ objects: [] as any[], disabled: false }))
+                        }))
+                    );
+                    for (const { p, list } of listResults) {
                         if (list.disabled) {
                             isDisabled = true;
                             break;
@@ -196,7 +189,7 @@ export const actions: Actions = {
                     console.error('Failed to cleanup images during post deletion:', storageError);
                     // Don't block post deletion, just log it
                 }
-            }
+            })();
 
             // 2. Delete from BLOG_DB
             // Try to disable foreign keys to bypass 'no such table: main.user' error
@@ -209,56 +202,75 @@ export const actions: Actions = {
 
             await db.prepare('DELETE FROM posts WHERE id = ?').bind(id).run();
 
-            try {
-                const cacheRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'enable_cdn_cache'").first();
-                if (cacheRow?.value === 'true') {
-                    const { purgeCdnCache } = await import('$lib/server/cachePurge');
-                    const pSlug = (post as any).slug;
-                    const pCategory = (post as any).category_slug;
-                    // category가 없을 경우 기본값으로 '일반'을 사용합니다.
-                    purgeCdnCache(platform, db, {
-                        categorySlug: pCategory || '일반',
-                        slug: pSlug
-                    }).catch(e => console.error('[Purge Error]', e));
-                }
-            } catch (e) {
-                console.error('[Purge Error]', e);
-            }
-
-            // 2.5. Cleanup orphaned categories & sync post counts
-            try {
-                await db.prepare(`
+            const postCleanupTasks: Promise<any>[] = [
+                cleanupStorageTask,
+                db.prepare(`
                     DELETE FROM categories 
                     WHERE slug NOT IN (
                         SELECT DISTINCT category_slug 
                         FROM posts 
                         WHERE category_slug IS NOT NULL
                     )
-                `).run();
-                await syncCategoryPostCounts(db);
+                `).run().catch((catErr: any) => console.warn('Failed to cleanup categories:', catErr))
+            ];
 
-                // 2.6. 사이드바 위젯 정적 스냅샷 재계산 (동기 완료 보장)
-                try {
-                    const { generateSidebarSnapshot } = await import('@blog/shared');
-                    await generateSidebarSnapshot(db);
-                } catch (snapErr) {
-                    console.error('[Snapshot Error]', snapErr);
-                }
-            } catch (catErr) {
-                console.warn('Failed to cleanup categories or sync counts:', catErr);
+            if ((post as any).is_syndicated === 1) {
+                postCleanupTasks.push(
+                    (async () => {
+                        try {
+                            const { removePostFromHub, buildPostUrl } = await import('$lib/server/hub');
+                            const { results: sRows } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'siteUrl'").all();
+                            const siteUrl = (sRows?.[0] as any)?.value || 'https://sveltekitblog.com';
+                            const pCategory = (post as any).category_slug || '일반';
+                            const pLang = (post as any).lang || 'ko';
+                            const postUrl = buildPostUrl(siteUrl, pLang, pCategory, slug);
+                            await removePostFromHub(postUrl, db);
+                        } catch (hubErr) {
+                            console.warn('[Hub Delete Warning] Failed to remove post from hub:', hubErr);
+                        }
+                    })()
+                );
             }
 
-            // 3. Delete from USER_DB (post_views) safely
-            const userDb = platform?.env?.USER_DB;
-            if (userDb) {
-                try {
-                    await userDb.prepare('DELETE FROM post_views WHERE post_id = ?').bind(id).run();
-                } catch (e) {
-                    console.warn('Failed to delete post views:', e);
-                }
-            } else {
-                console.warn('USER_DB not available for deleting views');
+            if (isPublished) {
+                postCleanupTasks.push(
+                    (async () => {
+                        try {
+                            const cacheRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'enable_cdn_cache'").first();
+                            if (cacheRow?.value === 'true') {
+                                const { purgeCdnCache } = await import('$lib/server/cachePurge');
+                                const pCategory = (post as any).category_slug;
+                                purgeCdnCache(platform, db, {
+                                    categorySlug: pCategory || '일반',
+                                    slug: slug
+                                }).catch(e => console.error('[Purge Error]', e));
+                            }
+                        } catch (e) {
+                            console.error('[Purge Error]', e);
+                        }
+                    })(),
+                    (async () => {
+                        try {
+                            await syncCategoryPostCounts(db);
+                            const { generateSidebarSnapshot } = await import('@blog/shared');
+                            await generateSidebarSnapshot(db);
+                        } catch (snapErr) {
+                            console.error('[Snapshot/Count Sync Error]', snapErr);
+                        }
+                    })(),
+                    (async () => {
+                        const userDb = platform?.env?.USER_DB;
+                        if (!userDb) return;
+                        try {
+                            await userDb.prepare('DELETE FROM post_views WHERE post_id = ?').bind(id).run();
+                        } catch (e) {
+                            console.warn('Failed to delete post views:', e);
+                        }
+                    })()
+                );
             }
+
+            await Promise.all(postCleanupTasks);
 
             return { success: true };
         } catch (err: any) {

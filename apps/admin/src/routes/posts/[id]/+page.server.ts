@@ -126,6 +126,9 @@ export const actions: Actions = {
             ).first();
             const defaultAuthorId = adminIdRow?.value as string || 'admin';
 
+            const hubTasks: Promise<any>[] = [];
+            let hasPublishedChange = false;
+
             for (const item of groupData) {
                 // Skip any tab (new or existing) that has no title — prevents ghost posts from empty translation tabs
                 if (!item.title?.trim()) continue;
@@ -173,7 +176,10 @@ export const actions: Actions = {
                 const isSyndicatedVal = shouldPublishToHub ? 1 : 0;
 
                 // Check if exists
-                const existing = await db.prepare('SELECT id, is_syndicated, slug, category_slug, lang, published_at, created_at FROM posts WHERE id = ?').bind(id).first();
+                const existing = await db.prepare('SELECT id, status, is_syndicated, slug, category_slug, lang, published_at, created_at FROM posts WHERE id = ?').bind(id).first();
+                if (status === 'published' || (existing as any)?.status === 'published') {
+                    hasPublishedChange = true;
+                }
                 
                 if (existing) {
                     await db.prepare(`
@@ -202,86 +208,101 @@ export const actions: Actions = {
                 }
 
                 // 허브 동기화 / 비공개(숨김) 라이프사이클 처리
-                try {
-                    const { publishPostToHub, hidePostFromHub, removePostFromHub, buildPostUrl } = await import('$lib/server/hub');
-                    const { results: sRows } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'siteUrl'").all();
-                    const siteUrl = (sRows?.[0] as any)?.value || 'https://sveltekitblog.com';
-                    const currUrl = buildPostUrl(siteUrl, lang, category || '일반', slug);
+                if (shouldPublishToHub || (existing as any)?.is_syndicated === 1) {
+                    hubTasks.push((async () => {
+                        try {
+                            const { publishPostToHub, hidePostFromHub, removePostFromHub, buildPostUrl } = await import('$lib/server/hub');
+                            const { results: sRows } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'siteUrl'").all();
+                            const siteUrl = (sRows?.[0] as any)?.value || 'https://sveltekitblog.com';
+                            const currUrl = buildPostUrl(siteUrl, lang, category || '일반', slug);
 
-                    // 💡 [핵심] 글 수정 시 수정일이 아닌 최초 발행일(published_at 또는 created_at)을 보존
-                    const originalPublishedAt = (existing as any)?.published_at || (existing as any)?.created_at || new Date().toISOString();
+                            // 💡 [핵심] 글 수정 시 수정일이 아닌 최초 발행일(published_at 또는 created_at)을 보존
+                            const originalPublishedAt = (existing as any)?.published_at || (existing as any)?.created_at || new Date().toISOString();
 
-                    // URL 변경 감지: 이전에 허브에 등록된 글의 슬러그/카테고리/언어가 변경된 경우 이전 URL 삭제
-                    if (existing && (existing as any).is_syndicated === 1) {
-                        const prevSlug = (existing as any).slug;
-                        const prevCat = (existing as any).category_slug || '일반';
-                        const prevLang = (existing as any).lang || 'ko';
-                        const prevUrl = buildPostUrl(siteUrl, prevLang, prevCat, prevSlug);
+                            // URL 변경 감지: 이전에 허브에 등록된 글의 슬러그/카테고리/언어가 변경된 경우 이전 URL 삭제
+                            if (existing && (existing as any).is_syndicated === 1) {
+                                const prevSlug = (existing as any).slug;
+                                const prevCat = (existing as any).category_slug || '일반';
+                                const prevLang = (existing as any).lang || 'ko';
+                                const prevUrl = buildPostUrl(siteUrl, prevLang, prevCat, prevSlug);
 
-                        if (prevUrl && prevUrl !== currUrl) {
-                            await removePostFromHub(prevUrl, db);
+                                if (prevUrl && prevUrl !== currUrl) {
+                                    await removePostFromHub(prevUrl, db);
+                                }
+                            }
+
+                            if (shouldPublishToHub) {
+                                // 1. 공개 발행/수정 -> 허브 카드 갱신
+                                await publishPostToHub({
+                                    title,
+                                    slug,
+                                    excerpt,
+                                    content: contentType === 'markdown' ? contentMarkdown : content,
+                                    contentType,
+                                    categorySlug: category || '일반',
+                                    featuredImage: featured_image,
+                                    tags: tagsJson,
+                                    lang,
+                                    url: currUrl,
+                                    publishedAt: originalPublishedAt
+                                }, db);
+                            } else if (existing && (existing as any).is_syndicated === 1) {
+                                // 2. 이전에 허브에 발행되었으나 비공개(draft)로 전환되었거나 허브 체크가 해제된 경우 -> 허브 피드 숨김 (좋아요 보존)
+                                await hidePostFromHub({
+                                    title,
+                                    slug,
+                                    excerpt,
+                                    categorySlug: category || '일반',
+                                    featuredImage: featured_image,
+                                    tags: tagsJson,
+                                    lang,
+                                    url: currUrl,
+                                    publishedAt: originalPublishedAt
+                                }, db);
+                            }
+                        } catch (e) {
+                            console.error('[Hub Sync/Hide Error]', e);
                         }
-                    }
-
-                    if (shouldPublishToHub) {
-                        // 1. 공개 발행/수정 -> 허브 카드 갱신
-                        await publishPostToHub({
-                            title,
-                            slug,
-                            excerpt,
-                            content: contentType === 'markdown' ? contentMarkdown : content,
-                            contentType,
-                            categorySlug: category || '일반',
-                            featuredImage: featured_image,
-                            tags: tagsJson,
-                            lang,
-                            url: currUrl,
-                            publishedAt: originalPublishedAt
-                        }, db);
-                    } else if (existing && (existing as any).is_syndicated === 1) {
-                        // 2. 이전에 허브에 발행되었으나 비공개(draft)로 전환되었거나 허브 체크가 해제된 경우 -> 허브 피드 숨김 (좋아요 보존)
-                        await hidePostFromHub({
-                            title,
-                            slug,
-                            excerpt,
-                            categorySlug: category || '일반',
-                            featuredImage: featured_image,
-                            tags: tagsJson,
-                            lang,
-                            url: currUrl,
-                            publishedAt: originalPublishedAt
-                        }, db);
-                    }
-                } catch (e) {
-                    console.error('[Hub Sync/Hide Error]', e);
+                    })());
                 }
             }
 
-            // Sync category post_counts
-            await syncCategoryPostCounts(db);
+            const postSaveTasks: Promise<any>[] = [...hubTasks];
 
-            try {
-                const cacheRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'enable_cdn_cache'").first();
-                if (cacheRow?.value === 'true') {
-                    const firstItem = groupData.find(item => item.title?.trim() && item.slug);
-                    const purgeOptions = firstItem ? {
-                        categorySlug: firstItem.category || '일반',
-                        slug: firstItem.slug
-                    } : { purgeEverything: true };
-                    
-                    const { purgeCdnCache } = await import('$lib/server/cachePurge');
-                    purgeCdnCache(platform, db, purgeOptions).catch(e => console.error('[Purge Error]', e));
-                }
-            } catch (e) {
-                console.error('[Purge Error]', e);
+            if (hasPublishedChange) {
+                postSaveTasks.push(
+                    (async () => {
+                        // Sync category post_counts & 정적 사이드바 스냅샷 재계산
+                        await syncCategoryPostCounts(db);
+                        try {
+                            const { generateSidebarSnapshot } = await import('@blog/shared');
+                            await generateSidebarSnapshot(db);
+                        } catch (snapErr) {
+                            console.error('[Snapshot Error]', snapErr);
+                        }
+                    })(),
+                    (async () => {
+                        try {
+                            const cacheRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'enable_cdn_cache'").first();
+                            if (cacheRow?.value === 'true') {
+                                const firstItem = groupData.find(item => item.title?.trim() && item.slug);
+                                const purgeOptions = firstItem ? {
+                                    categorySlug: firstItem.category || '일반',
+                                    slug: firstItem.slug
+                                } : { purgeEverything: true };
+
+                                const { purgeCdnCache } = await import('$lib/server/cachePurge');
+                                purgeCdnCache(platform, db, purgeOptions).catch(e => console.error('[Purge Error]', e));
+                            }
+                        } catch (e) {
+                            console.error('[Purge Error]', e);
+                        }
+                    })()
+                );
             }
 
-            // 정적 사이드바 스냅샷 재계산 (동기 완료 보장)
-            try {
-                const { generateSidebarSnapshot } = await import('@blog/shared');
-                await generateSidebarSnapshot(db);
-            } catch (snapErr) {
-                console.error('[Snapshot Error]', snapErr);
+            if (postSaveTasks.length > 0) {
+                await Promise.all(postSaveTasks);
             }
 
             throw redirect(303, `/posts?refreshed=${Date.now()}`);

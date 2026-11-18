@@ -16,6 +16,7 @@
 -->
 
 <script lang="ts">
+    import { untrack } from "svelte";
     import { enhance } from "$app/forms";
     import { page } from "$app/stores";
     import PostMetadataForm from "$lib/components/editor/PostMetadataForm.svelte";
@@ -28,7 +29,7 @@
     let { data } = $props();
 
     type EditorMode = "visual" | "html" | "preview";
-    const currentTargetPost = data.posts?.find((p: any) => p.id === $page.params.id) || data.posts?.[0];
+    const currentTargetPost = untrack(() => data.posts?.find((p: any) => p.id === $page.params.id) || data.posts?.[0]);
     const hasCustomHtml = /<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(currentTargetPost?.content || '') || /style\s*=\s*["'][^"']+["']/i.test(currentTargetPost?.content || '');
     let mode = $state<EditorMode>(hasCustomHtml ? "html" : "visual");
     let saveOriginal = $state(false);

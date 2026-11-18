@@ -89,6 +89,9 @@ export const actions: Actions = {
             ).first();
             const defaultAuthorId = adminIdRow?.value as string || 'admin';
 
+            const hubTasks: Promise<any>[] = [];
+            let hasPublishedPost = false;
+
             for (const item of groupData) {
                 // Skip any tab (new or existing) that has no title — prevents ghost posts from empty translation tabs
                 if (!item.title?.trim()) continue;
@@ -142,55 +145,71 @@ export const actions: Actions = {
                     id, title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
                 ).run();
 
+                if (status === 'published') {
+                    hasPublishedPost = true;
+                }
+
                 // 허브 자동 제출 훅 (status === 'published' & submitToBoard === true)
                 if (shouldSyndicate) {
-                    try {
-                        const { publishPostToHub } = await import('$lib/server/hub');
-                        const res = await publishPostToHub({
-                            title,
-                            slug,
-                            excerpt,
-                            content: contentType === 'markdown' ? contentMarkdown : content,
-                            contentType,
-                            categorySlug: category || '일반',
-                            featuredImage: featured_image,
-                            tags: tagsJson,
-                            lang
-                        }, db);
-                        if (!res.success) {
-                            console.warn('[Hub Sync Warning]', res.error || res.reason);
+                    hubTasks.push((async () => {
+                        try {
+                            const { publishPostToHub } = await import('$lib/server/hub');
+                            const res = await publishPostToHub({
+                                title,
+                                slug,
+                                excerpt,
+                                content: contentType === 'markdown' ? contentMarkdown : content,
+                                contentType,
+                                categorySlug: category || '일반',
+                                featuredImage: featured_image,
+                                tags: tagsJson,
+                                lang
+                            }, db);
+                            if (!res.success) {
+                                console.warn('[Hub Sync Warning]', res.error || res.reason);
+                            }
+                        } catch (e) {
+                            console.error('[Hub Sync Error]', e);
                         }
-                    } catch (e) {
-                        console.error('[Hub Sync Error]', e);
-                    }
+                    })());
                 }
             }
 
-            // Sync category post_counts
-            await syncCategoryPostCounts(db);
+            const postCreateTasks: Promise<any>[] = [...hubTasks];
 
-            try {
-                const cacheRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'enable_cdn_cache'").first();
-                if (cacheRow?.value === 'true') {
-                    const firstItem = groupData.find(item => item.title?.trim() && item.slug);
-                    const purgeOptions = firstItem ? {
-                        categorySlug: firstItem.category || '일반',
-                        slug: firstItem.slug
-                    } : { purgeEverything: true };
-                    
-                    const { purgeCdnCache } = await import('$lib/server/cachePurge');
-                    purgeCdnCache(platform, db, purgeOptions).catch(e => console.error('[Purge Error]', e));
-                }
-            } catch (e) {
-                console.error('[Purge Error]', e);
+            if (hasPublishedPost) {
+                postCreateTasks.push(
+                    (async () => {
+                        await syncCategoryPostCounts(db);
+                        try {
+                            const { generateSidebarSnapshot } = await import('@blog/shared');
+                            await generateSidebarSnapshot(db);
+                        } catch (snapErr) {
+                            console.error('[Snapshot Error]', snapErr);
+                        }
+                    })(),
+                    (async () => {
+                        try {
+                            const cacheRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'enable_cdn_cache'").first();
+                            if (cacheRow?.value === 'true') {
+                                const firstItem = groupData.find(item => item.title?.trim() && item.slug);
+                                const purgeOptions = firstItem ? {
+                                    categorySlug: firstItem.category || '일반',
+                                    slug: firstItem.slug
+                                } : { purgeEverything: true };
+
+                                const { purgeCdnCache } = await import('$lib/server/cachePurge');
+                                purgeCdnCache(platform, db, purgeOptions).catch(e => console.error('[Purge Error]', e));
+                            }
+                        } catch (e) {
+                            console.error('[Purge Error]', e);
+                        }
+                    })()
+                );
             }
 
-            // 정적 사이드바 스냅샷 재계산 (동기 완료 보장)
-            try {
-                const { generateSidebarSnapshot } = await import('@blog/shared');
-                await generateSidebarSnapshot(db);
-            } catch (snapErr) {
-                console.error('[Snapshot Error]', snapErr);
+            if (postCreateTasks.length > 0) {
+                await Promise.all(postCreateTasks);
             }
 
             throw redirect(303, `/posts?refreshed=${Date.now()}`);
