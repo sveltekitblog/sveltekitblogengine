@@ -392,6 +392,8 @@
             showCategories: h.showCategories !== false,
             showLanguageSwitcher: h.showLanguageSwitcher !== false,
             loginLabel: ensureTranslationObj(h.loginLabel, "Login"),
+            loginBgColor: h.loginBgColor || "",
+            loginTextColor: h.loginTextColor || "",
             profileLabel: ensureTranslationObj(h.profileLabel, "Profile"),
             menuItems: ensureMenuItemStructure(ensureArray(h.menuItems)),
             headerBackground: normalizeBackground(
@@ -5198,6 +5200,20 @@ header.blog-header.scrolled .header-inner {
                                                     placeholder="Login"
                                                     class="w-full text-xs p-1.5 border border-blue-100 rounded bg-white focus:ring-1 focus:ring-blue-400 outline-none"
                                                 />
+                                                <div class="grid grid-cols-1 gap-2 mt-2">
+                                                    <div class="flex items-end gap-2">
+                                                        <div class="flex-1 min-w-0">
+                                                            <ColorControl label={t("admin.theme.login_bg_color")} bind:value={headerConfig.loginBgColor} compact={true} showPresets={false} />
+                                                        </div>
+                                                        <button type="button" onclick={() => (headerConfig.loginBgColor = "")} class="text-[10px] px-2 py-1.5 border border-slate-200 rounded bg-white text-slate-600 whitespace-nowrap shrink-0 mb-0.5">{t("admin.theme.auto")}</button>
+                                                    </div>
+                                                    <div class="flex items-end gap-2">
+                                                        <div class="flex-1 min-w-0">
+                                                            <ColorControl label={t("admin.theme.login_text_color")} bind:value={headerConfig.loginTextColor} compact={true} showPresets={false} />
+                                                        </div>
+                                                        <button type="button" onclick={() => (headerConfig.loginTextColor = "")} class="text-[10px] px-2 py-1.5 border border-slate-200 rounded bg-white text-slate-600 whitespace-nowrap shrink-0 mb-0.5">{t("admin.theme.auto")}</button>
+                                                    </div>
+                                                </div>
                                             </div>
                                             <div class="form-group-mini">
                                                 <div
@@ -5335,7 +5351,7 @@ header.blog-header.scrolled .header-inner {
                                                     {/each}
                                                 </div>
                                             </div>
-                                            <div class="form-group-mini">
+                                            <div class="form-group-mini col-span-2">
                                                 <label class="depth-4-label"
                                                     >{t(
                                                         "admin.theme.nav_spacing",
@@ -5350,30 +5366,13 @@ header.blog-header.scrolled .header-inner {
                                                     class="text-xs p-1.5 border rounded w-full bg-white"
                                                 />
                                             </div>
-                                            <div class="form-group-mini">
-                                                <label class="depth-4-label"
-                                                    >{t(
-                                                        "admin.theme.nav_text_color",
-                                                    )}</label
-                                                >
-                                                <div
-                                                    class="flex items-center gap-2"
-                                                >
-                                                    <input
-                                                        type="color"
-                                                        bind:value={
-                                                            headerConfig.navTextColor
-                                                        }
-                                                        class="w-8 h-8 p-0 border-0 cursor-pointer"
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        bind:value={
-                                                            headerConfig.navTextColor
-                                                        }
-                                                        class="flex-1 text-[11px] p-1.5 border rounded bg-white"
-                                                    />
-                                                </div>
+                                            <div class="form-group-mini col-span-2">
+                                                <ColorControl
+                                                    label={t("admin.theme.nav_text_color")}
+                                                    bind:value={headerConfig.navTextColor}
+                                                    compact={true}
+                                                    showPresets={false}
+                                                />
                                             </div>
 
                                             <div class="col-span-2">
@@ -5749,63 +5748,22 @@ header.blog-header.scrolled .header-inner {
                                                 />
                                             </div>
                                             <div class="form-group-mini">
-                                                <label
-                                                    >{t(
-                                                        "admin.theme.footer_link_color",
-                                                    )}</label
-                                                >
-                                                <div
-                                                    class="flex items-center gap-2"
-                                                >
-                                                    <input
-                                                        type="color"
-                                                        value={footerConfig.navColor ||
-                                                            "#000000"}
-                                                        oninput={(e) =>
-                                                            (footerConfig.navColor =
-                                                                e.currentTarget.value)}
-                                                        class="w-10 h-8 p-0 border-0 cursor-pointer"
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        bind:value={
-                                                            footerConfig.navColor
-                                                        }
-                                                        class="flex-1 text-sm p-1.5 border rounded"
-                                                    />
-                                                </div>
+                                                <ColorControl
+                                                    label={t("admin.theme.footer_link_color")}
+                                                    bind:value={footerConfig.navColor}
+                                                    compact={true}
+                                                    showPresets={false}
+                                                />
                                             </div>
                                             <div
                                                 class="form-group-mini col-span-2"
                                             >
-                                                <label
-                                                    >{t(
-                                                        "admin.theme.footer_link_hover",
-                                                    )}</label
-                                                >
-                                                <div
-                                                    class="flex items-center gap-2"
-                                                >
-                                                    <input
-                                                        type="color"
-                                                        value={footerConfig.navHoverColor ||
-                                                            "#000000"}
-                                                        oninput={(e) =>
-                                                            (footerConfig.navHoverColor =
-                                                                e.currentTarget.value)}
-                                                        class="w-10 h-8 p-0 border-0 cursor-pointer"
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        bind:value={
-                                                            footerConfig.navHoverColor
-                                                        }
-                                                        class="flex-1 text-sm p-1.5 border rounded"
-                                                        placeholder={t(
-                                                            "admin.theme.footer_link_hover_placeholder",
-                                                        )}
-                                                    />
-                                                </div>
+                                                <ColorControl
+                                                    label={t("admin.theme.footer_link_hover")}
+                                                    bind:value={footerConfig.navHoverColor}
+                                                    compact={true}
+                                                    showPresets={false}
+                                                />
                                             </div>
                                         </div>
 
@@ -6327,27 +6285,12 @@ header.blog-header.scrolled .header-inner {
                                 </div>
 
                                 <div class="form-group-mini mb-4">
-                                    <label
-                                        class="depth-4-label text-slate-700 font-semibold mb-2 block"
-                                    >
-                                        {t("admin.theme.footer_text_color")}
-                                    </label>
-                                    <div class="flex items-center gap-2">
-                                        <input
-                                            type="color"
-                                            bind:value={
-                                                footerConfig.mobile.text.color
-                                            }
-                                            class="w-8 h-8 p-0 border-0 cursor-pointer"
-                                        />
-                                        <input
-                                            type="text"
-                                            bind:value={
-                                                footerConfig.mobile.text.color
-                                            }
-                                            class="flex-1 text-[11px] p-1.5 border rounded bg-white"
-                                        />
-                                    </div>
+                                    <ColorControl
+                                        label={t("admin.theme.footer_text_color")}
+                                        bind:value={footerConfig.mobile.text.color}
+                                        compact={true}
+                                        showPresets={false}
+                                    />
                                 </div>
 
                                 <div class="form-group-mini mb-4">
@@ -6367,27 +6310,12 @@ header.blog-header.scrolled .header-inner {
                                 </div>
 
                                 <div class="form-group-mini mb-4">
-                                    <label
-                                        class="depth-4-label text-slate-700 font-semibold mb-2 block"
-                                    >
-                                        {t("admin.theme.footer_link_color")}
-                                    </label>
-                                    <div class="flex items-center gap-2">
-                                        <input
-                                            type="color"
-                                            bind:value={
-                                                footerConfig.mobile.navColor
-                                            }
-                                            class="w-8 h-8 p-0 border-0 cursor-pointer"
-                                        />
-                                        <input
-                                            type="text"
-                                            bind:value={
-                                                footerConfig.mobile.navColor
-                                            }
-                                            class="flex-1 text-[11px] p-1.5 border rounded bg-white"
-                                        />
-                                    </div>
+                                    <ColorControl
+                                        label={t("admin.theme.footer_link_color")}
+                                        bind:value={footerConfig.mobile.navColor}
+                                        compact={true}
+                                        showPresets={false}
+                                    />
                                 </div>
 
                                 <div class="form-group-mini mb-4">
@@ -8262,26 +8190,12 @@ header.blog-header.scrolled .header-inner {
 
                             {#if editingWidgetConfig.hoverEffect === "glow"}
                                 <div class="form-group mt-3">
-                                    <label class="depth-3-label"
-                                        >{t("admin.theme.glow_color")}</label
-                                    >
-                                    <div class="flex items-center gap-2">
-                                        <input
-                                            type="color"
-                                            bind:value={
-                                                editingWidgetConfig.glowColor
-                                            }
-                                            class="h-8 w-8 cursor-pointer border-0 p-0"
-                                        />
-                                        <input
-                                            type="text"
-                                            bind:value={
-                                                editingWidgetConfig.glowColor
-                                            }
-                                            placeholder="#3b82f6"
-                                            class="flex-1"
-                                        />
-                                    </div>
+                                    <ColorControl
+                                        label={t("admin.theme.glow_color")}
+                                        bind:value={editingWidgetConfig.glowColor}
+                                        compact={true}
+                                        showPresets={false}
+                                    />
                                     <p class="depth-4-hint">
                                         {t("admin.theme.glow_color_hint")}
                                     </p>

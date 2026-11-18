@@ -79,6 +79,23 @@
     let isScrolled = $state(false);
     let showMobileDrawer = $state(false);
 
+    function getContrastTextColor(bg: string): string {
+        const c = (bg || "").trim();
+        let r = 0, g = 0, b = 0, parsed = false;
+        if (/^#[0-9a-f]{3}$/i.test(c)) {
+            r = parseInt(c[1] + c[1], 16); g = parseInt(c[2] + c[2], 16); b = parseInt(c[3] + c[3], 16); parsed = true;
+        } else if (/^#[0-9a-f]{6}$/i.test(c)) {
+            r = parseInt(c.slice(1, 3), 16); g = parseInt(c.slice(3, 5), 16); b = parseInt(c.slice(5, 7), 16); parsed = true;
+        } else {
+            const m = c.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+            if (m) { r = +m[1]; g = +m[2]; b = +m[3]; parsed = true; }
+        }
+        if (!parsed) return "#ffffff";
+        return (r * 299 + g * 587 + b * 114) / 1000 >= 150 ? "#0f172a" : "#ffffff";
+    }
+    let loginBtnBg = $derived(rawHeaderConfig?.loginBgColor || themeConfig?.primary || "#3b82f6");
+    let loginBtnText = $derived(rawHeaderConfig?.loginTextColor || getContrastTextColor(loginBtnBg));
+
     let previewAreaEl = $state<HTMLElement | null>(null);
 
     function handleScroll(e: Event) {
@@ -851,6 +868,8 @@
             class:scrolled={isScrolled}
             style="
                 --header-height: {headerConfig.height || '64px'};
+                --login-btn-bg: {loginBtnBg};
+                --login-btn-text: {loginBtnText};
                 --scrolled-height: {headerConfig.scrolledHeight || '50px'};
                 --header-bg: {getBgValue(normalizedHeaderBg)};
                 --header-blur: {headerBlur}px;
@@ -2106,8 +2125,8 @@
     }
 
     .login-link {
-        background: var(--primary-color);
-        color: white;
+        background: var(--login-btn-bg, var(--primary-color));
+        color: var(--login-btn-text, #ffffff);
         padding: 0.4rem 0.8rem;
         border-radius: 6px;
         font-size: 0.8rem;
@@ -2155,7 +2174,7 @@
     }
 
     .login-input {
-        color: white !important;
+        color: var(--login-btn-text, #ffffff) !important;
         font-weight: 600;
     }
 

@@ -54,6 +54,22 @@
 
     let baseHeader = $derived(settings?.header || {});
     let theme = $derived(settings?.theme || {});
+    function getContrastTextColor(bg: string): string {
+        const c = (bg || "").trim();
+        let r = 0, g = 0, b = 0, parsed = false;
+        if (/^#[0-9a-f]{3}$/i.test(c)) {
+            r = parseInt(c[1] + c[1], 16); g = parseInt(c[2] + c[2], 16); b = parseInt(c[3] + c[3], 16); parsed = true;
+        } else if (/^#[0-9a-f]{6}$/i.test(c)) {
+            r = parseInt(c.slice(1, 3), 16); g = parseInt(c.slice(3, 5), 16); b = parseInt(c.slice(5, 7), 16); parsed = true;
+        } else {
+            const m = c.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+            if (m) { r = +m[1]; g = +m[2]; b = +m[3]; parsed = true; }
+        }
+        if (!parsed) return "#ffffff";
+        return (r * 299 + g * 587 + b * 114) / 1000 >= 150 ? "#0f172a" : "#ffffff";
+    }
+    let loginBtnBg = $derived(baseHeader.loginBgColor || theme.primary || "#3b82f6");
+    let loginBtnText = $derived(baseHeader.loginTextColor || getContrastTextColor(loginBtnBg));
     // 레이아웃 설정은 항상 데스크탑 기준값(baseHeader)을 사용합니다.
     // 모바일 전용 값들은 <header style=""> 에 선언된 CSS 커스텀 프로퍼티와
     // @media (max-width: 768px) 쿼리로 처리하여 CLS 및 CDN 캐싱 안정성을 확보합니다.
@@ -685,6 +701,8 @@
     class:header-two-line={isTwoLine}
     style="
         --header-height: {header.height || '64px'};
+        --login-btn-bg: {loginBtnBg};
+        --login-btn-text: {loginBtnText};
         --header-bg: {getBgValue(header.headerBackground) === 'transparent'
         ? 'var(--surface-color, #ffffff)'
         : getBgValue(header.headerBackground)};
@@ -1946,8 +1964,8 @@
         flex: none;
     }
     .login-link {
-        background: var(--primary-color);
-        color: white !important;
+        background: var(--login-btn-bg, var(--primary-color));
+        color: var(--login-btn-text, #ffffff) !important;
         padding: 0.5rem 1.25rem;
         border-radius: 8px;
         font-size: 0.95rem;
