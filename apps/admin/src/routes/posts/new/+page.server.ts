@@ -137,12 +137,13 @@ export const actions: Actions = {
                 const shouldSyndicate = status === 'published' && (item.submitToBoard === true || item.submitToBoard === 'true');
                 let isSyndicatedVal = shouldSyndicate ? 1 : 0;
 
+                const nowIso = new Date().toISOString();
                 await db.prepare(`
                     INSERT INTO posts (id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, is_syndicated, created_at, updated_at, published_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
-                    CASE WHEN ? = 'published' THEN datetime('now', '+9 hours') ELSE NULL END)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+                    CASE WHEN ? = 'published' THEN ? ELSE NULL END)
                 `).bind(
-                    id, title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
+                    id, title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, nowIso, nowIso, status, nowIso
                 ).run();
 
                 if (status === 'published') {

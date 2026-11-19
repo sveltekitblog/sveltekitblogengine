@@ -24,7 +24,15 @@
 export function formatDate(dateInput: string | Date | null | undefined, timezone?: string): string {
     if (!dateInput) return '';
 
-    const date = new Date(dateInput);
+    let normalizedInput: string | Date = dateInput;
+    if (typeof dateInput === 'string') {
+        const trimmed = dateInput.trim();
+        if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed)) {
+            normalizedInput = `${trimmed.replace(' ', 'T')}+09:00`;
+        }
+    }
+
+    const date = new Date(normalizedInput);
     if (isNaN(date.getTime())) return String(dateInput);
 
     const targetTimezone = timezone || 'UTC';

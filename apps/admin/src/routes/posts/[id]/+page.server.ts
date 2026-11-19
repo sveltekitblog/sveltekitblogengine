@@ -181,29 +181,30 @@ export const actions: Actions = {
                     hasPublishedChange = true;
                 }
                 
+                const nowIso = new Date().toISOString();
                 if (existing) {
                     await db.prepare(`
                         UPDATE posts
                         SET title = ?, slug = ?, content = ?, excerpt = ?, category_slug = ?, type = ?,
                              author_id = ?, status = ?, tags = ?, featured_image = ?, lang = ?,
                              content_type = ?, content_markdown = ?, thumbnail_fit = ?, is_syndicated = ?,
-                             updated_at = datetime('now', '+9 hours'),
+                             updated_at = ?,
                              published_at = CASE 
-                                 WHEN ? = 'published' THEN COALESCE(published_at, datetime('now', '+9 hours'))
+                                 WHEN ? = 'published' THEN COALESCE(published_at, ?)
                                  ELSE NULL 
                              END
                         WHERE id = ?
                     `).bind(
                         title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type,
-                        author_id, status, tagsJson, featured_image, lang, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status, id
+                        author_id, status, tagsJson, featured_image, lang, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, nowIso, status, nowIso, id
                     ).run();
                 } else {
                     await db.prepare(`
                         INSERT INTO posts (id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, is_syndicated, created_at, updated_at, published_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'), datetime('now', '+9 hours'), 
-                        CASE WHEN ? = 'published' THEN datetime('now', '+9 hours') ELSE NULL END)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+                        CASE WHEN ? = 'published' THEN ? ELSE NULL END)
                     `).bind(
-                        id, title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, status
+                        id, title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, nowIso, nowIso, status, nowIso
                     ).run();
                 }
 

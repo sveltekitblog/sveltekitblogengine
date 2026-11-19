@@ -83,16 +83,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
         // 3. Insert reply entry
         const entryId = crypto.randomUUID();
+        const nowIso = new Date().toISOString();
         await userDb.prepare(`
             INSERT INTO entries (id, type, target_id, user_id, parent_id, content, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'))
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `).bind(
             entryId, 
             type, 
             target_id || null, 
             adminUserId, 
             parent_id || null, 
-            content
+            content,
+            nowIso
         ).run();
 
         return json({ success: true, id: entryId });
@@ -160,11 +162,12 @@ export const DELETE: RequestHandler = async ({ request, url, locals }) => {
             LEFT JOIN user u ON e.user_id = u.id
             WHERE e.id = ?
         `).bind(id).first();
+        const nowIso = new Date().toISOString();
         if (target) {
             await userDb.prepare(`
                 INSERT OR IGNORE INTO deleted_entries (id, deleted_by, original_data, deleted_at)
-                VALUES (?, 'admin', ?, datetime('now', '+9 hours'))
-            `).bind(target.id, JSON.stringify(target)).run();
+                VALUES (?, 'admin', ?, ?)
+            `).bind(target.id, JSON.stringify(target), nowIso).run();
         }
 
         // Archive child entries
@@ -178,8 +181,8 @@ export const DELETE: RequestHandler = async ({ request, url, locals }) => {
             for (const child of children.results) {
                 await userDb.prepare(`
                     INSERT OR IGNORE INTO deleted_entries (id, deleted_by, original_data, deleted_at)
-                    VALUES (?, 'admin', ?, datetime('now', '+9 hours'))
-                `).bind(child.id as string, JSON.stringify(child)).run();
+                    VALUES (?, 'admin', ?, ?)
+                `).bind(child.id as string, JSON.stringify(child), nowIso).run();
             }
         }
 

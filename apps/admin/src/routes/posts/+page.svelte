@@ -16,10 +16,10 @@
 -->
 
 <script lang="ts">
-    import { enhance } from "$app/forms";
+    import { enhance, deserialize } from "$app/forms";
     import type { PageData } from "./$types";
     import { invalidateAll } from "$app/navigation";
-    import { FileText, Edit2, Trash2, Plus, Eye, Calendar, Tag, RotateCw, Folder, File, Clock, HelpCircle } from "lucide-svelte";
+    import { FileText, Edit2, Trash2, Plus, Eye, Calendar, Tag, RotateCw, Folder, File, Clock, HelpCircle, Search, ArrowUpDown, FolderEdit, EyeOff, Send, X } from "lucide-svelte";
     import { t } from "$lib/i18n.svelte";
 
     let { data } = $props<{ data: PageData }>();
@@ -30,6 +30,7 @@
     let cachedPosts = $derived(data.posts || []);
     let cachedCategories = $derived(data.categories || []);
     let cachedLanguages = $derived(data.languages || []);
+    let siteTimezone = $derived((data as any).timezone || 'Asia/Seoul');
     let isRefreshing = $state(false);
 
     // 수동 새로고침 함수 (SvelteKit 표준 캐시 무효화)
@@ -53,27 +54,43 @@
     function formatDate(date: string | number) {
         if (!date) return "-";
 
-        // If it's a number (timestamp), convert to Date object
-        const d =
-            typeof date === "number"
-                ? new Date(date)
-                : new Date(date.replace(" ", "T"));
+        let normalized: string | number = date;
+        if (typeof date === "string") {
+            const trimmed = date.trim();
+            if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed)) {
+                normalized = `${trimmed.replace(" ", "T")}+09:00`;
+            }
+        }
 
+        const d = new Date(normalized);
         if (isNaN(d.getTime())) {
-            // Fallback for weird formats - directly use string part if possible
             if (typeof date === "string" && date.length >= 16) {
-                return date.substring(0, 16); // "YYYY-MM-DD HH:mm"
+                return date.substring(0, 16);
             }
             return "Invalid Date";
         }
 
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        const hours = String(d.getHours()).padStart(2, "0");
-        const minutes = String(d.getMinutes()).padStart(2, "0");
-
-        return `${year}-${month}-${day} ${hours}:${minutes}`;
+        try {
+            const parts = new Intl.DateTimeFormat("en-CA", {
+                timeZone: siteTimezone,
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false
+            }).formatToParts(d);
+            const get = (type: string) => parts.find(p => p.type === type)?.value || "";
+            const hour = get("hour") === "24" ? "00" : get("hour");
+            return `${get("year")}-${get("month")}-${get("day")} ${hour}:${get("minute")}`;
+        } catch {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, "0");
+            const day = String(d.getDate()).padStart(2, "0");
+            const hours = String(d.getHours()).padStart(2, "0");
+            const minutes = String(d.getMinutes()).padStart(2, "0");
+            return `${year}-${month}-${day} ${hours}:${minutes}`;
+        }
     }
 
     // Language filtering state (1단 언어 축)
@@ -181,25 +198,47 @@
         return Array.from(map.values()).sort((a, b) => b.count - a.count);
     });
 
-    // 2단 최종 필터링된 포스트 목록
+    // 검색 & 정렬 상태
+    let searchQuery = $state("");
+    let sortBy = $state<'newest' | 'oldest' | 'views' | 'likes' | 'title'>('newest');
+
+    // 2단 최종 필터링 + 검색 + 정렬된 포스트 목록
     let filteredPosts = $derived.by(() => {
-        if (activeFilter === 'all') {
-            return postsByLang;
-        }
+        let base = postsByLang;
         if (activeFilter === 'draft') {
-            return postsByLang.filter((p: any) => p.status === 'draft');
-        }
-        if (activeFilter === 'page') {
-            return postsByLang.filter((p: any) => p.type === 'page');
-        }
-        if (activeFilter === 'uncategorized') {
-            return postsByLang.filter((p: any) => p.type !== 'page' && (!p.category_slug || p.category_slug.trim() === ''));
-        }
-        if (activeFilter.startsWith('cat:')) {
+            base = postsByLang.filter((p: any) => p.status === 'draft');
+        } else if (activeFilter === 'page') {
+            base = postsByLang.filter((p: any) => p.type === 'page');
+        } else if (activeFilter === 'uncategorized') {
+            base = postsByLang.filter((p: any) => p.type !== 'page' && (!p.category_slug || p.category_slug.trim() === ''));
+        } else if (activeFilter.startsWith('cat:')) {
             const catSlug = activeFilter.slice(4);
-            return postsByLang.filter((p: any) => p.type !== 'page' && p.category_slug === catSlug);
+            base = postsByLang.filter((p: any) => p.type !== 'page' && p.category_slug === catSlug);
         }
-        return postsByLang;
+
+        const q = searchQuery.trim().toLowerCase();
+        if (q) {
+            base = base.filter((p: any) =>
+                (p.title || '').toLowerCase().includes(q) ||
+                (p.slug || '').toLowerCase().includes(q)
+            );
+        }
+
+        if (sortBy === 'newest') return base;
+        const copy = [...base];
+        if (sortBy === 'oldest') {
+            return copy.reverse();
+        }
+        if (sortBy === 'views') {
+            return copy.sort((a: any, b: any) => (b.view_count || 0) - (a.view_count || 0));
+        }
+        if (sortBy === 'likes') {
+            return copy.sort((a: any, b: any) => (b.like_count || 0) - (a.like_count || 0));
+        }
+        if (sortBy === 'title') {
+            return copy.sort((a: any, b: any) => String(a.title || '').localeCompare(String(b.title || '')));
+        }
+        return copy;
     });
 
     let selectedLangObj = $derived(availableLanguages.find(l => l.code === selectedLang));
@@ -207,6 +246,7 @@
     function selectLanguageTab(code: string) {
         selectedLang = code;
         currentPage = 1;
+        selectedPostIds = new Set();
         // 선택된 특정 카테고리가 새 언어에 없으면 'all'로 안전 복귀
         if (activeFilter.startsWith('cat:')) {
             const catSlug = activeFilter.slice(4);
@@ -220,6 +260,7 @@
     function selectFilterTab(filterKey: string) {
         activeFilter = filterKey;
         currentPage = 1;
+        selectedPostIds = new Set();
     }
 
     // Pagination & Numbering state
@@ -288,6 +329,262 @@
 
         return map;
     });
+
+    // ── 체크박스 선택 및 일괄 작업 상태 ─────────────────────────────────
+    let selectedPostIds = $state<Set<string>>(new Set());
+    let selectedCount = $derived(selectedPostIds.size);
+    let isAllPageSelected = $derived(
+        paginatedPosts.length > 0 && paginatedPosts.every((p: any) => selectedPostIds.has(p.id))
+    );
+    let selectedPosts = $derived(cachedPosts.filter((p: any) => selectedPostIds.has(p.id)));
+    let selectedSyndicatedCount = $derived(selectedPosts.filter((p: any) => p.is_syndicated === 1).length);
+
+    function toggleSelectAllPage() {
+        const next = new Set(selectedPostIds);
+        if (isAllPageSelected) {
+            paginatedPosts.forEach((p: any) => next.delete(p.id));
+        } else {
+            paginatedPosts.forEach((p: any) => next.add(p.id));
+        }
+        selectedPostIds = next;
+    }
+
+    function togglePostSelection(id: string) {
+        const next = new Set(selectedPostIds);
+        if (next.has(id)) {
+            next.delete(id);
+        } else {
+            next.add(id);
+        }
+        selectedPostIds = next;
+    }
+
+    function clearSelection() {
+        selectedPostIds = new Set();
+    }
+
+    // ── 다국어 카테고리 수정 모달 상태 ─────────────────────────────────
+    let editCategoryModal = $state<{
+        oldSlug: string;
+        newSlug: string;
+        translations: Array<{ lang: string; langName: string; name: string }>;
+        errorMsg: string;
+        isSubmitting: boolean;
+    } | null>(null);
+
+    function openEditCategoryModal(slug: string, e: MouseEvent) {
+        e.stopPropagation();
+        const langs = availableLanguages.length > 0 ? availableLanguages : [{ code: 'ko', name: '한국어' }];
+        const translations = langs.map((l) => {
+            const match = cachedCategories.find((c: any) => c.slug === slug && c.lang === l.code);
+            return {
+                lang: l.code,
+                langName: l.name || l.code.toUpperCase(),
+                name: match?.name || ''
+            };
+        });
+        editCategoryModal = {
+            oldSlug: slug,
+            newSlug: slug,
+            translations,
+            errorMsg: '',
+            isSubmitting: false
+        };
+    }
+
+    async function submitEditCategory(allowMerge = false) {
+        if (!editCategoryModal) return;
+        const cleanNewSlug = editCategoryModal.newSlug.trim();
+        if (!cleanNewSlug) {
+            editCategoryModal.errorMsg = t('admin.posts.cat_err_slug_required', { default: '카테고리 슬러그를 입력하세요.' });
+            return;
+        }
+        const missing = editCategoryModal.translations.find((tr) => !tr.name.trim());
+        if (missing) {
+            editCategoryModal.errorMsg = t('admin.posts.cat_err_name_required', { lang: missing.langName, default: `모든 언어의 카테고리명을 입력해야 합니다. (${missing.langName})` });
+            return;
+        }
+
+        editCategoryModal.errorMsg = '';
+        editCategoryModal.isSubmitting = true;
+        try {
+            const formData = new FormData();
+            formData.set('oldSlug', editCategoryModal.oldSlug);
+            formData.set('newSlug', cleanNewSlug);
+            formData.set('translations', JSON.stringify(
+                editCategoryModal.translations.map((tr) => ({ lang: tr.lang, name: tr.name.trim() }))
+            ));
+            if (allowMerge) formData.set('allowMerge', 'true');
+
+            const res = await fetch('?/renameCategory', { method: 'POST', body: formData });
+            const result = deserialize(await res.text());
+
+            if (result.type === 'failure') {
+                const errData = result.data as any;
+                if (errData?.error === 'TARGET_CATEGORY_EXISTS') {
+                    editCategoryModal.isSubmitting = false;
+                    const ok = confirm(t('admin.posts.cat_confirm_merge', { slug: cleanNewSlug, default: `"${cleanNewSlug}" 카테고리가 이미 존재합니다. 기존 카테고리로 병합(Merge)하시겠습니까?` }));
+                    if (ok) {
+                        await submitEditCategory(true);
+                    }
+                    return;
+                }
+                editCategoryModal.errorMsg = errData?.error || t('admin.posts.cat_err_save', { default: '카테고리 변경에 실패했습니다.' });
+                return;
+            }
+
+            if (result.type === 'success') {
+                if (activeFilter === `cat:${editCategoryModal.oldSlug}`) {
+                    activeFilter = `cat:${cleanNewSlug}`;
+                }
+                editCategoryModal = null;
+                await invalidateAll();
+            }
+        } catch (err: any) {
+            editCategoryModal.errorMsg = err?.message || t('admin.posts.bulk_error_generic', { default: '처리 중 오류가 발생했습니다.' });
+        } finally {
+            if (editCategoryModal) editCategoryModal.isSubmitting = false;
+        }
+    }
+
+    // ── 일괄 작업 모달 및 10건 단위 청크 실행 ────────────────────────────
+    let bulkProgress = $state<{ active: boolean; label: string; processed: number; total: number }>({
+        active: false,
+        label: '',
+        processed: 0,
+        total: 0
+    });
+
+    let bulkCategoryModal = $state<{
+        targetSlug: string;
+        isNewCategory: boolean;
+        translations: Array<{ lang: string; langName: string; name: string }>;
+        errorMsg: string;
+    } | null>(null);
+
+    let bulkDeleteModalOpen = $state(false);
+
+    let uniqueCategorySlugs = $derived.by(() => {
+        const map = new Map<string, string>();
+        cachedCategories.forEach((c: any) => {
+            if (c?.slug && !map.has(c.slug)) {
+                map.set(c.slug, c.name || c.slug);
+            }
+        });
+        return Array.from(map.entries()).map(([slug, name]) => ({ slug, name }));
+    });
+
+    function openBulkCategoryModal() {
+        const langs = availableLanguages.length > 0 ? availableLanguages : [{ code: 'ko', name: '한국어' }];
+        const defaultSlug = uniqueCategorySlugs[0]?.slug || '';
+        bulkCategoryModal = {
+            targetSlug: defaultSlug,
+            isNewCategory: uniqueCategorySlugs.length === 0,
+            translations: langs.map((l) => ({
+                lang: l.code,
+                langName: l.name || l.code.toUpperCase(),
+                name: ''
+            })),
+            errorMsg: ''
+        };
+    }
+
+    async function runBulkInChunks(
+        actionPath: string,
+        label: string,
+        ids: string[],
+        extraFields: Record<string, string> = {}
+    ): Promise<{ ok: boolean; error?: string }> {
+        const chunkSize = 10;
+        bulkProgress = { active: true, label, processed: 0, total: ids.length };
+        try {
+            for (let i = 0; i < ids.length; i += chunkSize) {
+                const chunk = ids.slice(i, i + chunkSize);
+                const formData = new FormData();
+                formData.set('ids', JSON.stringify(chunk));
+                for (const [k, v] of Object.entries(extraFields)) {
+                    formData.set(k, v);
+                }
+                const res = await fetch(actionPath, { method: 'POST', body: formData });
+                const result = deserialize(await res.text());
+                if (result.type === 'failure') {
+                    return { ok: false, error: (result.data as any)?.error || t('admin.posts.bulk_error_generic', { default: '처리 중 오류가 발생했습니다.' }) };
+                }
+                bulkProgress.processed = Math.min(i + chunk.length, ids.length);
+            }
+            return { ok: true };
+        } catch (err: any) {
+            return { ok: false, error: err?.message || t('admin.posts.bulk_error_network', { default: '네트워크 오류가 발생했습니다.' }) };
+        } finally {
+            bulkProgress = { active: false, label: '', processed: 0, total: 0 };
+        }
+    }
+
+    async function submitBulkCategory() {
+        if (!bulkCategoryModal) return;
+        const targetSlug = bulkCategoryModal.targetSlug.trim();
+        if (!targetSlug) {
+            bulkCategoryModal.errorMsg = t('admin.posts.bulk_cat_err_slug', { default: '카테고리 슬러그를 선택하거나 입력하세요.' });
+            return;
+        }
+        if (bulkCategoryModal.isNewCategory) {
+            const missing = bulkCategoryModal.translations.find((tr) => !tr.name.trim());
+            if (missing) {
+                bulkCategoryModal.errorMsg = t('admin.posts.bulk_cat_err_names', { lang: missing.langName, default: `새 카테고리의 모든 언어 이름을 입력하세요. (${missing.langName})` });
+                return;
+            }
+        }
+
+        const ids = Array.from(selectedPostIds);
+        const translationsPayload = bulkCategoryModal.isNewCategory
+            ? JSON.stringify(bulkCategoryModal.translations.map((tr) => ({ lang: tr.lang, name: tr.name.trim() })))
+            : '[]';
+
+        bulkCategoryModal = null;
+        const res = await runBulkInChunks('?/bulkUpdateCategory', t('admin.posts.bulk_progress_category', { default: '카테고리 일괄 변경 중...' }), ids, {
+            targetSlug,
+            translations: translationsPayload
+        });
+        if (!res.ok) {
+            alert(res.error);
+        } else {
+            clearSelection();
+            await invalidateAll();
+        }
+    }
+
+    async function executeBulkStatus(targetStatus: 'draft' | 'published') {
+        const ids = Array.from(selectedPostIds);
+        if (ids.length === 0) return;
+        const msg = targetStatus === 'draft'
+            ? t('admin.posts.bulk_confirm_draft', { count: ids.length, default: `선택한 ${ids.length}개 포스트를 초안(비공개)으로 전환하시겠습니까?` })
+            : t('admin.posts.bulk_confirm_publish', { count: ids.length, default: `선택한 ${ids.length}개 포스트를 공개 발행하시겠습니까?` });
+        if (!confirm(msg)) return;
+
+        const label = targetStatus === 'draft'
+            ? t('admin.posts.bulk_progress_draft', { default: '초안으로 전환 중...' })
+            : t('admin.posts.bulk_progress_publish', { default: '일괄 발행 중...' });
+        const res = await runBulkInChunks('?/bulkUpdateStatus', label, ids, { targetStatus });
+        if (!res.ok) {
+            alert(res.error);
+        } else {
+            clearSelection();
+            await invalidateAll();
+        }
+    }
+
+    async function executeBulkDelete() {
+        const ids = Array.from(selectedPostIds);
+        if (ids.length === 0) return;
+        bulkDeleteModalOpen = false;
+        const res = await runBulkInChunks('?/bulkDelete', t('admin.posts.bulk_progress_delete', { default: '선택한 포스트 삭제 중...' }), ids);
+        if (!res.ok) {
+            alert(res.error);
+        } else {
+            clearSelection();
+            await invalidateAll();
+        }
+    }
 </script>
 
 <div class="admin-container">
@@ -356,15 +653,25 @@
         </button>
 
         {#each categoryList as cat}
-            <button
-                type="button"
-                class="cat-filter-tab {activeFilter === `cat:${cat.slug}` ? 'active' : ''}"
-                onclick={() => selectFilterTab(`cat:${cat.slug}`)}
-            >
-                <Folder size={13} class="tab-icon cat-icon" />
-                <span class="cat-name">{cat.name}</span>
-                <span class="cat-count-badge">{cat.count}</span>
-            </button>
+            <div class="cat-filter-chip-wrap {activeFilter === `cat:${cat.slug}` ? 'active' : ''}">
+                <button
+                    type="button"
+                    class="cat-filter-tab {activeFilter === `cat:${cat.slug}` ? 'active' : ''}"
+                    onclick={() => selectFilterTab(`cat:${cat.slug}`)}
+                >
+                    <Folder size={13} class="tab-icon cat-icon" />
+                    <span class="cat-name">{cat.name}</span>
+                    <span class="cat-count-badge">{cat.count}</span>
+                </button>
+                <button
+                    type="button"
+                    class="cat-edit-btn"
+                    title={t('admin.posts.cat_edit_title', { default: '카테고리 이름·슬러그 수정' })}
+                    onclick={(e) => openEditCategoryModal(cat.slug, e)}
+                >
+                    <Edit2 size={12} />
+                </button>
+            </div>
         {/each}
 
         <div class="filter-divider"></div>
@@ -402,10 +709,78 @@
         {/if}
     </div>
 
+    <!-- 검색 및 정렬 툴바 -->
+    <div class="posts-toolbar">
+        <div class="search-box">
+            <Search size={15} class="search-icon" />
+            <input
+                type="text"
+                bind:value={searchQuery}
+                oninput={() => { currentPage = 1; clearSelection(); }}
+                placeholder={t('admin.posts.search_placeholder', { default: '제목 또는 슬러그로 검색...' })}
+                aria-label={t('admin.posts.search_placeholder', { default: '제목 또는 슬러그로 검색...' })}
+            />
+            {#if searchQuery}
+                <button type="button" class="search-clear" onclick={() => { searchQuery = ''; currentPage = 1; clearSelection(); }} title={t('admin.posts.search_clear', { default: '검색어 지우기' })}>
+                    <X size={14} />
+                </button>
+            {/if}
+        </div>
+        <div class="sort-box">
+            <ArrowUpDown size={14} />
+            <select bind:value={sortBy} onchange={() => { currentPage = 1; clearSelection(); }} aria-label="Sort posts">
+                <option value="newest">{t('admin.posts.sort_newest', { default: '최신순' })}</option>
+                <option value="oldest">{t('admin.posts.sort_oldest', { default: '오래된순' })}</option>
+                <option value="views">{t('admin.posts.sort_views', { default: '조회수순' })}</option>
+                <option value="likes">{t('admin.posts.sort_likes', { default: '좋아요순' })}</option>
+                <option value="title">{t('admin.posts.sort_title', { default: '제목순' })}</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- 일괄 작업 바 -->
+    {#if selectedCount > 0 || bulkProgress.active}
+        <div class="bulk-action-bar">
+            {#if bulkProgress.active}
+                <div class="bulk-progress-info">
+                    <RotateCw size={15} class="spin" />
+                    <span>{bulkProgress.label} ({bulkProgress.processed} / {bulkProgress.total})</span>
+                </div>
+            {:else}
+                <div class="bulk-selection-info">
+                    <span>{t('admin.posts.bulk_selected_count', { count: selectedCount, default: `${selectedCount}개 선택됨` })}</span>
+                    <button type="button" class="btn-bulk-clear" onclick={clearSelection}>{t('admin.posts.bulk_clear', { default: '선택 해제' })}</button>
+                </div>
+                <div class="bulk-buttons">
+                    <button type="button" class="btn-bulk" onclick={openBulkCategoryModal}>
+                        <FolderEdit size={14} /> {t('admin.posts.bulk_change_category', { default: '카테고리 변경' })}
+                    </button>
+                    <button type="button" class="btn-bulk" onclick={() => executeBulkStatus('draft')}>
+                        <EyeOff size={14} /> {t('admin.posts.bulk_to_draft', { default: '초안으로 전환' })}
+                    </button>
+                    <button type="button" class="btn-bulk btn-bulk-publish" onclick={() => executeBulkStatus('published')}>
+                        <Send size={14} /> {t('admin.posts.bulk_publish', { default: '일괄 발행' })}
+                    </button>
+                    <button type="button" class="btn-bulk btn-bulk-delete" onclick={() => { bulkDeleteModalOpen = true; }}>
+                        <Trash2 size={14} /> {t('admin.posts.bulk_delete', { default: '선택 삭제' })}
+                    </button>
+                </div>
+            {/if}
+        </div>
+    {/if}
+
     <div class="table-container">
         <table>
             <thead>
                 <tr>
+                    <th class="col-check">
+                        <input
+                            type="checkbox"
+                            checked={isAllPageSelected}
+                            onchange={toggleSelectAllPage}
+                            aria-label="현재 페이지 전체 선택"
+                        />
+                    </th>
                     <th>{t('admin.posts.col.title', { default: '제목 & 슬러그' })}</th>
                     <th>{t('blog.nav.category', { default: '카테고리' })}</th>
                     <th class="col-views">{t('admin.posts.col.views', { default: '조회수' })}</th>
@@ -417,7 +792,7 @@
             <tbody>
                 {#if paginatedPosts.length === 0}
                     <tr>
-                        <td colspan="6" class="empty-state">
+                        <td colspan="7" class="empty-state">
                             <div class="empty-lang-box">
                                 <p class="empty-lang-title">
                                     {#if activeFilter === 'page'}
@@ -445,7 +820,15 @@
                     </tr>
                 {/if}
                 {#each paginatedPosts as post}
-                    <tr>
+                    <tr class={selectedPostIds.has(post.id) ? 'row-selected' : ''}>
+                        <td class="col-check">
+                            <input
+                                type="checkbox"
+                                checked={selectedPostIds.has(post.id)}
+                                onchange={() => togglePostSelection(post.id)}
+                                aria-label="{post.title} 선택"
+                            />
+                        </td>
                         <td>
                             <div class="post-title flex items-center flex-wrap gap-1.5">
                                 {#if postNumberMap.has(post.id)}
@@ -499,9 +882,9 @@
 
     {#if totalPages > 1}
         <div class="pagination-controls">
-            <button class="btn-page" disabled={currentPage === 1} onclick={() => currentPage--}>{t('admin.posts.page_prev', { default: "이전" })}</button>
+            <button class="btn-page" disabled={currentPage === 1} onclick={() => { currentPage--; clearSelection(); }}>{t('admin.posts.page_prev', { default: "이전" })}</button>
             <span class="page-info">{currentPage} / {totalPages}</span>
-            <button class="btn-page" disabled={currentPage === totalPages} onclick={() => currentPage++}>{t('admin.posts.page_next', { default: "다음" })}</button>
+            <button class="btn-page" disabled={currentPage === totalPages} onclick={() => { currentPage++; clearSelection(); }}>{t('admin.posts.page_next', { default: "다음" })}</button>
         </div>
     {/if}
 </div>
@@ -555,6 +938,141 @@
                         >{t('admin.posts.action_delete', { default: "삭제" })}</button
                     >
                 </form>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- 다국어 카테고리 수정 모달 -->
+{#if editCategoryModal}
+    <div class="modal-overlay" onclick={() => { if (!editCategoryModal?.isSubmitting) editCategoryModal = null; }}>
+        <div class="modal modal-wide" onclick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
+                <h2>📁 {t('admin.posts.cat_modal_title', { default: '카테고리 이름·슬러그 수정' })}</h2>
+            </div>
+            <div class="modal-body">
+                <div class="form-field">
+                    <label for="edit-cat-slug">{t('admin.posts.cat_slug_label', { default: '공통 슬러그 (영문 URL 키)' })}</label>
+                    <input
+                        id="edit-cat-slug"
+                        type="text"
+                        bind:value={editCategoryModal.newSlug}
+                        placeholder={t('admin.posts.cat_slug_placeholder', { default: '예: dev, review' })}
+                        disabled={editCategoryModal.isSubmitting}
+                    />
+                    <small class="field-help">{t('admin.posts.cat_slug_help', { slug: editCategoryModal.oldSlug, default: `기존 슬러그: ${editCategoryModal.oldSlug} — 변경 시 해당 카테고리의 모든 포스트에 즉시 반영됩니다.` })}</small>
+                </div>
+
+                <div class="form-field">
+                    <span class="field-group-label">{t('admin.posts.cat_names_label', { default: '언어별 카테고리명 (모든 언어 필수 입력)' })}</span>
+                    <div class="lang-inputs-grid">
+                        {#each editCategoryModal.translations as tr}
+                            <div class="lang-input-row">
+                                <span class="lang-tag">{tr.lang === 'ko' ? 'KR' : tr.lang.toUpperCase()}</span>
+                                <input
+                                    type="text"
+                                    bind:value={tr.name}
+                                    placeholder={t('admin.posts.cat_name_placeholder', { lang: tr.langName, default: `${tr.langName} 카테고리명` })}
+                                    disabled={editCategoryModal.isSubmitting}
+                                />
+                            </div>
+                        {/each}
+                    </div>
+                </div>
+
+                {#if editCategoryModal.errorMsg}
+                    <p class="modal-error">{editCategoryModal.errorMsg}</p>
+                {/if}
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" disabled={editCategoryModal.isSubmitting} onclick={() => { editCategoryModal = null; }}>{t('blog.common.cancel', { default: '취소' })}</button>
+                <button type="button" class="btn-primary-modal" disabled={editCategoryModal.isSubmitting} onclick={() => submitEditCategory(false)}>
+                    {editCategoryModal.isSubmitting ? t('admin.posts.cat_saving', { default: '저장 중...' }) : t('admin.posts.cat_save', { default: '저장' })}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- 일괄 카테고리 변경 모달 -->
+{#if bulkCategoryModal}
+    <div class="modal-overlay" onclick={() => { bulkCategoryModal = null; }}>
+        <div class="modal modal-wide" onclick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
+                <h2>📂 {t('admin.posts.bulk_cat_modal_title', { count: selectedCount, default: `선택 포스트 카테고리 일괄 변경 (${selectedCount}건)` })}</h2>
+            </div>
+            <div class="modal-body">
+                <div class="mode-toggle-row">
+                    <label>
+                        <input type="radio" name="bulkCatMode" checked={!bulkCategoryModal.isNewCategory} onchange={() => { if (bulkCategoryModal) { bulkCategoryModal.isNewCategory = false; bulkCategoryModal.targetSlug = uniqueCategorySlugs[0]?.slug || ''; } }} />
+                        {t('admin.posts.bulk_cat_mode_existing', { default: '기존 카테고리 선택' })}
+                    </label>
+                    <label>
+                        <input type="radio" name="bulkCatMode" checked={bulkCategoryModal.isNewCategory} onchange={() => { if (bulkCategoryModal) { bulkCategoryModal.isNewCategory = true; bulkCategoryModal.targetSlug = ''; } }} />
+                        {t('admin.posts.bulk_cat_mode_new', { default: '새 카테고리 직접 입력' })}
+                    </label>
+                </div>
+
+                {#if !bulkCategoryModal.isNewCategory}
+                    <div class="form-field">
+                        <label for="bulk-cat-select">{t('admin.posts.bulk_cat_select_label', { default: '대상 카테고리' })}</label>
+                        <select id="bulk-cat-select" bind:value={bulkCategoryModal.targetSlug}>
+                            {#each uniqueCategorySlugs as c}
+                                <option value={c.slug}>{c.name} ({c.slug})</option>
+                            {/each}
+                        </select>
+                    </div>
+                {:else}
+                    <div class="form-field">
+                        <label for="bulk-cat-new-slug">{t('admin.posts.bulk_cat_new_slug_label', { default: '새 카테고리 슬러그' })}</label>
+                        <input id="bulk-cat-new-slug" type="text" bind:value={bulkCategoryModal.targetSlug} placeholder={t('admin.posts.cat_slug_placeholder', { default: '예: tech, news' })} />
+                    </div>
+                    <div class="form-field">
+                        <span class="field-group-label">{t('admin.posts.bulk_cat_new_names_label', { default: '새 카테고리 언어별 이름 (모든 언어 필수)' })}</span>
+                        <div class="lang-inputs-grid">
+                            {#each bulkCategoryModal.translations as tr}
+                                <div class="lang-input-row">
+                                    <span class="lang-tag">{tr.lang === 'ko' ? 'KR' : tr.lang.toUpperCase()}</span>
+                                    <input type="text" bind:value={tr.name} placeholder={t('admin.posts.cat_name_placeholder', { lang: tr.langName, default: `${tr.langName} 카테고리명` })} />
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
+
+                <small class="field-help">{t('admin.posts.bulk_cat_page_notice', { default: '※ 정적 페이지(Page)가 포함된 경우 카테고리 변경 대상에서 자동으로 제외됩니다.' })}</small>
+                {#if bulkCategoryModal.errorMsg}
+                    <p class="modal-error">{bulkCategoryModal.errorMsg}</p>
+                {/if}
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" onclick={() => { bulkCategoryModal = null; }}>{t('blog.common.cancel', { default: '취소' })}</button>
+                <button type="button" class="btn-primary-modal" onclick={submitBulkCategory}>{t('admin.posts.bulk_cat_apply', { default: '일괄 변경' })}</button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- 일괄 삭제 확인 모달 -->
+{#if bulkDeleteModalOpen}
+    <div class="modal-overlay" onclick={() => { bulkDeleteModalOpen = false; }}>
+        <div class="modal" onclick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
+                <h2>⚠️ {t('admin.posts.bulk_delete_modal_title', { default: '선택 포스트 일괄 삭제' })}</h2>
+            </div>
+            <div class="modal-body">
+                <p>{t('admin.posts.bulk_delete_confirm_msg', { count: selectedCount, default: `선택한 ${selectedCount}개의 포스트를 정말 삭제하시겠습니까?` })}</p>
+                {#if selectedSyndicatedCount > 0}
+                    <div style="margin: 0.85rem 0; padding: 0.75rem; background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; font-size: 0.8125rem; color: #0369a1; line-height: 1.45;">
+                        <span style="font-weight: 700; display: block; margin-bottom: 0.25rem;">🌐 {t('admin.posts.bulk_delete_hub_title', { count: selectedSyndicatedCount, default: `허브 연동 포스트 ${selectedSyndicatedCount}건 포함` })}</span>
+                        {t('admin.posts.bulk_delete_hub_desc', { default: '• 추천(좋아요)이 없는 글은 허브에서 완전 삭제되며, 추천이 1개 이상 있는 글은 통계 보존을 위해 허브 피드에서 비공개(숨김) 처리됩니다.' })}
+                    </div>
+                {/if}
+                <p class="warning">{t('admin.common.warning_irreversible', { default: '이 작업은 되돌릴 수 없습니다.' })}</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" onclick={() => { bulkDeleteModalOpen = false; }}>{t('blog.common.cancel', { default: '취소' })}</button>
+                <button type="button" class="btn-confirm-delete" onclick={executeBulkDelete}>{t('admin.posts.bulk_delete_confirm_btn', { default: '일괄 삭제' })}</button>
             </div>
         </div>
     </div>
@@ -1108,5 +1626,279 @@
     }
     .btn-confirm-delete:hover {
         background: #dc2626;
+    }
+
+    /* Category chip edit button */
+    .cat-filter-chip-wrap {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 9999px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        transition: all 0.15s ease;
+    }
+    .cat-filter-chip-wrap .cat-filter-tab {
+        border: none;
+        background: transparent;
+    }
+    .cat-filter-chip-wrap.active {
+        background: #3b82f6;
+        border-color: #3b82f6;
+    }
+    .cat-edit-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.25rem 0.5rem 0.25rem 0.15rem;
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        cursor: pointer;
+        border-radius: 0 9999px 9999px 0;
+    }
+    .cat-edit-btn:hover {
+        color: #1e293b;
+    }
+    .cat-filter-chip-wrap.active .cat-edit-btn {
+        color: rgba(255, 255, 255, 0.85);
+    }
+    .cat-filter-chip-wrap.active .cat-edit-btn:hover {
+        color: #ffffff;
+    }
+
+    /* Search & sort toolbar */
+    .posts-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+    .search-box {
+        position: relative;
+        flex: 1;
+        min-width: 220px;
+        max-width: 420px;
+        display: flex;
+        align-items: center;
+    }
+    .search-box :global(.search-icon) {
+        position: absolute;
+        left: 0.75rem;
+        color: #9ca3af;
+        pointer-events: none;
+    }
+    .search-box input {
+        width: 100%;
+        padding: 0.5rem 2rem 0.5rem 2.25rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        background: #ffffff;
+        color: #111827;
+    }
+    .search-box input:focus {
+        outline: none;
+        border-color: #3b82f6;
+    }
+    .search-clear {
+        position: absolute;
+        right: 0.5rem;
+        background: transparent;
+        border: none;
+        color: #9ca3af;
+        cursor: pointer;
+        display: inline-flex;
+        padding: 0.2rem;
+    }
+    .sort-box {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.45rem 0.75rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        background: #ffffff;
+        color: #4b5563;
+        font-size: 0.875rem;
+    }
+    .sort-box select {
+        border: none;
+        background: transparent;
+        color: #111827;
+        font-weight: 600;
+        cursor: pointer;
+        outline: none;
+    }
+
+    /* Bulk action bar */
+    .bulk-action-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .bulk-selection-info,
+    .bulk-progress-info {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.65rem;
+        font-size: 0.875rem;
+        color: #1e3a8a;
+    }
+    .btn-bulk-clear {
+        background: transparent;
+        border: none;
+        color: #2563eb;
+        text-decoration: underline;
+        cursor: pointer;
+        font-size: 0.8125rem;
+    }
+    .bulk-buttons {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .btn-bulk {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.75rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        border-radius: 0.375rem;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #1e293b;
+        cursor: pointer;
+    }
+    .btn-bulk:hover {
+        background: #f1f5f9;
+    }
+    .btn-bulk-publish {
+        border-color: #86efac;
+        color: #166534;
+        background: #f0fdf4;
+    }
+    .btn-bulk-publish:hover {
+        background: #dcfce7;
+    }
+    .btn-bulk-delete {
+        border-color: #fecaca;
+        color: #dc2626;
+        background: #fef2f2;
+    }
+    .btn-bulk-delete:hover {
+        background: #fee2e2;
+    }
+
+    /* Checkbox column */
+    .col-check {
+        width: 40px;
+        text-align: center;
+    }
+    .col-check input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+    }
+    tr.row-selected td {
+        background: #f8fafc;
+    }
+
+    /* Extended modals */
+    .modal.modal-wide {
+        max-width: 520px;
+    }
+    .form-field {
+        margin-bottom: 1rem;
+    }
+    .form-field label,
+    .field-group-label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 0.4rem;
+    }
+    .form-field input[type="text"],
+    .form-field select {
+        width: 100%;
+        padding: 0.55rem 0.75rem;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+    }
+    .field-help {
+        display: block;
+        margin-top: 0.35rem;
+        font-size: 0.75rem;
+        color: #6b7280;
+    }
+    .lang-inputs-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .lang-input-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .lang-tag {
+        min-width: 38px;
+        text-align: center;
+        padding: 0.35rem 0.45rem;
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.375rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #475569;
+    }
+    .mode-toggle-row {
+        display: flex;
+        gap: 1.25rem;
+        margin-bottom: 1rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #374151;
+    }
+    .mode-toggle-row label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        cursor: pointer;
+    }
+    .modal-error {
+        margin-top: 0.5rem;
+        font-size: 0.8125rem;
+        color: #dc2626;
+        font-weight: 500;
+    }
+    .btn-primary-modal {
+        padding: 0.5rem 1rem;
+        border: none;
+        background: #2563eb;
+        color: white;
+        border-radius: 0.375rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-primary-modal:hover:not(:disabled) {
+        background: #1d4ed8;
+    }
+    .btn-primary-modal:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
     }
 </style>
