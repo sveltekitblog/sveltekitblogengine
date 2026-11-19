@@ -135,6 +135,8 @@ apps/admin/.dev.vars.example -> apps/admin/.dev.vars
 
 ### 4. デプロイ
 ```bash
+npm run deploy:main   # メインアカウント一括デプロイ (blog + admin + cfa-sync)
+# または個別デプロイ:
 npm run deploy:blog
 npm run deploy:admin
 ```
@@ -148,6 +150,7 @@ npm run deploy:admin
 | :--- | :--- |
 | `npm run migrate:blog-db` | リモートの `BLOG_DB` に `packages/shared/migrations/schema-blog-db.sql` を適用 |
 | `npm run restore` | 復元モードでセットアップスクリプトを実行 |
+| `npm run deploy:main` | デフォルト（メイン）アカウント一括デプロイ（`deploy:blog` + `deploy:admin`） |
 | `npm run deploy:cfa-sync` | `apps/cfa-sync` アナリティクス Cron ワーカーをデプロイ |
 | `npm run deploy:multi` | 設定された複数の Cloudflare アカウントへ一括デプロイ |
 | `npm run deploy:sync` | `scripts/sync-accounts.js` によるアカウント設定同期 |

@@ -135,6 +135,8 @@ apps/admin/.dev.vars.example -> apps/admin/.dev.vars
 
 ### 4. 배포
 ```bash
+npm run deploy:main   # 메인 계정 일괄 배포 (blog + admin + cfa-sync)
+# 또는 개별 배포:
 npm run deploy:blog
 npm run deploy:admin
 ```
@@ -148,6 +150,7 @@ npm run deploy:admin
 | :--- | :--- |
 | `npm run migrate:blog-db` | 원격 `BLOG_DB`에 `packages/shared/migrations/schema-blog-db.sql` 적용 |
 | `npm run restore` | 복원 모드로 설정 스크립트 실행 |
+| `npm run deploy:main` | 기본(메인) 계정 일괄 배포 (`deploy:blog` + `deploy:admin`) |
 | `npm run deploy:cfa-sync` | `apps/cfa-sync` 통계 수집 Cron 워커 배포 |
 | `npm run deploy:multi` | 설정된 다중 Cloudflare 계정 일괄 배포 |
 | `npm run deploy:sync` | `scripts/sync-accounts.js`를 통한 계정 설정 동기화 |

@@ -135,6 +135,8 @@ apps/admin/.dev.vars.example -> apps/admin/.dev.vars
 
 ### 4. Deploy
 ```bash
+npm run deploy:main   # Deploy blog + admin (+ cfa-sync if missing) in one step
+# Or deploy individually:
 npm run deploy:blog
 npm run deploy:admin
 ```
@@ -148,6 +150,7 @@ npm run deploy:admin
 | :--- | :--- |
 | `npm run migrate:blog-db` | Apply `packages/shared/migrations/schema-blog-db.sql` to remote `BLOG_DB` |
 | `npm run restore` | Run setup script in restore mode |
+| `npm run deploy:main` | Deploy default account (`deploy:blog` + `deploy:admin`) in one command |
 | `npm run deploy:cfa-sync` | Deploy the `apps/cfa-sync` analytics Cron Worker |
 | `npm run deploy:multi` | Deploy across multiple configured Cloudflare accounts |
 | `npm run deploy:sync` | Sync account configurations via `scripts/sync-accounts.js` |
