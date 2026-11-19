@@ -105,14 +105,9 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
         const row = await db.prepare('SELECT value FROM blog_settings WHERE key = ?').bind('storage_type').first();
         const storageType = (row?.value as string) || 'r2';
 
-        // Get siteUrl for image proxy
-        const siteUrlRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'siteUrl'").first();
-        const siteUrl = ((siteUrlRow?.value as string) || '').replace(/\/$/, '');
-
         return {
             linkedMedia,
             storageType,
-            siteUrl,
             bucketInfo: {
                 name: 'blog-images',
                 folderStructure: 'posts/{slug}/{variant}/',

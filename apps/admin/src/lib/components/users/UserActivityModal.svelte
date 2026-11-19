@@ -19,6 +19,8 @@
     import { t } from "$lib/i18n.svelte";
     import { X, MessageSquare, BookOpen } from "lucide-svelte";
     import { onMount } from "svelte";
+    import { page } from "$app/stores";
+    import { formatDate as formatSharedDate } from "@blog/shared";
 
     let { userId, userName, onClose }: { userId: string, userName: string, onClose: () => void } = $props();
 
@@ -44,7 +46,7 @@
 
     function formatDate(dstr: string | null) {
         if (!dstr) return '';
-        try { return new Date(dstr).toLocaleString(); } catch { return dstr; }
+        return formatSharedDate(dstr, $page.data.timezone || 'Asia/Seoul');
     }
 </script>
 

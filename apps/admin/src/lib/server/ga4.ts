@@ -112,7 +112,7 @@ async function getAccessToken(clientEmail: string, privateKeyPem: string): Promi
         })
     };
 
-    const response = await fetch('https://oauth2.googleapis.com/token', init);
+    const response = await fetch('https://oauth2.googleapis.com/token', { ...init, signal: AbortSignal.timeout(10000) });
     const data = (await response.json()) as any;
 
     if (!response.ok) {
@@ -150,7 +150,8 @@ export async function runGa4Report(config: GA4Config, requestBody: any, accessTo
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify(requestBody),
+            signal: AbortSignal.timeout(10000)
         }
     );
 
@@ -177,7 +178,8 @@ export async function runGa4BatchReport(config: GA4Config, requests: any[], acce
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ requests })
+            body: JSON.stringify({ requests }),
+            signal: AbortSignal.timeout(10000)
         }
     );
 

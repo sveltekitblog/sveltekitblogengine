@@ -31,6 +31,7 @@ export const GET: RequestHandler = async ({ url }) => {
         // 최신 브라우저 User-Agent 명시 (WOFF2 포맷 유도)
         const response = await fetch(googleUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+            signal: AbortSignal.timeout(5000),
             cf: {
                 cacheTtl: 86400,
                 cacheEverything: true

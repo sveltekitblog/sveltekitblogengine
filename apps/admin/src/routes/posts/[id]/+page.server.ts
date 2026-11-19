@@ -74,11 +74,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
             WHERE p.translation_group_id = ?
         `).bind(groupId).all();
 
-        // 3. Fetch all languages, categories and settings
+        // 3. Fetch all languages and categories
         const { results: languages } = await db.prepare('SELECT * FROM languages ORDER BY sort_order ASC, code ASC').all();
         const { results: categories } = await db.prepare('SELECT slug, name, lang FROM categories ORDER BY name ASC').all();
-        const { results: settingsRows } = await db.prepare("SELECT key, value FROM blog_settings WHERE key IN ('board_api_key', 'board_hub_url', 'board_auto_syndicate')").all();
-        const settingsMap = (settingsRows || []).reduce((acc: any, curr: any) => { acc[curr.key] = curr.value; return acc; }, {});
 
         // 4. Strip figure wrappers from post content for editor parsing compatibility
         const parsedPosts = (posts || []).map((post: any) => {
@@ -92,8 +90,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
             posts: parsedPosts, 
             groupId,
             languages: languages || [],
-            categories: categories || [],
-            settings: settingsMap
+            categories: categories || []
         };
     } catch (err) {
         console.error('Failed to load post translations:', err);

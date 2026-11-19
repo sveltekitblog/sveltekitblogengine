@@ -64,13 +64,6 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
         let comments = Array.from(commentResults || []);
         const guestbooks = Array.from(gbResults || []);
 
-        // Fetch Site URL
-        let siteUrl = 'http://localhost:5173';
-        try {
-            const { results: settings } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'siteUrl'").all();
-            if (settings?.[0]?.value) siteUrl = JSON.parse(settings[0].value as string);
-        } catch(e) {}
-
         // Map Post Titles for Comments (Dynamic defaultLang prioritization)
         if (comments.length > 0) {
             const cPostIds = [...new Set(comments.map((c: any) => c.post_id).filter(id => id != null))];
@@ -128,8 +121,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
         return {
             comments,
             guestbooks,
-            archives,
-            siteUrl
+            archives
         };
 
     } catch (err: any) {

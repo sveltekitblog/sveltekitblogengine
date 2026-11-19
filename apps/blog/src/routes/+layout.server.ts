@@ -471,7 +471,6 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies, platfor
             isMobile,
             navIconSvgs,
             googleFonts,
-            googleFontName: googleFonts[0] || '', // Maintain backward compatibility for single font logic if needed
             activeLayout,
             layoutWidgets,
             desktopWidgets,
@@ -484,7 +483,6 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies, platfor
             recentComments: recentEntries?.comments || [],
             recentGuestbooks: recentEntries?.guestbooks || [],
             activeSlotId: targetSlotId,
-            activeDesignMode: designMode,
             designSlotInfo: {
                 allowVisitorSelection,
                 currentSlotId: targetSlotId,
@@ -511,7 +509,6 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies, platfor
             cfAnalyticsSiteTag: '',
             isMobile: false,
             navIconSvgs: {},
-            googleFontName: '',
             activeLayout: null,
             layoutWidgets: [],
             desktopWidgets: [],
@@ -524,7 +521,6 @@ export const load: LayoutServerLoad = async ({ locals, request, cookies, platfor
             recentComments: [],
             recentGuestbooks: [],
             activeSlotId: '1',
-            activeDesignMode: '1',
             designSlotInfo: {
                 allowVisitorSelection: false,
                 currentSlotId: '1',

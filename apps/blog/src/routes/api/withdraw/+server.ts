@@ -53,8 +53,8 @@ export const POST: RequestHandler = async ({ locals, cookies, platform }) => {
 
         // 3. Insert into deleted_users table (behavior: anonymize, by: user)
         await db.prepare(`
-            INSERT INTO deleted_users (id, name, email, role, image, deleted_by, delete_behavior, original_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO deleted_users (id, name, email, role, image, deleted_by, delete_behavior, original_data, deleted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
             userId,
             userResult.name || null,
@@ -63,7 +63,8 @@ export const POST: RequestHandler = async ({ locals, cookies, platform }) => {
             userResult.image || null,
             'user',
             'anonymize',
-            originalData
+            originalData,
+            new Date().toISOString()
         ).run();
 
         // 4. Delete sessions and accounts associated with this user in Better Auth tables

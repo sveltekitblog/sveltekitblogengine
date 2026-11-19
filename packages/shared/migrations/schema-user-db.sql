@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS entries (
     is_private INTEGER DEFAULT 0,
     is_deleted INTEGER DEFAULT 0,
     ip_address TEXT,
-    created_at TEXT DEFAULT (datetime('now', '+9 hours')),
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     client_timezone TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_entries_type_target ON entries(type, target_id);
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS deleted_entries (
     id TEXT PRIMARY KEY,
     deleted_by TEXT,
     original_data TEXT,
-    deleted_at TEXT DEFAULT (datetime('now', '+9 hours'))
+    deleted_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS deleted_users (
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS deleted_users (
     deleted_by TEXT, -- 'admin' | 'user' (withdrawal)
     delete_behavior TEXT, -- 'cascade' (all entries deleted) | 'anonymize' (entries kept)
     original_data TEXT, -- JSON backup of original user account metadata
-    deleted_at TEXT DEFAULT (datetime('now', '+9 hours'))
+    deleted_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 -- 3. Views and Likes

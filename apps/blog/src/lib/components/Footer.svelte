@@ -210,6 +210,9 @@
         <nav class="footer-social">
             <a
                 href={processUrl("/rss.xml")}
+                data-sveltekit-reload
+                target="_blank"
+                rel="noopener noreferrer"
                 title="RSS Feed"
                 style="display: flex; align-items: center; gap: 0.3rem;"
             >

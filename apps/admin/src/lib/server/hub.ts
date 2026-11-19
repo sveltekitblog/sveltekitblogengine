@@ -307,6 +307,3 @@ export async function removePostFromHub(originalUrl: string, db: D1Database): Pr
         return { success: false, error: err.message || String(err) };
     }
 }
-
-// 하위 호환성을 위해 syncPostToHub alias 제공
-export const syncPostToHub = publishPostToHub;

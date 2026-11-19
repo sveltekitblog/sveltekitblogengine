@@ -63,8 +63,8 @@ export const DELETE: RequestHandler = async ({ params, request, locals, cookies 
 
         // 3. Insert into deleted_users table
         await db.prepare(`
-            INSERT INTO deleted_users (id, name, email, role, image, deleted_by, delete_behavior, original_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO deleted_users (id, name, email, role, image, deleted_by, delete_behavior, original_data, deleted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
             id,
             userResult.name || null,
@@ -73,7 +73,8 @@ export const DELETE: RequestHandler = async ({ params, request, locals, cookies 
             userResult.image || null,
             'admin',
             deleteBehavior,
-            originalData
+            originalData,
+            new Date().toISOString()
         ).run();
 
         // 4. Handle deletion behavior

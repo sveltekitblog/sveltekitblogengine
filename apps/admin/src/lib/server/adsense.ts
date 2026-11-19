@@ -35,7 +35,7 @@ async function getAccessToken(clientId: string, clientSecret: string, refreshTok
         })
     };
 
-    const response = await fetch('https://oauth2.googleapis.com/token', init);
+    const response = await fetch('https://oauth2.googleapis.com/token', { ...init, signal: AbortSignal.timeout(10000) });
     const data = (await response.json()) as any;
 
     if (!response.ok) {
@@ -77,7 +77,8 @@ export async function runAdsenseReport(config: AdSenseConfig, queryParams: URLSe
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
-            }
+            },
+            signal: AbortSignal.timeout(10000)
         }
     );
 

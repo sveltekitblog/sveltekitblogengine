@@ -104,7 +104,7 @@ export const GET: RequestHandler = async ({ request, params, platform, locals })
         else if (storageType === 'imagekit') {
             const urlEndpoint = (settingsMap['imagekit_url_endpoint'] || '').replace(/\/$/, '');
             if (!urlEndpoint) return new Response('ImageKit URL endpoint not configured', { status: 503 });
-            const res = await fetch(`${urlEndpoint}/${encodeURI(path)}`);
+            const res = await fetch(`${urlEndpoint}/${encodeURI(path)}`, { signal: AbortSignal.timeout(8000) });
             if (!res.ok) return new Response(`ImageKit fetch failed: ${res.status}`, { status: res.status });
             response = new Response(await res.arrayBuffer(), {
                 headers: {
@@ -121,7 +121,7 @@ export const GET: RequestHandler = async ({ request, params, platform, locals })
                 return new Response('Supabase storage settings incomplete', { status: 503 });
             }
             const url = `${storageUrl.replace(/\/$/, '')}/object/${bucket}/${encodeURI(path)}`;
-            const res = await fetch(url, { headers: { Authorization: `Bearer ${serviceKey}` } });
+            const res = await fetch(url, { headers: { Authorization: `Bearer ${serviceKey}` }, signal: AbortSignal.timeout(8000) });
             if (!res.ok) return new Response(`Supabase fetch failed: ${res.status}`, { status: res.status });
             response = new Response(await res.arrayBuffer(), {
                 headers: {

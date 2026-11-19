@@ -119,6 +119,7 @@ export const actions: Actions = {
 
         try {
             const updatedAt = new Date().toISOString();
+            const statements: any[] = [];
             
             // Generate UPSERT statements for each setting
             for (const key of settingsToSave) {
@@ -135,11 +136,13 @@ export const actions: Actions = {
                     value = data.get(key) as string || '';
                 }
 
-                await db.prepare(`
-                    INSERT INTO blog_settings (key, value, updated_at) 
-                    VALUES (?, ?, ?) 
-                    ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
-                `).bind(key, value, updatedAt).run();
+                statements.push(
+                    db.prepare(`
+                        INSERT INTO blog_settings (key, value, updated_at) 
+                        VALUES (?, ?, ?) 
+                        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+                    `).bind(key, value, updatedAt)
+                );
             }
 
             // 대시보드 모바일 열람 비밀번호 처리
@@ -147,18 +150,26 @@ export const actions: Actions = {
             const rawDashPass = (data.get('dashboard_password') as string || '').trim();
 
             if (clearDashPass) {
-                await db.prepare(`
-                    INSERT INTO blog_settings (key, value, updated_at) 
-                    VALUES ('dashboard_password', '', ?) 
-                    ON CONFLICT(key) DO UPDATE SET value='', updated_at=excluded.updated_at
-                `).bind(updatedAt).run();
+                statements.push(
+                    db.prepare(`
+                        INSERT INTO blog_settings (key, value, updated_at) 
+                        VALUES ('dashboard_password', '', ?) 
+                        ON CONFLICT(key) DO UPDATE SET value='', updated_at=excluded.updated_at
+                    `).bind(updatedAt)
+                );
             } else if (rawDashPass) {
                 const hash = await hashDashboardPassword(rawDashPass);
-                await db.prepare(`
-                    INSERT INTO blog_settings (key, value, updated_at) 
-                    VALUES ('dashboard_password', ?, ?) 
-                    ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
-                `).bind(hash, updatedAt).run();
+                statements.push(
+                    db.prepare(`
+                        INSERT INTO blog_settings (key, value, updated_at) 
+                        VALUES ('dashboard_password', ?, ?) 
+                        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+                    `).bind(hash, updatedAt)
+                );
+            }
+
+            if (statements.length > 0) {
+                await db.batch(statements);
             }
 
             return { success: true };

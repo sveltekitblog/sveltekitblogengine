@@ -21,6 +21,7 @@
     import { MessageSquare, BookOpen, Trash2, Edit3, Eye, EyeOff, Reply } from "lucide-svelte";
     import type { PageData } from "./$types";
     import { page } from "$app/stores";
+    import { formatDate as formatSharedDate } from "@blog/shared";
 
     let { data }: { data: PageData } = $props();
 
@@ -274,8 +275,8 @@
     }
 
     function formatDate(dstr: string) {
-        if(!dstr) return '';
-        try { return new Date(dstr).toLocaleString(); } catch { return dstr; }
+        if (!dstr) return '';
+        return formatSharedDate(dstr, (data as any).timezone || $page.data.timezone || 'Asia/Seoul');
     }
 </script>
 

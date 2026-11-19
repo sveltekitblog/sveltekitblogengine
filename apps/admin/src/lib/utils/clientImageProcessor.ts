@@ -118,26 +118,3 @@ export async function processImage(
         img.src = url;
     });
 }
-
-/**
- * Get image dimensions helper
- */
-export function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-
-        img.onload = () => {
-            const dims = { width: img.width, height: img.height };
-            URL.revokeObjectURL(url);
-            resolve(dims);
-        };
-
-        img.onerror = () => {
-            URL.revokeObjectURL(url);
-            reject(new Error('Failed to load image for dimensions'));
-        };
-
-        img.src = url;
-    });
-}

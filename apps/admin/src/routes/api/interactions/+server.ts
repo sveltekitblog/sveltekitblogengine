@@ -163,11 +163,14 @@ export const DELETE: RequestHandler = async ({ request, url, locals }) => {
             WHERE e.id = ?
         `).bind(id).first();
         const nowIso = new Date().toISOString();
+        const statements: any[] = [];
         if (target) {
-            await userDb.prepare(`
-                INSERT OR IGNORE INTO deleted_entries (id, deleted_by, original_data, deleted_at)
-                VALUES (?, 'admin', ?, ?)
-            `).bind(target.id, JSON.stringify(target), nowIso).run();
+            statements.push(
+                userDb.prepare(`
+                    INSERT OR IGNORE INTO deleted_entries (id, deleted_by, original_data, deleted_at)
+                    VALUES (?, 'admin', ?, ?)
+                `).bind(target.id, JSON.stringify(target), nowIso)
+            );
         }
 
         // Archive child entries
@@ -179,15 +182,23 @@ export const DELETE: RequestHandler = async ({ request, url, locals }) => {
         `).bind(id).all();
         if (children && children.results) {
             for (const child of children.results) {
-                await userDb.prepare(`
-                    INSERT OR IGNORE INTO deleted_entries (id, deleted_by, original_data, deleted_at)
-                    VALUES (?, 'admin', ?, ?)
-                `).bind(child.id as string, JSON.stringify(child), nowIso).run();
+                statements.push(
+                    userDb.prepare(`
+                        INSERT OR IGNORE INTO deleted_entries (id, deleted_by, original_data, deleted_at)
+                        VALUES (?, 'admin', ?, ?)
+                    `).bind(child.id as string, JSON.stringify(child), nowIso)
+                );
             }
         }
 
-        await userDb.prepare(`DELETE FROM entries WHERE id = ?`).bind(id).run();
-        await userDb.prepare(`DELETE FROM entries WHERE parent_id = ?`).bind(id).run();
+        statements.push(
+            userDb.prepare(`DELETE FROM entries WHERE id = ?`).bind(id),
+            userDb.prepare(`DELETE FROM entries WHERE parent_id = ?`).bind(id)
+        );
+
+        for (let i = 0; i < statements.length; i += 50) {
+            await userDb.batch(statements.slice(i, i + 50));
+        }
 
         return json({ success: true });
     } catch (err: any) {

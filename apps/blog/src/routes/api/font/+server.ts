@@ -33,6 +33,7 @@ export const GET: RequestHandler = async ({ url }) => {
         }
 
         const response = await fetch(targetUrl.toString(), {
+            signal: AbortSignal.timeout(5000),
             cf: {
                 cacheTtl: 31536000,
                 cacheEverything: true

@@ -22,13 +22,18 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     let ui_dictionary = {};
     let languages: any[] = [];
     let dbDefaultLang = 'ko';
+    let timezone = 'Asia/Seoul';
     
     if (db) {
         try {
-            // Fetch the UI dictionary to inject globally into all admin routes via page.data
-            const { results } = await db.prepare("SELECT value FROM blog_settings WHERE key = 'ui_dictionary'").all();
-            if (results && results.length > 0 && results[0].value) {
-                ui_dictionary = JSON.parse(results[0].value as string);
+            // Fetch the UI dictionary and timezone to inject globally into all admin routes via page.data
+            const { results } = await db.prepare("SELECT key, value FROM blog_settings WHERE key IN ('ui_dictionary', 'timezone')").all();
+            for (const row of (results || []) as any[]) {
+                if (row.key === 'ui_dictionary' && row.value) {
+                    ui_dictionary = JSON.parse(row.value as string);
+                } else if (row.key === 'timezone' && row.value && String(row.value).trim()) {
+                    timezone = String(row.value).trim();
+                }
             }
 
             // Fetch languages globally
@@ -46,6 +51,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
         ui_dictionary,
         languages,
         dbDefaultLang,
+        timezone,
         isDashboardOnly: locals.isDashboardOnly || false,
         i18n: {
             lang: dbDefaultLang,

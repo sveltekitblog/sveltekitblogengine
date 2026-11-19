@@ -21,6 +21,7 @@
     import { Search, UserX, UserCheck, History, Calendar, AlertCircle, Pencil, Trash2 } from "lucide-svelte";
     import type { PageData } from "./$types";
     import UserActivityModal from "$lib/components/users/UserActivityModal.svelte";
+    import { formatDate as formatSharedDate } from "@blog/shared";
 
     let { data }: { data: PageData } = $props();
 
@@ -50,7 +51,7 @@
 
     function formatDate(dstr: any) {
         if (!dstr) return "-";
-        try { return new Date(dstr).toLocaleDateString(); } catch { return String(dstr); }
+        return formatSharedDate(dstr, (data as any).timezone || 'Asia/Seoul');
     }
 
     function openActivity(user: any) {

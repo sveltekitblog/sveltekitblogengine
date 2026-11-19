@@ -63,18 +63,3 @@ export async function getOrSetCache<T>(
 
     return freshData;
 }
-
-/**
- * Invalidate cached items by key or prefix pattern
- */
-export function invalidateCache(pattern?: string): void {
-    if (!pattern) {
-        memoryCache.clear();
-        return;
-    }
-    for (const key of memoryCache.keys()) {
-        if (key.includes(pattern)) {
-            memoryCache.delete(key);
-        }
-    }
-}

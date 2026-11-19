@@ -142,11 +142,15 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
         ? (rawOgImage.startsWith('http') ? rawOgImage : `${siteUrl}${rawOgImage.startsWith('/') ? '' : '/'}${rawOgImage}`)
         : '';
 
-    // ISO 8601 타임존 보정 (SQLite datetime('now')는 UTC이므로 'Z' 추가)
+    // ISO 8601 타임존 보정 (오프셋 없는 레거시 KST 문자열은 T 치환 + '+09:00' 부여)
     const ensureTimezone = (dateStr: string | null | undefined): string | undefined => {
         if (!dateStr) return undefined;
-        if (dateStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(dateStr)) return dateStr;
-        return dateStr + 'Z';
+        const trimmed = dateStr.trim();
+        if (trimmed.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(trimmed)) return trimmed;
+        if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed)) {
+            return `${trimmed.replace(' ', 'T')}+09:00`;
+        }
+        return trimmed;
     };
 
     // Prepare JSON-LD (Safe stringify with BlogPosting & BreadcrumbList)

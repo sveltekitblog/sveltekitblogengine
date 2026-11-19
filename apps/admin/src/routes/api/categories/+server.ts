@@ -19,7 +19,32 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { syncCategoryPostCounts } from '$lib/server/categorySync';
 
-export const POST: RequestHandler = async ({ request, locals }) => {
+async function syncCategoryArtifacts(platform: any, db: any) {
+    await Promise.all([
+        (async () => {
+            await syncCategoryPostCounts(db);
+            try {
+                const { generateSidebarSnapshot } = await import('@blog/shared');
+                await generateSidebarSnapshot(db);
+            } catch (e) {
+                console.error('[Category API Snapshot Error]', e);
+            }
+        })(),
+        (async () => {
+            try {
+                const cacheRow = await db.prepare("SELECT value FROM blog_settings WHERE key = 'enable_cdn_cache'").first();
+                if (cacheRow?.value === 'true') {
+                    const { purgeCdnCache } = await import('$lib/server/cachePurge');
+                    await purgeCdnCache(platform, db, { purgeEverything: true }).catch((e) => console.error('[Purge Error]', e));
+                }
+            } catch (e) {
+                console.error('[Purge Error]', e);
+            }
+        })()
+    ]);
+}
+
+export const POST: RequestHandler = async ({ request, locals, platform }) => {
     const db = locals.blogDb;
     if (!db) {
         return json({ error: 'Database not found' }, { status: 500 });
@@ -51,7 +76,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             
             if (statements.length > 0) {
                 await db.batch(statements);
-                await syncCategoryPostCounts(db);
+                await syncCategoryArtifacts(platform, db);
             }
 
             return json({ success: true });
@@ -63,6 +88,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
             // Delete all language versions of this category
             await db.prepare('DELETE FROM categories WHERE slug = ?').bind(slug).run();
+            await syncCategoryArtifacts(platform, db);
             return json({ success: true });
         } else if (action === 'update_slug') {
             const { oldSlug, newSlug } = payload;
@@ -72,7 +98,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             await db.prepare('UPDATE categories SET slug = ? WHERE slug = ?').bind(newSlug, oldSlug).run();
             // We should also update posts using this category!
             await db.prepare('UPDATE posts SET category_slug = ? WHERE category_slug = ?').bind(newSlug, oldSlug).run();
-            await syncCategoryPostCounts(db);
+            await syncCategoryArtifacts(platform, db);
             
             return json({ success: true });
         }
