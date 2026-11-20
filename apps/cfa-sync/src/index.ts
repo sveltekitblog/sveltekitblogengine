@@ -257,32 +257,20 @@ async function sync(env: Env): Promise<{ bootstrap: boolean; written: number }> 
   const bootstrap = !state || isTimezoneChanged;
   // 과거 7일간의 CFA 보정 데이터를 일치시키기 위해 항상 최근 7일치를 단일 호출로 동기화
   const dates = getSiteDatesEndingToday(timeZone, 7);
-  const todayStr = getSiteDateStr(timeZone, 0);
   const snapshots = await fetchMultiDaySnapshots(env, dates, timeZone);
   const existingHashes = new Map<string, string>();
-  const existingViews = new Map<string, number>();
   const placeholders = dates.map(() => '?').join(', ');
   const existingRows = await env.BLOG_DB.prepare(
-    `SELECT date, page_views, data_hash FROM cf_daily_snapshots WHERE date IN (${placeholders})`
-  ).bind(...dates).all<{ date: string; page_views: number; data_hash: string }>();
+    `SELECT date, data_hash FROM cf_daily_snapshots WHERE date IN (${placeholders})`
+  ).bind(...dates).all<{ date: string; data_hash: string }>();
   for (const row of existingRows.results || []) {
     existingHashes.set(row.date, row.data_hash);
-    existingViews.set(row.date, Number(row.page_views) || 0);
   }
 
   const now = new Date().toISOString();
   const statements: D1PreparedStatement[] = [];
   let written = 0;
   for (const snapshot of snapshots) {
-    // 오늘(Today) 진행형 데이터 역행(조회수 축소) 방지 가드:
-    // API 일시 오류 등으로 오늘 데이터가 기존 수치보다 비정상적으로 줄어든 경우 덮어쓰지 않고 스킵
-    const isToday = snapshot.date === todayStr;
-    const prevViews = existingViews.get(snapshot.date);
-    if (isToday && prevViews !== undefined && snapshot.pageViews < prevViews) {
-      console.warn(`[CFA] Regression detected for today (${snapshot.date}): new(${snapshot.pageViews}) < existing(${prevViews}). Skipping update to protect data.`);
-      continue;
-    }
-
     const detailsJson = JSON.stringify(canonicalDetails(snapshot.details));
     const hash = await sha256(JSON.stringify({
       pageViews: snapshot.pageViews,
