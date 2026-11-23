@@ -17,7 +17,7 @@
 
 import type { PageServerLoad, Actions } from './$types';
 import { error, fail } from '@sveltejs/kit';
-import { syncCategoryPostCounts } from '$lib/server/categorySync';
+import { syncCategoryPostCounts, syncNextScheduledAt } from '@blog/shared';
 
 function chunkArray<T>(items: T[], size = 40): T[][] {
     const chunks: T[][] = [];
@@ -146,7 +146,7 @@ export const load: PageServerLoad = async ({ locals, setHeaders, url, platform }
                        lang, translation_group_id, thumbnail_fit, is_syndicated, view_count, like_count,
                        created_at, published_at
                 FROM posts 
-                ORDER BY created_at DESC
+                ORDER BY COALESCE(published_at, created_at) DESC
             `).all(),
             db.prepare(`
                 SELECT * FROM languages ORDER BY sort_order ASC, code ASC
@@ -235,6 +235,7 @@ export const actions: Actions = {
             if (!post) return fail(404, { error: 'Post not found' });
 
             const isPublished = (post as any).status === 'published';
+            const isScheduled = (post as any).status === 'scheduled';
             const slug = (post as any).slug;
 
             try {
@@ -250,7 +251,7 @@ export const actions: Actions = {
                 cleanupOrphanCategories(db)
             ];
 
-            if ((post as any).is_syndicated === 1) {
+            if (isPublished && (post as any).is_syndicated === 1) {
                 postCleanupTasks.push(
                     (async () => {
                         try {
@@ -264,6 +265,10 @@ export const actions: Actions = {
                         }
                     })()
                 );
+            }
+
+            if (isScheduled) {
+                postCleanupTasks.push(syncNextScheduledAt(db));
             }
 
             if (isPublished) {
@@ -566,19 +571,26 @@ export const actions: Actions = {
                     await db.prepare(`UPDATE posts SET status = 'draft', updated_at = ?, published_at = NULL WHERE id IN (${placeholders})`)
                         .bind(nowIso, ...chunk).run();
                 } else {
-                    await db.prepare(`UPDATE posts SET status = 'published', updated_at = ?, published_at = COALESCE(published_at, ?) WHERE id IN (${placeholders})`)
-                        .bind(nowIso, nowIso, ...chunk).run();
+                    await db.prepare(`UPDATE posts SET status = 'published', updated_at = ?, published_at = CASE WHEN status = 'scheduled' THEN ? ELSE COALESCE(published_at, ?) END WHERE id IN (${placeholders})`)
+                        .bind(nowIso, nowIso, nowIso, ...chunk).run();
                 }
             }
 
             const hasPublishedTransition = targetStatus === 'draft'
                 ? posts.some((p: any) => p.status === 'published')
                 : posts.some((p: any) => p.status !== 'published');
+            const hasScheduledAffected = posts.some((p: any) => p.status === 'scheduled');
 
             const postTasks: Promise<any>[] = [];
+            if (hasScheduledAffected) {
+                postTasks.push(syncNextScheduledAt(db));
+            }
             if (hasPublishedTransition) {
                 postTasks.push(syncPublishedArtifacts(platform, db, { purgeEverything: true }));
-                const syndicated = posts.filter((p: any) => p.is_syndicated === 1 && p.status !== targetStatus);
+                const syndicated = posts.filter((p: any) => {
+                    if (p.is_syndicated !== 1) return false;
+                    return targetStatus === 'draft' ? p.status === 'published' : p.status !== 'published';
+                });
                 if (syndicated.length > 0) {
                     postTasks.push(
                         (async () => {
@@ -602,7 +614,7 @@ export const actions: Actions = {
                                             tags: p.tags ? JSON.parse(p.tags) : [],
                                             lang: pLang,
                                             url: postUrl,
-                                            publishedAt: p.published_at || p.created_at || nowIso
+                                            publishedAt: p.status === 'scheduled' ? nowIso : (p.published_at || p.created_at || nowIso)
                                         };
                                         if (targetStatus === 'draft') {
                                             await hidePostFromHub(payload, db);
@@ -660,12 +672,16 @@ export const actions: Actions = {
             }
 
             const hasPublished = posts.some((p: any) => p.status === 'published');
+            const hasScheduled = posts.some((p: any) => p.status === 'scheduled');
             const cleanupTasks: Promise<any>[] = [
                 ...posts.map((p: any) => cleanupPostStorage(platform, db, p)),
                 cleanupOrphanCategories(db)
             ];
+            if (hasScheduled) {
+                cleanupTasks.push(syncNextScheduledAt(db));
+            }
 
-            const syndicated = posts.filter((p: any) => p.is_syndicated === 1);
+            const syndicated = posts.filter((p: any) => p.status === 'published' && p.is_syndicated === 1);
             if (syndicated.length > 0) {
                 cleanupTasks.push(
                     (async () => {

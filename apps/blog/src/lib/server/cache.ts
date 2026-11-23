@@ -63,3 +63,15 @@ export async function getOrSetCache<T>(
 
     return freshData;
 }
+
+export function deleteCache(key: string): void {
+    memoryCache.delete(key);
+}
+
+export function deleteCacheByPrefix(prefix: string): void {
+    for (const key of memoryCache.keys()) {
+        if (key.startsWith(prefix)) {
+            memoryCache.delete(key);
+        }
+    }
+}

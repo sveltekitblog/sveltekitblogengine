@@ -234,13 +234,19 @@ async function fetchMultiDaySnapshots(env: Env, dates: string[], timeZone: strin
       }
     }
 
-    // ── CFA 응답 완전 붕괴 방어 가드 ──────────────────────────────────────
+    // ── CFA 응답 완전/부분 붕괴 방어 가드 ──────────────────────────────────
     if (snapshot.pageViews > 0) {
-      const allEmpty = DETAIL_NAMES.every((name) => snapshot.details[name].length === 0);
-      if (allEmpty) {
-        console.warn(`[CFA] Corrupted snapshot for ${dateStr}: all dimensions empty while pageViews=${snapshot.pageViews}; skipping`);
+      const missingPages = snapshot.details.pages.length === 0;
+      if (missingPages) {
+        console.warn(`[CFA] Partial/corrupted snapshot for ${dateStr}: pages dimension empty while pageViews=${snapshot.pageViews}; skipping`);
         continue;
       }
+    }
+
+    // ── CFA 적응형 샘플링(sampleInterval > 1) 뻥튀기 데이터 차단 가드 ───────
+    if (!snapshot.isExact || snapshot.sampleInterval > 1) {
+      console.warn(`[CFA] Sampled snapshot skipped for ${dateStr}: sampleInterval=${snapshot.sampleInterval}, pageViews=${snapshot.pageViews}, visitors=${snapshot.visitors}`);
+      continue;
     }
 
     snapshots.push(snapshot);
@@ -259,18 +265,27 @@ async function sync(env: Env): Promise<{ bootstrap: boolean; written: number }> 
   const dates = getSiteDatesEndingToday(timeZone, 7);
   const snapshots = await fetchMultiDaySnapshots(env, dates, timeZone);
   const existingHashes = new Map<string, string>();
+  const existingViews = new Map<string, number>();
   const placeholders = dates.map(() => '?').join(', ');
   const existingRows = await env.BLOG_DB.prepare(
-    `SELECT date, data_hash FROM cf_daily_snapshots WHERE date IN (${placeholders})`
-  ).bind(...dates).all<{ date: string; data_hash: string }>();
+    `SELECT date, page_views, data_hash FROM cf_daily_snapshots WHERE date IN (${placeholders})`
+  ).bind(...dates).all<{ date: string; page_views: number; data_hash: string }>();
   for (const row of existingRows.results || []) {
     existingHashes.set(row.date, row.data_hash);
+    existingViews.set(row.date, Number(row.page_views) || 0);
   }
 
   const now = new Date().toISOString();
   const statements: D1PreparedStatement[] = [];
   let written = 0;
   for (const snapshot of snapshots) {
+    // API 빈 응답([])으로 인해 기존 정상 기록(page_views > 0)이 0으로 초기화되는 현상 차단
+    const prevViews = existingViews.get(snapshot.date) || 0;
+    if (!isTimezoneChanged && prevViews > 0 && snapshot.pageViews === 0) {
+      console.warn(`[CFA] Empty response skipped for ${snapshot.date}: refusing to overwrite existing pageViews=${prevViews} with 0`);
+      continue;
+    }
+
     const detailsJson = JSON.stringify(canonicalDetails(snapshot.details));
     const hash = await sha256(JSON.stringify({
       pageViews: snapshot.pageViews,

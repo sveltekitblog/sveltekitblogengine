@@ -17,7 +17,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { syncCategoryPostCounts } from '$lib/server/categorySync';
+import { syncCategoryPostCounts } from '@blog/shared';
 
 async function syncCategoryArtifacts(platform: any, db: any) {
     await Promise.all([

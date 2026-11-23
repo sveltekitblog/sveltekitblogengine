@@ -16,7 +16,7 @@
  */
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { marked } from 'marked';
+import { extractThreePartHubContent, isValidHubCategory } from '@blog/shared';
 
 export const DEFAULT_HUB_INGEST_URL = 'https://hub.sveltekitblog.com/api/v1/posts/ingest';
 
@@ -28,6 +28,7 @@ export interface PostSyncData {
     contentType?: string;     // 'html' | 'markdown'
     category?: string;
     categorySlug?: string;
+    hubCategory?: string;     // 에디터에서 선택한 허브 8대 공식 카테고리 슬러그 (DB 미저장, 전송 전용)
     featuredImage?: string;
     tags?: string | string[];
     lang?: string;
@@ -38,10 +39,22 @@ export interface PostSyncData {
 
 export interface HubSyncResult {
     success: boolean;
+    httpStatus?: number;
+    code?: string;
     action?: string;
+    category?: string;
+    isAbuseReset?: boolean;
+    currentLength?: number;
+    minRequiredLength?: number;
+    requestedCategory?: string;
+    suggestedCategory?: string;
+    retryAfterSeconds?: number;
+    suspendedUntil?: string;
     reason?: string;
     message?: string;
     error?: string;
+    lang?: string;
+    title?: string;
 }
 
 /**
@@ -55,38 +68,6 @@ export function makeAbsoluteUrl(urlStr: string | undefined, siteUrl: string): st
     const cleanBase = siteUrl.replace(/\/+$/, '');
     const cleanPath = urlStr.startsWith('/') ? urlStr : `/${urlStr}`;
     return `${cleanBase}${cleanPath}`;
-}
-
-/**
- * 2. 본문 서론 1,000~1,500자 표준 HTML 추출 및 이미지 절대경로화
- */
-export function extractStandardHtmlIntro(post: PostSyncData, siteUrl: string): string {
-    let html = '';
-
-    if (post.contentType === 'markdown') {
-        const rawContent = post.content || '';
-        const parts = rawContent.split(/^---\s*$/m);
-        const mdBody = parts.length >= 3 ? parts.slice(2).join('---').trim() : rawContent.trim();
-        try {
-            html = marked.parse(mdBody) as string;
-        } catch {
-            html = mdBody;
-        }
-    } else {
-        html = post.content || '';
-    }
-
-    // 본문 속 상대경로 이미지(/images/..., /uploads/... 등)를 절대 URL로 변환
-    const cleanBase = siteUrl.replace(/\/+$/, '');
-    html = html.replace(/<img\s+([^>]*?)src=(['"])(.*?)\2([^>]*?)>/gi, (match, before, quote, src, after) => {
-        if (src.startsWith('/')) {
-            return `<img ${before}src="${cleanBase}${src}"${after}>`;
-        }
-        return match;
-    });
-
-    // 서론 1,500자 분량 슬라이스
-    return html.slice(0, 1500);
 }
 
 /**
@@ -144,18 +125,22 @@ export function buildPostUrl(siteUrl: string, lang: string, categorySlug: string
  * 1. publishPostToHub (발행 및 공개 수정 시 호출) - POST (status: 'published')
  */
 export async function publishPostToHub(post: PostSyncData, db: D1Database): Promise<HubSyncResult> {
+    const lang = post.lang || 'ko';
     try {
-        if (!db) return { success: false, reason: 'database_unavailable' };
+        if (!db) return { success: false, reason: 'database_unavailable', lang, title: post.title };
 
         const { apiKey, ingestUrl, siteUrl, siteTitleRaw } = await getHubConfig(db);
-        if (!apiKey) return { success: false, reason: 'no_api_key' };
+        if (!apiKey) return { success: false, reason: 'no_api_key', lang, title: post.title };
 
         const categorySlug = post.categorySlug || post.category || 'general';
-        const lang = post.lang || 'ko';
         const postUrl = post.url || buildPostUrl(siteUrl, lang, categorySlug, post.slug);
-        const htmlIntro = extractStandardHtmlIntro(post, siteUrl);
+        // 900자 이하 시 전체, 900자 초과 시 앞 300자 + 중간 300자 + 뒤 300자(총 900자) 순수 텍스트 추출
+        const sampledContent = extractThreePartHubContent(post.content, post.contentType || 'html');
         const featuredImageUrl = makeAbsoluteUrl(post.featuredImage, siteUrl);
         const siteName = resolveSiteName(siteTitleRaw, lang);
+        const resolvedHubCategory = isValidHubCategory(post.hubCategory)
+            ? post.hubCategory
+            : (isValidHubCategory(categorySlug) ? categorySlug : undefined);
 
         let parsedTags: string[] = [];
         if (Array.isArray(post.tags)) {
@@ -175,12 +160,14 @@ export async function publishPostToHub(post: PostSyncData, db: D1Database): Prom
                 title: post.title,
                 site_name: siteName,
                 excerpt: post.excerpt || '',
-                content: htmlIntro,
+                content: sampledContent,
                 original_url: postUrl,
                 featured_image: featuredImageUrl,
+                category: resolvedHubCategory,
                 tags: parsedTags,
                 lang: lang,
                 status: 'published',
+                is_published: true,
                 published_at: post.publishedAt || new Date().toISOString()
             }
         };
@@ -189,7 +176,8 @@ export async function publishPostToHub(post: PostSyncData, db: D1Database): Prom
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
-                'Authorization': `Bearer ${apiKey}`
+                'Authorization': `Bearer ${apiKey}`,
+                'Accept-Language': lang
             },
             body: JSON.stringify(payload),
             signal: AbortSignal.timeout(5000)
@@ -197,16 +185,46 @@ export async function publishPostToHub(post: PostSyncData, db: D1Database): Prom
 
         if (!response.ok) {
             const errBody = await response.text().catch(() => '');
+            let parsedErr: any = {};
+            try {
+                parsedErr = JSON.parse(errBody);
+            } catch {
+                // non-JSON response
+            }
             console.error(`[Hub Publish Failed]: HTTP ${response.status} - ${errBody}`);
-            return { success: false, error: `HTTP ${response.status}: ${errBody}` };
+            return {
+                success: false,
+                httpStatus: response.status,
+                code: parsedErr.code,
+                message: parsedErr.message || parsedErr.error,
+                currentLength: parsedErr.currentLength,
+                minRequiredLength: parsedErr.minRequiredLength,
+                requestedCategory: parsedErr.requestedCategory,
+                suggestedCategory: parsedErr.suggestedCategory,
+                retryAfterSeconds: parsedErr.retryAfterSeconds,
+                suspendedUntil: parsedErr.suspendedUntil,
+                error: parsedErr.message || `HTTP ${response.status}: ${errBody}`,
+                lang,
+                title: post.title
+            };
         }
 
         const resData: any = await response.json().catch(() => ({}));
         console.log(`[Hub Publish Success]: ${resData.action || 'published'} (${post.title})`);
-        return { success: true, action: resData.action || 'created' };
+        return {
+            success: true,
+            httpStatus: response.status,
+            code: resData.code || 'POST_CREATED',
+            action: resData.action || 'created',
+            category: resData.category || resolvedHubCategory,
+            isAbuseReset: Boolean(resData.isAbuseReset),
+            message: resData.message,
+            lang,
+            title: post.title
+        };
     } catch (err: any) {
         console.error('[Hub Publish Exception]:', err.message || err);
-        return { success: false, error: err.message || String(err) };
+        return { success: false, error: err.message || String(err), lang, title: post.title };
     }
 }
 
@@ -215,14 +233,14 @@ export async function publishPostToHub(post: PostSyncData, db: D1Database): Prom
  * 💡 기존 좋아요(추천) 통계를 안전하게 보존하면서 허브 피드에서만 숨깁니다.
  */
 export async function hidePostFromHub(post: PostSyncData, db: D1Database): Promise<HubSyncResult> {
+    const lang = post.lang || 'ko';
     try {
-        if (!db) return { success: false, reason: 'database_unavailable' };
+        if (!db) return { success: false, reason: 'database_unavailable', lang, title: post.title };
 
         const { apiKey, ingestUrl, siteUrl, siteTitleRaw } = await getHubConfig(db);
-        if (!apiKey) return { success: false, reason: 'no_api_key' };
+        if (!apiKey) return { success: false, reason: 'no_api_key', lang, title: post.title };
 
         const categorySlug = post.categorySlug || post.category || 'general';
-        const lang = post.lang || 'ko';
         const postUrl = post.url || buildPostUrl(siteUrl, lang, categorySlug, post.slug);
         const siteName = resolveSiteName(siteTitleRaw, lang);
 
@@ -239,6 +257,7 @@ export async function hidePostFromHub(post: PostSyncData, db: D1Database): Promi
                 tags: Array.isArray(post.tags) ? post.tags : [],
                 lang: lang,
                 status: 'hidden',
+                is_published: false,
                 published_at: post.publishedAt || new Date().toISOString()
             }
         };
@@ -247,7 +266,8 @@ export async function hidePostFromHub(post: PostSyncData, db: D1Database): Promi
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
-                'Authorization': `Bearer ${apiKey}`
+                'Authorization': `Bearer ${apiKey}`,
+                'Accept-Language': lang
             },
             body: JSON.stringify(payload),
             signal: AbortSignal.timeout(5000)

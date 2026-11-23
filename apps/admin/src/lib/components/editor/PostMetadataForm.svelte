@@ -27,6 +27,10 @@
         type?: string;
         thumbnailFit?: string;
         submitToBoard?: boolean;
+        hubCategory?: string;
+        status?: string;
+        charCount?: number;
+        autoSyndicateDefault?: boolean;
         categories?: Array<{slug: string, name: string, lang?: string}>;
         lang?: string;
         defaultLang?: string;
@@ -45,6 +49,10 @@
         type = 'post',
         thumbnailFit = $bindable("cover"),
         submitToBoard = $bindable(false),
+        hubCategory = $bindable(""),
+        status = 'draft',
+        charCount = 0,
+        autoSyndicateDefault = false,
         categories = [],
         lang = 'ko',
         defaultLang = 'ko',
@@ -67,7 +75,27 @@
 
     let filteredCategories = $derived(categories.filter(c => !c.lang || c.lang === lang));
 
-    import { t } from "$lib/i18n.svelte";
+    import { t, adminLang } from "$lib/i18n.svelte";
+    import { HUB_CATEGORIES, HUB_MIN_CONTENT_LENGTH } from "@blog/shared";
+
+    let isScheduled = $derived(status === 'scheduled');
+    let canSubmitToHub = $derived(!isScheduled && charCount >= HUB_MIN_CONTENT_LENGTH);
+    let userManuallyToggled = $state(false);
+    let autoCheckedApplied = $state(false);
+
+    $effect(() => {
+        if (!canSubmitToHub) {
+            if (submitToBoard) {
+                submitToBoard = false;
+            }
+            autoCheckedApplied = false;
+        } else if (autoSyndicateDefault && !userManuallyToggled && !autoCheckedApplied) {
+            submitToBoard = true;
+            autoCheckedApplied = true;
+        }
+    });
+
+    let selectedHubCategoryInfo = $derived(HUB_CATEGORIES.find((c) => c.slug === hubCategory));
 </script>
 
 <div class="form-section">
@@ -192,17 +220,63 @@
         </div>
     </div>
 
-        <div class="form-group" style="margin-top: 1.25rem; margin-bottom: 0; padding: 0.85rem 1rem; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
-        <label class="flex items-center gap-2 cursor-pointer select-none" style="margin-bottom: 0; font-weight: 600; color: #1e293b; display: flex; align-items: center;">
-            <input
-                type="checkbox"
-                bind:checked={submitToBoard}
-                style="width: 1.1rem; height: 1.1rem; cursor: pointer; accent-color: #3b82f6;"
-            />
-            <span>🌐 {t('admin.posts.form.submit_to_hub', { default: '스벨트킷블로그 허브(hub.sveltekitblog.com)에 자동 제출' })}</span>
-        </label>
+    <div class="form-group" style="margin-top: 1.25rem; margin-bottom: 0; padding: 0.85rem 1rem; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem;">
+            <label
+                class="flex items-center gap-2 select-none"
+                style="margin-bottom: 0; font-weight: 600; color: {canSubmitToHub ? '#1e293b' : '#94a3b8'}; display: flex; align-items: center; cursor: {canSubmitToHub ? 'pointer' : 'not-allowed'};"
+            >
+                <input
+                    type="checkbox"
+                    bind:checked={submitToBoard}
+                    disabled={!canSubmitToHub}
+                    onchange={() => { userManuallyToggled = true; }}
+                    style="width: 1.1rem; height: 1.1rem; cursor: {canSubmitToHub ? 'pointer' : 'not-allowed'}; accent-color: #3b82f6;"
+                />
+                <span>🌐 {t('admin.posts.form.submit_to_hub', { default: '스벨트킷블로그 허브(hub.sveltekitblog.com)에 자동 제출' })}</span>
+            </label>
+            <span
+                style="font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.55rem; border-radius: 9999px; background-color: {canSubmitToHub ? '#dcfce7' : '#fef3c7'}; color: {canSubmitToHub ? '#166534' : '#92400e'};"
+            >
+                {#if isScheduled}
+                    🕒 {t('admin.posts.form.hub_disabled_scheduled', { default: '예약 공개 글은 허브 자동 제출 불가 (공개 후 수정 화면에서 제출)' })}
+                {:else if canSubmitToHub}
+                    ✅ {t('admin.posts.form.hub_min_length_met', { current: charCount, default: `허브 제출 가능 (${charCount}자)` })}
+                {:else}
+                    ⚠️ {t('admin.posts.form.hub_min_length_unmet', { current: charCount, default: `본문 700자 이상 작성 시 활성화됩니다 (현재 ${charCount}자 / 최소 700자)` })}
+                {/if}
+            </span>
+        </div>
+
+        {#if submitToBoard && canSubmitToHub}
+            <div style="margin-top: 0.75rem; padding-left: 1.6rem;">
+                <label for="hub_category" style="font-size: 0.85rem; margin-bottom: 0.35rem; color: #334155;">
+                    {t('admin.posts.form.hub_category_label', { default: '허브 공식 카테고리 선택 *' })}
+                </label>
+                <select
+                    id="hub_category"
+                    name="hub_category"
+                    bind:value={hubCategory}
+                    style="width: 100%; max-width: 420px; padding: 0.55rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; background-color: white; color: #1e293b;"
+                >
+                    <option value="">{t('admin.posts.form.hub_category_placeholder', { default: '-- 허브 8대 공식 카테고리를 선택하세요 --' })}</option>
+                    {#each HUB_CATEGORIES as hc}
+                        {@const label = (hc.labels as Record<string, string>)[adminLang.value] || hc.labels.ko}
+                        <option value={hc.slug}>{label} ({hc.slug})</option>
+                    {/each}
+                </select>
+                {#if selectedHubCategoryInfo}
+                    {@const hint = (selectedHubCategoryInfo.hint as Record<string, string>)[adminLang.value] || selectedHubCategoryInfo.hint.ko}
+                    <small class="help-text" style="color: #2563eb; margin-top: 0.3rem;">📌 {hint}</small>
+                {/if}
+            </div>
+        {/if}
+
         <small class="help-text" style="margin-top: 0.4rem; color: #64748b; padding-left: 1.6rem; display: block; line-height: 1.45;">
             {t('admin.posts.form.submit_to_hub_help', { default: '체크 시 글이 발행될 때 허브 피드로 요약 카드가 자동 전송됩니다. 체크를 해제하면 허브 피드에서 "숨김" 처리되어 추천(좋아요) 통계가 안전하게 보존되며, 허브에서 완전히 삭제하려면 블로그에서 포스트를 삭제해야 합니다.' })}
+        </small>
+        <small class="help-text" style="margin-top: 0.25rem; color: #64748b; padding-left: 1.6rem; display: block; line-height: 1.45;">
+            {t('admin.posts.form.hub_policy_notice', { default: '💡 신규 공개 글은 5분에 1개씩 허브에 등록 가능하며, 이미 추천을 받은 글의 제목을 완전히 다른 내용으로 변경하면 추천수가 초기화됩니다.' })}
         </small>
     </div>
 </div>

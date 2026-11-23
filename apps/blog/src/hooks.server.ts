@@ -22,6 +22,7 @@ import { userDb } from "@blog/shared/db";
 import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { building } from "$app/environment";
 import { getOrSetCache } from '$lib/server/cache';
+import { processDueScheduledPosts } from '$lib/server/scheduledPublish';
 
 export const handle: Handle = async ({ event, resolve }) => {
     const user_d1 = event.platform?.env.USER_DB;
@@ -92,6 +93,11 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
 
     if (!building && user_d1 && blog_d1) {
+        const reqPath = event.url.pathname;
+        if (!reqPath.startsWith('/images/') && !reqPath.startsWith('/api/font')) {
+            await processDueScheduledPosts(blog_d1, event.platform);
+        }
+
         event.locals.db = new BlogDB(blog_d1, user_d1);
         event.locals.userDb = userDb(user_d1);
 

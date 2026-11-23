@@ -23,10 +23,12 @@
     import type { SubmitFunction } from "./$types";
     import { t } from "$lib/i18n.svelte";
     import { processContentHtml } from "$lib/utils/contentProcessor";
+    import { utcIsoToZonedLocalInput, zonedLocalInputToUtcIso, extractHubPlainText, HUB_MIN_CONTENT_LENGTH } from "@blog/shared";
 
     let { data } = $props();
 
     type EditorMode = "visual" | "html" | "preview";
+    let hubNotice = $state<{ createdIds: Record<string, string>; hubResults: any[] } | null>(null);
     let mode = $state<EditorMode>("visual");
     let saveOriginal = $state(false);
 
@@ -34,23 +36,16 @@
     let translationsData = $state<Record<string, any>>({});
     let groupDataJson = $state("[]");
     let defaultLang = $derived(data.languages?.find((l: any) => l.is_default)?.code || data.languages?.[0]?.code || 'ko');
+    let siteTimezone = $derived((data as any)?.timezone || 'Asia/Seoul');
+    let minScheduleInput = $derived(utcIsoToZonedLocalInput(new Date(Date.now() + 60 * 1000), siteTimezone));
+    let autoSyndicateDefault = $derived(data.settings?.board_auto_syndicate !== 'false');
 
     // 실시간 모드별 글자 수 계산 유도 상태 ($derived)
     let charCount = $derived(() => {
-        const rawContent = translationsData[activeLang]?.content || "";
-        if (mode === "markdown") {
-            const cleanMarkdown = rawContent
-                .replace(/[#*`_~-]/g, "") // 마크다운 서식 제거
-                .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // 링크 [텍스트](url) -> 텍스트
-                .replace(/!\[([^\]]*)\]\([^)]+\)/g, "") // 이미지 ![설명](url) -> 제거
-                .trim();
-            return cleanMarkdown.length;
-        }
-        const cleanHtml = rawContent
-            .replace(/<[^>]*>/g, "") // HTML 태그 제거
-            .replace(/&nbsp;/g, " ") // 공백 기호 복원
-            .trim();
-        return cleanHtml.length;
+        const curr = translationsData[activeLang];
+        if (!curr) return 0;
+        const raw = curr.contentType === "markdown" ? (curr.contentMarkdown || "") : (curr.content || "");
+        return extractHubPlainText(raw, curr.contentType || "html").length;
     });
 
         // Initialize blank data for each language
@@ -67,6 +62,7 @@
                     category: "",
                     categoryName: "",
                     status: "draft",
+                    scheduledAt: "",
                     type: "post",
                     authorId: "",
                     content: "",
@@ -74,7 +70,8 @@
                     contentType: "html",
                     contentMarkdown: "",
                     thumbnailFit: "cover",
-                    submitToBoard: data.settings?.board_auto_syndicate !== 'false'
+                    submitToBoard: false,
+                    hubCategory: ""
                 };
             });
             activeLang = data.languages.find((l: any) => l.is_default)?.code || data.languages[0]?.code || 'ko';
@@ -198,6 +195,30 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                     cancel();
                     return;
                 }
+                if (item.status === 'scheduled') {
+                    const utcIso = zonedLocalInputToUtcIso(item.scheduledAt, siteTimezone);
+                    if (!utcIso) {
+                        alert(`[${displayLang}] ${t('admin.posts.write.schedule_required_error', { default: '예약 공개 시각을 입력해 주세요.' })}`);
+                        cancel();
+                        return;
+                    }
+                    if (utcIso <= new Date().toISOString()) {
+                        alert(`[${displayLang}] ${t('admin.posts.write.schedule_past_error', { default: '과거 시각은 예약할 수 없습니다. 현재 이후 시각을 선택해 주세요.' })}`);
+                        cancel();
+                        return;
+                    }
+                }
+                if (item.status === 'published' && item.submitToBoard) {
+                    const itemRaw = item.contentType === 'markdown' ? (item.contentMarkdown || '') : (item.content || '');
+                    const itemLen = extractHubPlainText(itemRaw, item.contentType || 'html').length;
+                    if (itemLen < HUB_MIN_CONTENT_LENGTH) {
+                        item.submitToBoard = false;
+                    } else if (!item.hubCategory?.trim()) {
+                        alert(`[${displayLang}] ${t('admin.editor.validate_hub_category', { default: '허브에 제출하려면 허브 공식 카테고리를 선택해 주세요.' })}`);
+                        cancel();
+                        return;
+                    }
+                }
             }
         }
 
@@ -208,6 +229,10 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                 alert(`저장 실패: ${errData?.error || '알 수 없는 오류가 발생했습니다.'}`);
             } else if (result.type === 'error') {
                 alert(`시스템 오류: 서버와의 통신에 실패했습니다.`);
+            } else if (result.type === 'success' && (result.data as any)?.saved && (result.data as any)?.hubResults) {
+                const d = result.data as any;
+                hubNotice = { createdIds: d.createdIds || {}, hubResults: d.hubResults || [] };
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
             await update();
         };
@@ -219,6 +244,43 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
         <h1>{t('admin.posts.write.new_title', { default: '새 글 쓰기 (다국어 묶음)' })}</h1>
         <a href="/posts" class="btn-secondary">{t('admin.posts.write.back', { default: '← 목록으로' })}</a>
     </div>
+
+    {#if hubNotice}
+        {@const firstCreatedId = hubNotice.createdIds[activeLang] || Object.values(hubNotice.createdIds)[0]}
+        <div class="mb-6 p-4 rounded-lg border border-amber-300 bg-amber-50 text-amber-900">
+            <div class="font-bold text-sm mb-2">
+                ⚠️ {t('admin.posts.hub_banner.local_saved', { default: '블로그 DB에는 글이 정상 저장되었으나, 허브(Hub) 연동 중 아래 안내 사항이 발생했습니다.' })}
+            </div>
+            <ul class="space-y-2 text-sm mb-3">
+                {#each hubNotice.hubResults as hr}
+                    {#if !hr.success && hr.reason !== 'no_api_key'}
+                        <li class="p-2.5 bg-white rounded border border-amber-200">
+                            <span class="font-semibold uppercase mr-1">[{hr.lang || 'ko'}]</span>
+                            <span>{hr.message || hr.error}</span>
+                            {#if hr.code === 'UNAUTHORIZED' || hr.code === 'FORBIDDEN'}
+                                <a href="/settings" class="ml-2 underline font-semibold text-blue-700">{t('admin.posts.hub_banner.check_settings', { default: '허브 API Key 및 사이트 대표 도메인 설정 확인하기' })}</a>
+                            {/if}
+                        </li>
+                    {:else if hr.isAbuseReset}
+                        <li class="p-2.5 bg-white rounded border border-amber-200">
+                            <span class="font-semibold uppercase mr-1">[{hr.lang || 'ko'}]</span>
+                            <span>{t('admin.posts.hub_banner.abuse_reset', { default: '추천을 받았던 글의 제목이 큰 폭으로 변경되어 허브 추천수가 0으로 초기화되었습니다.' })}</span>
+                        </li>
+                    {/if}
+                {/each}
+            </ul>
+            <div class="flex flex-wrap gap-2">
+                {#if firstCreatedId}
+                    <a href="/posts/{firstCreatedId}" class="px-3 py-1.5 rounded bg-blue-600 text-white text-sm font-semibold no-underline">
+                        {t('admin.posts.hub_banner.go_to_edit', { default: '저장된 글 수정 화면으로 이동하여 재시도' })}
+                    </a>
+                {/if}
+                <a href="/posts" class="px-3 py-1.5 rounded bg-white border border-gray-300 text-gray-700 text-sm font-semibold no-underline">
+                    {t('admin.posts.hub_banner.go_to_list', { default: '글 목록으로 이동' })}
+                </a>
+            </div>
+        </div>
+    {/if}
 
     <!-- Language Tabs -->
     <div class="lang-tabs pb-4 border-b border-gray-200 mb-6">
@@ -285,6 +347,10 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                 bind:tags={translationsData[activeLang].tags}
                 bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
                 bind:submitToBoard={translationsData[activeLang].submitToBoard}
+                bind:hubCategory={translationsData[activeLang].hubCategory}
+                status={translationsData[activeLang].status}
+                charCount={charCount()}
+                {autoSyndicateDefault}
                 type={translationsData[activeLang]?.type || 'post'}
                 categories={data.categories}
                 lang={activeLang}
@@ -327,6 +393,10 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                             bind:tags={translationsData[activeLang].tags}
                             bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
                             bind:submitToBoard={translationsData[activeLang].submitToBoard}
+                            bind:hubCategory={translationsData[activeLang].hubCategory}
+                            status={translationsData[activeLang].status}
+                            charCount={charCount()}
+                            {autoSyndicateDefault}
                             type={translationsData[activeLang]?.type || 'post'}
                             categories={data.categories}
                             lang={activeLang}
@@ -416,6 +486,32 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
             </div>
         </div>
 
+        {#if translationsData[activeLang].status === 'scheduled'}
+            <div class="schedule-picker-bar">
+                <label for="scheduled-at-{activeLang}" class="schedule-label">
+                    🕒 {t('admin.posts.write.schedule_at', { default: '공개 예정 시각' })}
+                </label>
+                <input
+                    id="scheduled-at-{activeLang}"
+                    type="datetime-local"
+                    class="schedule-input"
+                    min={minScheduleInput}
+                    bind:value={translationsData[activeLang].scheduledAt}
+                    onchange={(e) => {
+                        const val = e.currentTarget.value;
+                        const utc = zonedLocalInputToUtcIso(val, siteTimezone);
+                        if (utc && utc <= new Date().toISOString()) {
+                            alert(t('admin.posts.write.schedule_past_error', { default: '과거 시각은 예약할 수 없습니다. 현재 이후 시각을 선택해 주세요.' }));
+                            translationsData[activeLang].scheduledAt = utcIsoToZonedLocalInput(new Date(Date.now() + 60 * 60 * 1000), siteTimezone);
+                        }
+                    }}
+                />
+                <span class="schedule-tz-hint">
+                    {t('admin.posts.write.schedule_tz_hint', { tz: siteTimezone, default: `사이트 시간대(${siteTimezone}) 기준으로 예약됩니다.` })}
+                </span>
+            </div>
+        {/if}
+
         <div class="form-actions">
             <div class="status-selector">
                 <label>
@@ -435,6 +531,23 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                         bind:group={translationsData[activeLang].status}
                     />
                     <span>{t('admin.posts.write.publish', { default: '발행 (이 언어만)' })}</span>
+                </label>
+                <label>
+                    <input
+                        type="radio"
+                        name="status"
+                        value="scheduled"
+                        bind:group={translationsData[activeLang].status}
+                        onchange={() => {
+                            if (!translationsData[activeLang].scheduledAt) {
+                                translationsData[activeLang].scheduledAt = utcIsoToZonedLocalInput(
+                                    new Date(Date.now() + 60 * 60 * 1000),
+                                    siteTimezone
+                                );
+                            }
+                        }}
+                    />
+                    <span>{t('admin.posts.write.schedule', { default: '예약 공개 (이 언어만)' })}</span>
                 </label>
             </div>
             
@@ -484,6 +597,10 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
     :global(.preview-mode figcaption) { margin-top: 0.5rem; font-size: 0.875rem; color: #6b7280; text-align: center; }
     .char-counter { text-align: right; padding: 0.5rem 1rem; font-size: 0.875rem; color: #6b7280; background: #fafafa; border-top: 1px solid #e5e7eb; border-radius: 0 0 0.5rem 0.5rem; }
     .form-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding: 1.5rem; background: white; border: 1px solid #e5e7eb; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .schedule-picker-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 1.5rem; padding: 1rem 1.25rem; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 0.5rem; }
+    .schedule-label { font-weight: 600; color: #5b21b6; font-size: 0.9rem; margin: 0; }
+    .schedule-input { padding: 0.45rem 0.75rem; border: 1px solid #c4b5fd; border-radius: 0.375rem; background: white; color: #1f2937; font-size: 0.9rem; }
+    .schedule-tz-hint { font-size: 0.8rem; color: #6d28d9; }
     .status-selector { display: flex; gap: 1.5rem; }
     .status-selector label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0; }
     .btn-primary { padding: 0.75rem 2rem; background: #10b981; color: white; border: none; border-radius: 0.5rem; font-weight: 600; font-size: 1rem; cursor: pointer; transition: background 0.2s; }

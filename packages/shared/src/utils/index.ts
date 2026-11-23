@@ -138,4 +138,155 @@ export function getContrastTextColor(bg: string): string {
     if (!parsed) return '#ffffff';
     return (r * 299 + g * 587 + b * 114) / 1000 >= 150 ? '#0f172a' : '#ffffff';
 }
+
+function getTimezoneOffsetMsForDate(timeZone: string, utcMs: number): number {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    }).formatToParts(new Date(utcMs));
+
+    const getNum = (type: string) => Number(parts.find(p => p.type === type)?.value || '0');
+    const hour = getNum('hour') === 24 ? 0 : getNum('hour');
+    const zonedAsUtcMs = Date.UTC(
+        getNum('year'),
+        getNum('month') - 1,
+        getNum('day'),
+        hour,
+        getNum('minute'),
+        getNum('second')
+    );
+    return zonedAsUtcMs - utcMs;
+}
+
+/**
+ * UTC ISO 문자열(또는 Date)을 특정 IANA 타임존 기준 datetime-local 입력값('YYYY-MM-DDTHH:MM')으로 변환
+ */
+export function utcIsoToZonedLocalInput(
+    dateInput: string | Date | null | undefined,
+    timeZone: string = 'Asia/Seoul'
+): string {
+    if (!dateInput) return '';
+    let normalized: string | Date = dateInput;
+    if (typeof dateInput === 'string') {
+        const trimmed = dateInput.trim();
+        if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed)) {
+            normalized = `${trimmed.replace(' ', 'T')}+09:00`;
+        }
+    }
+    const date = new Date(normalized);
+    if (isNaN(date.getTime())) return '';
+
+    const formatWithTz = (tz: string) => {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: tz,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        }).formatToParts(date);
+        const get = (type: string) => parts.find(p => p.type === type)?.value || '';
+        const hour = get('hour') === '24' ? '00' : get('hour');
+        return `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}`;
+    };
+
+    try {
+        return formatWithTz(timeZone || 'UTC');
+    } catch {
+        return formatWithTz('UTC');
+    }
+}
+
+/**
+ * 특정 IANA 타임존 기준 datetime-local 입력값('YYYY-MM-DDTHH:MM')을 UTC ISO 문자열로 변환
+ */
+export function zonedLocalInputToUtcIso(
+    localDateTime: string | null | undefined,
+    timeZone: string = 'Asia/Seoul'
+): string | null {
+    if (!localDateTime || typeof localDateTime !== 'string') return null;
+    const match = localDateTime.trim().match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (!match) return null;
+
+    const [, yStr, mStr, dStr, hhStr, mmStr, ssStr] = match;
+    const guessUtcMs = Date.UTC(
+        Number(yStr),
+        Number(mStr) - 1,
+        Number(dStr),
+        Number(hhStr),
+        Number(mmStr),
+        Number(ssStr || '0')
+    );
+    if (isNaN(guessUtcMs)) return null;
+
+    try {
+        const tz = timeZone || 'UTC';
+        const offset1 = getTimezoneOffsetMsForDate(tz, guessUtcMs);
+        const candidateMs = guessUtcMs - offset1;
+        const offset2 = getTimezoneOffsetMsForDate(tz, candidateMs);
+        return new Date(guessUtcMs - offset2).toISOString();
+    } catch {
+        return new Date(guessUtcMs).toISOString();
+    }
+}
+
+/**
+ * Synchronizes post_count in the categories table based on actual published posts.
+ * Runs atomically in a single statement using idx_posts_cat_lang_status.
+ */
+export async function syncCategoryPostCounts(db: any): Promise<void> {
+    try {
+        await db.prepare(`
+            UPDATE categories
+            SET post_count = (
+                SELECT COUNT(*)
+                FROM posts
+                WHERE posts.category_slug = categories.slug
+                  AND posts.lang = categories.lang
+                  AND posts.status = 'published'
+                  AND posts.type = 'post'
+            )
+        `).run();
+    } catch (err) {
+        console.warn('[CategorySync] Failed to sync category post counts:', err);
+    }
+}
+
+/**
+ * Synchronizes blog_settings.next_scheduled_at with the earliest scheduled post's published_at.
+ */
+export async function syncNextScheduledAt(db: any): Promise<string | null> {
+    try {
+        const row = await db.prepare(`
+            SELECT MIN(published_at) as next_at
+            FROM posts
+            WHERE status = 'scheduled'
+              AND published_at IS NOT NULL
+              AND published_at != ''
+        `).first() as { next_at?: string | null } | null;
+
+        const nextAt = row?.next_at || null;
+        if (nextAt) {
+            const nowIso = new Date().toISOString();
+            await db.prepare(`
+                INSERT OR REPLACE INTO blog_settings (key, value, updated_at)
+                VALUES ('next_scheduled_at', ?, ?)
+            `).bind(nextAt, nowIso).run();
+        } else {
+            await db.prepare(`DELETE FROM blog_settings WHERE key = 'next_scheduled_at'`).run();
+        }
+        return nextAt;
+    } catch (err) {
+        console.warn('[ScheduleSync] Failed to sync next_scheduled_at:', err);
+        return null;
+    }
+}
+
 export * from './snapshot';

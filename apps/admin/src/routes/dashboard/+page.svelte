@@ -1945,6 +1945,10 @@
         background: #f1f5f9;
         color: #475569;
     }
+    .badge.scheduled {
+        background: #ede9fe;
+        color: #6d28d9;
+    }
 
     /* Analytics Section */
     .header-title-group {

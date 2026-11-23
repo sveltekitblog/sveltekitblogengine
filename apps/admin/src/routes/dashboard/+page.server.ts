@@ -87,8 +87,10 @@ export const load: PageServerLoad = async ({ locals, platform, parent, url }) =>
 
         // Recent Posts
         let { results: recentPostsRaw } = await db.prepare(`
-            SELECT id, title, slug, created_at, status, view_count
-            FROM posts ORDER BY created_at DESC LIMIT ?
+            SELECT id, title, slug,
+                   CASE WHEN status = 'published' THEN COALESCE(published_at, created_at) ELSE created_at END as created_at,
+                   published_at, status, view_count
+            FROM posts ORDER BY COALESCE(published_at, created_at) DESC LIMIT ?
         `).bind(limitPosts).all();
 
         let recentPosts = Array.from(recentPostsRaw || []);

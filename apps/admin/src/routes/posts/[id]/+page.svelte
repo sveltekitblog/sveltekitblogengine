@@ -25,10 +25,13 @@
     import type { SubmitFunction } from "./$types";
     import { t } from "$lib/i18n.svelte";
     import { processContentHtml } from "$lib/utils/contentProcessor";
+    import { utcIsoToZonedLocalInput, zonedLocalInputToUtcIso, extractHubPlainText, getHubCategoryLabel, HUB_MIN_CONTENT_LENGTH } from "@blog/shared";
 
     let { data } = $props();
 
     type EditorMode = "visual" | "html" | "preview";
+    let hubNotice = $state<{ hubResults: any[] } | null>(null);
+    let formEl = $state<HTMLFormElement | null>(null);
     const currentTargetPost = untrack(() => data.posts?.find((p: any) => p.id === $page.params.id) || data.posts?.[0]);
     const hasCustomHtml = /<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(currentTargetPost?.content || '') || /style\s*=\s*["'][^"']+["']/i.test(currentTargetPost?.content || '');
     let mode = $state<EditorMode>(hasCustomHtml ? "html" : "visual");
@@ -42,23 +45,15 @@
     let translationsData = $state<Record<string, any>>({});
     let groupDataJson = $state("[]");
     let defaultLang = $derived(data.languages?.find((l: any) => l.is_default)?.code || data.languages?.[0]?.code || 'ko');
+    let siteTimezone = $derived((data as any)?.timezone || 'Asia/Seoul');
+    let minScheduleInput = $derived(utcIsoToZonedLocalInput(new Date(Date.now() + 60 * 1000), siteTimezone));
 
     // 실시간 모드별 글자 수 계산 유도 상태 ($derived)
     let charCount = $derived(() => {
-        const rawContent = translationsData[activeLang]?.content || "";
-        if (mode === "markdown") {
-            const cleanMarkdown = rawContent
-                .replace(/[#*`_~-]/g, "") // 마크다운 서식 제거
-                .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // 링크 [텍스트](url) -> 텍스트
-                .replace(/!\[([^\]]*)\]\([^)]+\)/g, "") // 이미지 ![설명](url) -> 제거
-                .trim();
-            return cleanMarkdown.length;
-        }
-        const cleanHtml = rawContent
-            .replace(/<[^>]*>/g, "") // HTML 태그 제거
-            .replace(/&nbsp;/g, " ") // 공백 기호 복원
-            .trim();
-        return cleanHtml.length;
+        const curr = translationsData[activeLang];
+        if (!curr) return 0;
+        const raw = curr.contentType === "markdown" ? (curr.contentMarkdown || "") : (curr.content || "");
+        return extractHubPlainText(raw, curr.contentType || "html").length;
     });
 
     // Initialize data from posts group
@@ -109,6 +104,9 @@
                     category: finalCategory,
                     categoryName: finalCategoryName,
                     status: existingPost?.status || "draft",
+                    scheduledAt: existingPost?.status === "scheduled" && existingPost?.published_at
+                        ? utcIsoToZonedLocalInput(existingPost.published_at, siteTimezone)
+                        : "",
                     type: existingPost?.type || "post",
                     authorId: existingPost?.author_id || "",
                     content: existingPost?.content || "",
@@ -116,7 +114,8 @@
                     contentType: existingPost?.content_type || "html",
                     contentMarkdown: existingPost?.content_markdown || "",
                     thumbnailFit: existingPost?.thumbnail_fit || "cover",
-                    submitToBoard: Boolean(existingPost?.is_syndicated)
+                    submitToBoard: Boolean(existingPost?.is_syndicated),
+                    hubCategory: ""
                 };
 
                 rawHtmlSnapshots[lang.code] = existingPost?.content || "";
@@ -235,6 +234,30 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                     cancel();
                     return;
                 }
+                if (item.status === 'scheduled') {
+                    const utcIso = zonedLocalInputToUtcIso(item.scheduledAt, siteTimezone);
+                    if (!utcIso) {
+                        alert(`[${displayLang}] ${t('admin.posts.write.schedule_required_error', { default: '예약 공개 시각을 입력해 주세요.' })}`);
+                        cancel();
+                        return;
+                    }
+                    if (utcIso <= new Date().toISOString()) {
+                        alert(`[${displayLang}] ${t('admin.posts.write.schedule_past_error', { default: '과거 시각은 예약할 수 없습니다. 현재 이후 시각을 선택해 주세요.' })}`);
+                        cancel();
+                        return;
+                    }
+                }
+                if (item.status === 'published' && item.submitToBoard) {
+                    const itemRaw = item.contentType === 'markdown' ? (item.contentMarkdown || '') : (item.content || '');
+                    const itemLen = extractHubPlainText(itemRaw, item.contentType || 'html').length;
+                    if (itemLen < HUB_MIN_CONTENT_LENGTH) {
+                        item.submitToBoard = false;
+                    } else if (!item.hubCategory?.trim()) {
+                        alert(`[${displayLang}] ${t('admin.editor.validate_hub_category', { default: '허브에 제출하려면 허브 공식 카테고리를 선택해 주세요.' })}`);
+                        cancel();
+                        return;
+                    }
+                }
             }
         }
 
@@ -247,10 +270,24 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                 alert(`저장 실패: ${errData?.error || '알 수 없는 오류가 발생했습니다.'}`);
             } else if (result.type === 'error') {
                 alert(`시스템 오류: 서버와의 통신에 실패했습니다.`);
+            } else if (result.type === 'success' && (result.data as any)?.saved && (result.data as any)?.hubResults) {
+                const d = result.data as any;
+                hubNotice = { hubResults: d.hubResults || [] };
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
-            await update();
+            await update({ reset: false });
         };
     };
+
+    function applySuggestedCategoryAndResubmit(targetLang: string, suggested: string) {
+        if (translationsData[targetLang]) {
+            translationsData[targetLang].hubCategory = suggested;
+            translationsData[targetLang].submitToBoard = true;
+            groupDataJson = JSON.stringify(Object.values(translationsData));
+            hubNotice = null;
+            setTimeout(() => formEl?.requestSubmit(), 0);
+        }
+    }
 </script>
 
 <div class="write-container">
@@ -258,6 +295,46 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
         <h1>{t('admin.posts.write.edit_title', { default: '글 수정 (다국어 묶음)' })}</h1>
         <a href="/posts" class="btn-secondary">{t('admin.posts.write.back', { default: '← 목록으로' })}</a>
     </div>
+
+    {#if hubNotice}
+        <div class="mb-6 p-4 rounded-lg border border-amber-300 bg-amber-50 text-amber-900">
+            <div class="font-bold text-sm mb-2">
+                ⚠️ {t('admin.posts.hub_banner.local_saved', { default: '블로그 DB에는 글이 정상 저장되었으나, 허브(Hub) 연동 중 아래 안내 사항이 발생했습니다.' })}
+            </div>
+            <ul class="space-y-2 text-sm mb-3">
+                {#each hubNotice.hubResults as hr}
+                    {#if !hr.success && hr.reason !== 'no_api_key'}
+                        <li class="p-2.5 bg-white rounded border border-amber-200 flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <span class="font-semibold uppercase mr-1">[{hr.lang || 'ko'}]</span>
+                                <span>{hr.message || hr.error}</span>
+                                {#if hr.code === 'UNAUTHORIZED' || hr.code === 'FORBIDDEN'}
+                                    <a href="/settings" class="ml-2 underline font-semibold text-blue-700">{t('admin.posts.hub_banner.check_settings', { default: '허브 API Key 및 사이트 대표 도메인 설정 확인하기' })}</a>
+                                {/if}
+                            </div>
+                            {#if hr.code === 'CATEGORY_MISMATCH' && hr.suggestedCategory}
+                                <button
+                                    type="button"
+                                    onclick={() => applySuggestedCategoryAndResubmit(hr.lang || activeLang, hr.suggestedCategory)}
+                                    class="px-3 py-1 rounded bg-blue-600 text-white text-xs font-semibold border-0 cursor-pointer"
+                                >
+                                    {t('admin.posts.hub_banner.apply_suggested_category', { category: `${getHubCategoryLabel(hr.suggestedCategory, hr.lang || activeLang)} (${hr.suggestedCategory})`, default: `추천 카테고리(${getHubCategoryLabel(hr.suggestedCategory, hr.lang || activeLang)})로 변경 후 다시 저장` })}
+                                </button>
+                            {/if}
+                        </li>
+                    {:else if hr.isAbuseReset}
+                        <li class="p-2.5 bg-white rounded border border-amber-200">
+                            <span class="font-semibold uppercase mr-1">[{hr.lang || 'ko'}]</span>
+                            <span>{t('admin.posts.hub_banner.abuse_reset', { default: '추천을 받았던 글의 제목이 큰 폭으로 변경되어 허브 추천수가 0으로 초기화되었습니다.' })}</span>
+                        </li>
+                    {/if}
+                {/each}
+            </ul>
+            <a href="/posts" class="px-3 py-1.5 rounded bg-white border border-gray-300 text-gray-700 text-sm font-semibold no-underline">
+                {t('admin.posts.hub_banner.go_to_list', { default: '글 목록으로 이동' })}
+            </a>
+        </div>
+    {/if}
 
     <!-- Language Tabs -->
     <div class="lang-tabs pb-4 border-b border-gray-200 mb-6">
@@ -280,7 +357,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
     </div>
 
     {#if activeLang && translationsData[activeLang]}
-    <form method="POST" use:enhance={submitPost} novalidate>
+    <form bind:this={formEl} method="POST" use:enhance={submitPost} novalidate>
         <!-- Inject Hidden Group Data -->
         <input type="hidden" name="groupData" value={groupDataJson} />
 
@@ -327,6 +404,10 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                 bind:tags={translationsData[activeLang].tags}
                 bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
                 bind:submitToBoard={translationsData[activeLang].submitToBoard}
+                bind:hubCategory={translationsData[activeLang].hubCategory}
+                status={translationsData[activeLang].status}
+                charCount={charCount()}
+                autoSyndicateDefault={false}
                 type={translationsData[activeLang]?.type || 'post'}
                 categories={data.categories}
                 lang={activeLang}
@@ -369,6 +450,10 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                             bind:tags={translationsData[activeLang].tags}
                             bind:thumbnailFit={translationsData[activeLang].thumbnailFit}
                             bind:submitToBoard={translationsData[activeLang].submitToBoard}
+                            bind:hubCategory={translationsData[activeLang].hubCategory}
+                            status={translationsData[activeLang].status}
+                            charCount={charCount()}
+                            autoSyndicateDefault={false}
                             type={translationsData[activeLang]?.type || 'post'}
                             categories={data.categories}
                             lang={activeLang}
@@ -479,6 +564,32 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
             </div>
         </div>
 
+        {#if translationsData[activeLang].status === 'scheduled'}
+            <div class="schedule-picker-bar font-sans">
+                <label for="scheduled-at-{activeLang}" class="schedule-label">
+                    🕒 {t('admin.posts.write.schedule_at', { default: '공개 예정 시각' })}
+                </label>
+                <input
+                    id="scheduled-at-{activeLang}"
+                    type="datetime-local"
+                    class="schedule-input"
+                    min={minScheduleInput}
+                    bind:value={translationsData[activeLang].scheduledAt}
+                    onchange={(e) => {
+                        const val = e.currentTarget.value;
+                        const utc = zonedLocalInputToUtcIso(val, siteTimezone);
+                        if (utc && utc <= new Date().toISOString()) {
+                            alert(t('admin.posts.write.schedule_past_error', { default: '과거 시각은 예약할 수 없습니다. 현재 이후 시각을 선택해 주세요.' }));
+                            translationsData[activeLang].scheduledAt = utcIsoToZonedLocalInput(new Date(Date.now() + 60 * 60 * 1000), siteTimezone);
+                        }
+                    }}
+                />
+                <span class="schedule-tz-hint">
+                    {t('admin.posts.write.schedule_tz_hint', { tz: siteTimezone, default: `사이트 시간대(${siteTimezone}) 기준으로 예약됩니다.` })}
+                </span>
+            </div>
+        {/if}
+
         <!-- Actions -->
         <div class="form-actions font-sans">
             <div class="status-selector">
@@ -499,6 +610,23 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
                         bind:group={translationsData[activeLang].status}
                     />
                     <span>{t('admin.posts.write.publish', { default: '발행 (이 언어만)' })}</span>
+                </label>
+                <label>
+                    <input
+                        type="radio"
+                        name="status"
+                        value="scheduled"
+                        bind:group={translationsData[activeLang].status}
+                        onchange={() => {
+                            if (!translationsData[activeLang].scheduledAt) {
+                                translationsData[activeLang].scheduledAt = utcIsoToZonedLocalInput(
+                                    new Date(Date.now() + 60 * 60 * 1000),
+                                    siteTimezone
+                                );
+                            }
+                        }}
+                    />
+                    <span>{t('admin.posts.write.schedule', { default: '예약 공개 (이 언어만)' })}</span>
                 </label>
             </div>
             
@@ -667,6 +795,35 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
     }
 
     /* Form Actions */
+    .schedule-picker-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+        padding: 1rem 1.25rem;
+        background: #f5f3ff;
+        border: 1px solid #ddd6fe;
+        border-radius: 0.5rem;
+    }
+    .schedule-label {
+        font-weight: 600;
+        color: #5b21b6;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+    .schedule-input {
+        padding: 0.45rem 0.75rem;
+        border: 1px solid #c4b5fd;
+        border-radius: 0.375rem;
+        background: white;
+        color: #1f2937;
+        font-size: 0.9rem;
+    }
+    .schedule-tz-hint {
+        font-size: 0.8rem;
+        color: #6d28d9;
+    }
     .form-actions {
         display: flex;
         justify-content: space-between;

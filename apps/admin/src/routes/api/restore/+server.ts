@@ -17,9 +17,9 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { purgeEverything } from '@blog/shared';
+import { purgeEverything, syncNextScheduledAt } from '@blog/shared';
 
-const SITE_INFO_KEYS = ['site_title', 'description', 'siteUrl', 'authorName', 'admin_user_id', 'design_slots'];
+const SITE_INFO_KEYS = ['site_title', 'description', 'siteUrl', 'authorName', 'admin_user_id', 'design_slots', 'next_scheduled_at'];
 
 // 디자인 복원 시 기존 값을 보존할 텍스트/콘텐츠 필드
 const HEADER_TEXT_KEYS = ['loginLabel', 'profileLabel', 'menuItems'];
@@ -237,6 +237,9 @@ export const POST: RequestHandler = async ({ request, platform }) => {
         if (userInsertStatements.length > 0) {
             await executeInChunks(USER_DB, userInsertStatements);
         }
+
+        // 복원 완료 후 예약 공개 기준 시각 재동기화 (design/content/full 전 타입 정합성 보장)
+        await syncNextScheduledAt(BLOG_DB);
 
         // 복원 완료 시 Cloudflare 캐시 전체 퍼지 비동기 기동 (s-maxage=86400 장기 캐시 무력화)
         if (platform?.env?.CLOUDFLARE_ZONE_ID && platform?.env?.CLOUDFLARE_API_TOKEN) {

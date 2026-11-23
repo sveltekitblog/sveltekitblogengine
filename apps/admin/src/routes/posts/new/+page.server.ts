@@ -19,7 +19,7 @@ import type { PageServerLoad, Actions } from './$types';
 import { error, fail, redirect } from '@sveltejs/kit';
 import { marked } from 'marked';
 import { processContentHtml } from '$lib/utils/contentProcessor';
-import { syncCategoryPostCounts } from '$lib/server/categorySync';
+import { syncCategoryPostCounts, syncNextScheduledAt, zonedLocalInputToUtcIso } from '@blog/shared';
 
 // Configure marked
 marked.setOptions({
@@ -84,13 +84,37 @@ export const actions: Actions = {
         }
 
         try {
-            const adminIdRow = await db.prepare(
-                "SELECT value FROM blog_settings WHERE key = 'admin_user_id'"
-            ).first();
-            const defaultAuthorId = adminIdRow?.value as string || 'admin';
+            const { results: metaSettings } = await db.prepare(
+                "SELECT key, value FROM blog_settings WHERE key IN ('admin_user_id', 'timezone')"
+            ).all();
+            const metaMap: Record<string, string> = {};
+            (metaSettings || []).forEach((r: any) => { metaMap[r.key] = r.value; });
+            const defaultAuthorId = metaMap['admin_user_id'] || 'admin';
+            const siteTimezone = metaMap['timezone']?.trim() || 'Asia/Seoul';
+
+            const nowIso = new Date().toISOString();
+            const scheduledUtcMap = new Map<any, string>();
+
+            // 저장 전 예약 시각 전수 검증 (부분 저장 방지)
+            for (const item of groupData) {
+                if (!item.title?.trim() || !item.slug) continue;
+                if (item.status === 'scheduled') {
+                    const utcIso = zonedLocalInputToUtcIso(item.scheduledAt, siteTimezone);
+                    if (!utcIso) {
+                        return fail(400, { error: '예약 공개 시각을 입력해 주세요.' });
+                    }
+                    if (utcIso <= nowIso) {
+                        return fail(400, { error: '과거 시각은 예약할 수 없습니다. 현재 이후 시각을 선택해 주세요.' });
+                    }
+                    scheduledUtcMap.set(item, utcIso);
+                }
+            }
 
             const hubTasks: Promise<any>[] = [];
+            const hubResults: any[] = [];
+            const createdIds: Record<string, string> = {};
             let hasPublishedPost = false;
+            let hasScheduledPost = false;
 
             for (const item of groupData) {
                 // Skip any tab (new or existing) that has no title — prevents ghost posts from empty translation tabs
@@ -134,23 +158,29 @@ export const actions: Actions = {
                     `).bind(category, categoryName || category, lang, category).run();
                 }
 
-                const shouldSyndicate = status === 'published' && (item.submitToBoard === true || item.submitToBoard === 'true');
-                let isSyndicatedVal = shouldSyndicate ? 1 : 0;
+                const wantsSyndicate = item.submitToBoard === true || item.submitToBoard === 'true';
+                const shouldSyndicate = status === 'published' && wantsSyndicate;
+                const isSyndicatedVal = shouldSyndicate ? 1 : 0;
+                const publishedAtVal = status === 'published'
+                    ? nowIso
+                    : (status === 'scheduled' ? (scheduledUtcMap.get(item) || null) : null);
 
-                const nowIso = new Date().toISOString();
                 await db.prepare(`
                     INSERT INTO posts (id, title, slug, content, excerpt, category_slug, type, author_id, status, tags, featured_image, lang, translation_group_id, content_type, content_markdown, thumbnail_fit, is_syndicated, created_at, updated_at, published_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
-                    CASE WHEN ? = 'published' THEN ? ELSE NULL END)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).bind(
-                    id, title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, nowIso, nowIso, status, nowIso
+                    id, title, slug, content, excerpt || '', type === 'post' ? (category || '일반') : null, type, author_id, status, tagsJson, featured_image, lang, groupId, contentType, contentMarkdown || null, thumbnail_fit, isSyndicatedVal, nowIso, nowIso, publishedAtVal
                 ).run();
+                createdIds[lang] = id;
 
                 if (status === 'published') {
                     hasPublishedPost = true;
+                } else if (status === 'scheduled') {
+                    hasScheduledPost = true;
                 }
 
                 // 허브 자동 제출 훅 (status === 'published' & submitToBoard === true)
+                const hubCategory = typeof item.hubCategory === 'string' ? item.hubCategory.trim() : undefined;
                 if (shouldSyndicate) {
                     hubTasks.push((async () => {
                         try {
@@ -162,15 +192,18 @@ export const actions: Actions = {
                                 content: contentType === 'markdown' ? contentMarkdown : content,
                                 contentType,
                                 categorySlug: category || '일반',
+                                hubCategory,
                                 featuredImage: featured_image,
                                 tags: tagsJson,
                                 lang
                             }, db);
+                            hubResults.push(res);
                             if (!res.success) {
                                 console.warn('[Hub Sync Warning]', res.error || res.reason);
                             }
-                        } catch (e) {
+                        } catch (e: any) {
                             console.error('[Hub Sync Error]', e);
+                            hubResults.push({ success: false, error: e?.message || String(e), lang, title });
                         }
                     })());
                 }
@@ -209,8 +242,21 @@ export const actions: Actions = {
                 );
             }
 
+            if (hasScheduledPost) {
+                postCreateTasks.push(syncNextScheduledAt(db));
+            }
+
             if (postCreateTasks.length > 0) {
                 await Promise.all(postCreateTasks);
+            }
+
+            const hasHubNotice = hubResults.some((r) => (!r.success && r.reason !== 'no_api_key') || r.isAbuseReset);
+            if (hasHubNotice) {
+                return {
+                    saved: true,
+                    createdIds,
+                    hubResults
+                };
             }
 
             throw redirect(303, `/posts?refreshed=${Date.now()}`);

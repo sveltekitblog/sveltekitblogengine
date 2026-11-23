@@ -151,18 +151,20 @@
     // 현재 언어 기준 특수 분류(초안, 정적페이지, 미분류) 카운트
     let specialCounts = $derived.by(() => {
         let draft = 0;
+        let scheduled = 0;
         let page = 0;
         let uncategorized = 0;
 
         postsByLang.forEach((p: any) => {
             if (p.status === 'draft') draft++;
+            if (p.status === 'scheduled') scheduled++;
             if (p.type === 'page') page++;
             if (p.type !== 'page' && (!p.category_slug || p.category_slug.trim() === '')) {
                 uncategorized++;
             }
         });
 
-        return { draft, page, uncategorized };
+        return { draft, scheduled, page, uncategorized };
     });
 
     // 현재 언어 기준 카테고리 목록 및 카운트
@@ -207,6 +209,8 @@
         let base = postsByLang;
         if (activeFilter === 'draft') {
             base = postsByLang.filter((p: any) => p.status === 'draft');
+        } else if (activeFilter === 'scheduled') {
+            base = postsByLang.filter((p: any) => p.status === 'scheduled');
         } else if (activeFilter === 'page') {
             base = postsByLang.filter((p: any) => p.type === 'page');
         } else if (activeFilter === 'uncategorized') {
@@ -695,6 +699,16 @@
             <span>{t('admin.posts.filter_draft', { default: '초안' })}</span>
             <span class="cat-count-badge {specialCounts.draft === 0 ? 'zero' : ''}">{specialCounts.draft}</span>
         </button>
+        <button
+            type="button"
+            class="cat-filter-tab special-tab tab-scheduled {activeFilter === 'scheduled' ? 'active' : ''}"
+            onclick={() => selectFilterTab('scheduled')}
+            title={t('admin.posts.filter_scheduled_title', { default: '예약 공개 대기 중인 포스트 목록' })}
+        >
+            <Calendar size={13} class="tab-icon" />
+            <span>{t('admin.posts.filter_scheduled', { default: '예약됨' })}</span>
+            <span class="cat-count-badge {specialCounts.scheduled === 0 ? 'zero' : ''}">{specialCounts.scheduled}</span>
+        </button>
 
         {#if specialCounts.uncategorized > 0}
             <button
@@ -799,6 +813,8 @@
                                         {t('admin.posts.empty_page', { default: '등록된 정적 페이지가 없습니다.' })}
                                     {:else if activeFilter === 'draft'}
                                         {t('admin.posts.empty_draft', { default: '작성 중인 초안이 없습니다.' })}
+                                    {:else if activeFilter === 'scheduled'}
+                                        {t('admin.posts.empty_scheduled', { default: '예약 공개 대기 중인 포스트가 없습니다.' })}
                                     {:else if activeFilter === 'uncategorized'}
                                         {t('admin.posts.empty_uncategorized', { default: '미분류 포스트가 없습니다.' })}
                                     {:else if activeFilter.startsWith('cat:')}
@@ -849,10 +865,17 @@
                             <div class="icon-value"><Eye size={14}/> <span>{post.view_count}</span></div>
                         </td>
                         <td>
-                            <span class="badge {post.status}">{post.status}</span>
+                            <span class="badge {post.status}">
+                                {post.status === 'scheduled' ? t('admin.posts.status_scheduled', { default: '예약됨' }) : post.status}
+                            </span>
                         </td>
                         <td>
-                            <div class="icon-value"><Calendar size={14}/> <span>{formatDate(post.created_at)}</span></div>
+                            <div class="icon-value"><Calendar size={14}/> <span>{formatDate(post.status === 'published' ? (post.published_at || post.created_at) : post.created_at)}</span></div>
+                            {#if post.status === 'scheduled' && post.published_at}
+                                <div class="scheduled-date-note">
+                                    <Clock size={12}/> <span>{t('admin.posts.scheduled_at_prefix', { default: '공개 예정:' })} {formatDate(post.published_at)}</span>
+                                </div>
+                            {/if}
                         </td>
                         <td class="actions">
                             <a href="/posts/{post.id}" class="btn-edit" title={t('admin.posts.action_edit', { default: "수정" })}><Edit2 size={16}/></a>
@@ -1472,6 +1495,19 @@
     .badge.draft {
         background: #f1f5f9;
         color: #334155;
+    }
+    .badge.scheduled {
+        background: #ede9fe;
+        color: #6d28d9;
+    }
+    .scheduled-date-note {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-top: 0.25rem;
+        font-size: 0.75rem;
+        color: #6d28d9;
+        white-space: nowrap;
     }
     .badge.type-page {
         background: #e0e7ff;
