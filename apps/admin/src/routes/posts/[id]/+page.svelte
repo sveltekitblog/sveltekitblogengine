@@ -32,8 +32,31 @@
     type EditorMode = "visual" | "html" | "preview";
     let hubNotice = $state<{ hubResults: any[] } | null>(null);
     let formEl = $state<HTMLFormElement | null>(null);
+    const TIPTAP_SAFE_STYLE_PROPS = new Set(["color", "background-color", "font-size", "text-align"]);
+    function hasUnsupportedCustomHtml(html: string): boolean {
+        if (!html) return false;
+        const withoutYoutube = html.replace(
+            /<div[^>]*data-youtube-video[^>]*>[\s\S]*?<\/div>/gi,
+            ""
+        );
+        if (/<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(withoutYoutube)) {
+            return true;
+        }
+        const styleMatches = withoutYoutube.matchAll(/style\s*=\s*["']([^"']+)["']/gi);
+        for (const m of styleMatches) {
+            const decls = m[1].split(";").map((s) => s.trim()).filter(Boolean);
+            for (const decl of decls) {
+                const prop = decl.split(":")[0]?.trim().toLowerCase();
+                if (prop && !TIPTAP_SAFE_STYLE_PROPS.has(prop)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     const currentTargetPost = untrack(() => data.posts?.find((p: any) => p.id === $page.params.id) || data.posts?.[0]);
-    const hasCustomHtml = /<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(currentTargetPost?.content || '') || /style\s*=\s*["'][^"']+["']/i.test(currentTargetPost?.content || '');
+    const hasCustomHtml = hasUnsupportedCustomHtml(currentTargetPost?.content || '');
     let mode = $state<EditorMode>(hasCustomHtml ? "html" : "visual");
     let saveOriginal = $state(false);
 
@@ -133,7 +156,7 @@
     function setModeSafe(newMode: EditorMode) {
         if (newMode === 'visual') {
             const html = translationsData[activeLang]?.content || '';
-            const hasUnsafeTags = /<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(html) || /style\s*=\s*["'][^"']+["']/i.test(html);
+            const hasUnsafeTags = hasUnsupportedCustomHtml(html);
 
             if (hasUnsafeTags) {
                 const confirmed = confirm(
@@ -517,7 +540,7 @@ thumbnailFit: "${item.thumbnailFit || 'cover'}"
 
                 <!-- Visual Editor -->
                 {#if mode === "visual"}
-                    {#if /<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(rawHtmlSnapshots[activeLang] || '') || /style\s*=\s*["'][^"']+["']/i.test(rawHtmlSnapshots[activeLang] || '')}
+                    {#if hasUnsupportedCustomHtml(rawHtmlSnapshots[activeLang] || '')}
                         <div style="background-color: #fffbeb; border: 1px solid #fde68a; color: #92400e; padding: 0.75rem 1rem; border-radius: 0.375rem 0.375rem 0 0; display: flex; align-items: center; justify-content: space-between; font-size: 0.8125rem;">
                             <span style="font-weight: 500;">
                                 {t('admin.editor.banner_custom_html_visual_warning', { default: '⚠️ 주의: 현재 문서는 커스텀 HTML 태그 또는 인라인 스타일을 포함하고 있습니다. Visual 모드에서 본문을 수정하고 저장하면 기존의 HTML 문서 구조가 깨질 수 있습니다.' })}

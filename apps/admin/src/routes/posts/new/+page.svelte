@@ -96,10 +96,33 @@
         }
     });
 
+    const TIPTAP_SAFE_STYLE_PROPS = new Set(["color", "background-color", "font-size", "text-align"]);
+    function hasUnsupportedCustomHtml(html: string): boolean {
+        if (!html) return false;
+        const withoutYoutube = html.replace(
+            /<div[^>]*data-youtube-video[^>]*>[\s\S]*?<\/div>/gi,
+            ""
+        );
+        if (/<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(withoutYoutube)) {
+            return true;
+        }
+        const styleMatches = withoutYoutube.matchAll(/style\s*=\s*["']([^"']+)["']/gi);
+        for (const m of styleMatches) {
+            const decls = m[1].split(";").map((s) => s.trim()).filter(Boolean);
+            for (const decl of decls) {
+                const prop = decl.split(":")[0]?.trim().toLowerCase();
+                if (prop && !TIPTAP_SAFE_STYLE_PROPS.has(prop)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     function setModeSafe(newMode: EditorMode) {
         if (mode === 'html' && newMode === 'visual') {
             const html = translationsData[activeLang]?.content || '';
-            const hasUnsafeTags = /<\/?(table|thead|tbody|tr|th|td|div|section|article|style|script|details|summary|iframe)[^>]*>/i.test(html) || /style\s*=\s*["'][^"']+["']/i.test(html);
+            const hasUnsafeTags = hasUnsupportedCustomHtml(html);
 
             if (hasUnsafeTags) {
                 const confirmed = confirm(

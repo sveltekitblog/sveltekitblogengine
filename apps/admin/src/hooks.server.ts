@@ -21,7 +21,7 @@ import { hasValidAdminSession } from '$lib/server/adminSession';
 function applySecurityHeaders(response: Response): Response {
     response.headers.set('X-Frame-Options', 'SAMEORIGIN');
     response.headers.set('X-Content-Type-Options', 'nosniff');
-    response.headers.set('Referrer-Policy', 'same-origin');
+    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     if (response.headers.get('content-type')?.includes('text/html')) {
         response.headers.set('Cache-Control', 'private, no-store');
     }
