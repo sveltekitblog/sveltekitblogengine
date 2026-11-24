@@ -2257,7 +2257,7 @@ header.blog-header.scrolled .header-inner {
             logoColor.type !== "gradient" ? getTextStyle(logoColor) : "";
         const logoHtml =
             logoColor.type === "gradient"
-                ? `<span style="background: ${logoColor.value}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; display: inline-block; padding-bottom: 0.2em; margin-bottom: -0.2em;">${logoText}</span>`
+                ? `<span style="background: ${logoColor.value}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; display: inline-block; padding-top: 0.2em; margin-top: -0.2em; padding-bottom: 0.2em; margin-bottom: -0.2em;">${logoText}</span>`
                 : logoText;
 
         let menuItems = header.menuItems || [];

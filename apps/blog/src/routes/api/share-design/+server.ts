@@ -24,7 +24,7 @@ const DESIGN_SETTING_KEYS = ['theme', 'header', 'footer', 'widget_shadow_global'
 const HEADER_TEXT_KEYS = ['loginLabel', 'profileLabel', 'menuItems'];
 const FOOTER_TEXT_KEYS = ['copyright', 'socialLinks', 'navLinks'];
 
-export const GET: RequestHandler = async ({ platform }) => {
+export const GET: RequestHandler = async ({ platform, url }) => {
     const db = platform?.env?.BLOG_DB;
     if (!db) {
         return json({ error: 'Database binding (BLOG_DB) not found' }, { status: 500 });
@@ -66,14 +66,20 @@ export const GET: RequestHandler = async ({ platform }) => {
         const layoutWidgets = layoutWidgetsRes.results || [];
         const languages = languagesRes.results || [];
 
-        // 3. 다중 디자인 슬롯(design_slots) 지원: 현재 활성 슬롯 디자인 우선 추출
+        // 3. 다중 디자인 슬롯(design_slots) 지원: 요청된 공개 활성 슬롯 또는 기본 활성 슬롯 디자인 추출
         const designSlotsRow = blogSettings.find((s: any) => s.key === 'design_slots');
         let activeSlotData: any = null;
         if (designSlotsRow?.value) {
             try {
                 const parsedSlots = JSON.parse(designSlotsRow.value);
-                const activeMode = parsedSlots.active_mode || '1';
-                activeSlotData = parsedSlots.slots?.[activeMode] || parsedSlots.slots?.['1'] || null;
+                const requestedSlot = url.searchParams.get('slot')?.trim();
+                const requestedSlotObj = requestedSlot ? parsedSlots.slots?.[requestedSlot] : null;
+                if (requestedSlotObj && (requestedSlot === '1' || requestedSlotObj.enabled)) {
+                    activeSlotData = requestedSlotObj;
+                } else {
+                    const activeMode = parsedSlots.active_mode || '1';
+                    activeSlotData = parsedSlots.slots?.[activeMode] || parsedSlots.slots?.['1'] || null;
+                }
             } catch {}
         }
 

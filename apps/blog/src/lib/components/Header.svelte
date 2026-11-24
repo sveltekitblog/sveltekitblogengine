@@ -77,7 +77,7 @@
 
     let isScrolled = $state(false);
     // 레이아웃에 직접적인 영향을 주는 isMobile 상태 제거 (CSS 미디어 쿼리가 대체)
-    let sensorEl = $state<HTMLDivElement | null>(null);
+    let headerEl = $state<HTMLElement | null>(null);
 
     onMount(() => {
         // 정적 HTML과 동적 Auth 영역의 DOM 구조를 일치시킵니다.
@@ -87,22 +87,25 @@
             navContainer.appendChild(authGroup);
         }
 
-        if (!sensorEl) return;
-        const observer = new IntersectionObserver(
-            ([entry]) => {
-                // 스크롤이 확실히 60px 이상 내려갔을 때만 scrolled 활성화하고,
-                // 다시 최상단 부근(window.scrollY < 20)으로 올라올 때만 해제하여 60px 경계선 헤더 떨림(Jitter) 원천 차단
-                if (!entry.isIntersecting) {
+        const handleScroll = () => {
+            const y = window.scrollY;
+            if (!isScrolled && y > 60) {
+                // 짧은 페이지에서 헤더 축소로 인해 문서 높이가 급감하여 최상단으로 튕기는(Jitter) 현상 방지
+                const scrollableRoom =
+                    document.documentElement.scrollHeight - window.innerHeight;
+                const currentHeaderHeight = headerEl?.offsetHeight || 120;
+                if (scrollableRoom > currentHeaderHeight + 40) {
                     isScrolled = true;
-                } else if (typeof window !== "undefined" && window.scrollY < 20) {
-                    isScrolled = false;
                 }
-            },
-            { root: null, threshold: 0 },
-        );
+            } else if (isScrolled && y <= 10) {
+                // 히스테리시스 해제: 어떤 스크롤 속도에서도 최상단 도달 시 2줄 헤더 복귀 보장
+                isScrolled = false;
+            }
+        };
 
-        observer.observe(sensorEl);
-        return () => observer.disconnect();
+        handleScroll();
+        window.addEventListener("scroll", handleScroll, { passive: true });
+        return () => window.removeEventListener("scroll", handleScroll);
     });
 
     // 화면 크기 반응형 감지 제거
@@ -495,6 +498,8 @@
                     `background-clip: text`,
                     `color: transparent`,
                     `display: inline-block`,
+                    `padding-top: 0.2em`,
+                    `margin-top: -0.2em`,
                     `padding-bottom: 0.2em`,
                     `margin-bottom: -0.2em`,
                 ].join("; ");
@@ -591,7 +596,7 @@
         if (!rawHeaderStaticHtml) return "";
         const logoColor = header.logoColor || { type: "solid", value: "" };
         const freshLogoHtml = logoColor.type === "gradient"
-            ? `<span style="background: ${logoColor.value}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; display: inline-block; padding-bottom: 0.2em; margin-bottom: -0.2em;">${logoText}</span>`
+            ? `<span style="background: ${logoColor.value}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; display: inline-block; padding-top: 0.2em; margin-top: -0.2em; padding-bottom: 0.2em; margin-bottom: -0.2em;">${logoText}</span>`
             : logoText;
         // DB 캐시 HTML 내부의 <a> 태그 속성(class 및 style)을 동적으로 안전 치환하여 효과 주입
         return rawHeaderStaticHtml.replace(
@@ -675,13 +680,8 @@
 
 </script>
 
-<div
-    bind:this={sensorEl}
-    class="scroll-sensor"
-    style="position: absolute; top: 60px; left: 0; width: 1px; height: 1px; pointer-events: none; visibility: hidden; z-index: -9999;"
-></div>
-
 <header
+    bind:this={headerEl}
     class="blog-header"
     class:scrolled={isScrolled}
     class:mobile-open={isMenuOpen}
@@ -1444,11 +1444,13 @@
     }
 
     .blog-header.header-two-line {
+        min-height: max(var(--header-height), var(--min-header-height));
         height: auto !important;
     }
 
     /* Scrolled State: Handle height shrink dynamically based on logo size */
     .blog-header.scrolled {
+        min-height: 0 !important;
         height: max(
             var(--scrolled-height),
             var(--min-header-height)

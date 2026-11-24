@@ -26,8 +26,15 @@
 
     let { settings }: { settings: any } = $props();
     let isMobile = $state(false);
+    let storedSlotId = $state<string | null>(null);
+    let shareDesignHref = $derived(
+        `/api/share-design?slot=${encodeURIComponent(storedSlotId || $page.data.activeSlotId || "1")}`,
+    );
 
     onMount(() => {
+        try {
+            storedSlotId = localStorage.getItem("skbe_design_slot");
+        } catch {}
         const media = window.matchMedia("(max-width: 768px)");
         isMobile = media.matches;
         const listener = (e: MediaQueryListEvent) => {
@@ -223,7 +230,7 @@
             </span>
             {#if footer.shareDesign}
                 <a
-                    href="/api/share-design"
+                    href={shareDesignHref}
                     download="blog-design-share.json"
                     style="display: flex; align-items: center; gap: 0.3rem;"
                     title={$t("blog.footer.share_design")}

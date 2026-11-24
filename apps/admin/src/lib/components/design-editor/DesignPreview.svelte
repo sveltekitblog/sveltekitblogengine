@@ -969,6 +969,8 @@
                             background-clip: text;
                             color: transparent;
                             display: inline-block;
+                            padding-top: 0.2em;
+                            margin-top: -0.2em;
                             padding-bottom: 0.15em;
                             margin-bottom: -0.15em;
                         "

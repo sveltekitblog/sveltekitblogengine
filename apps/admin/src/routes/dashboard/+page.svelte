@@ -295,6 +295,10 @@
 
     function initAdsenseChart() {
         if (!adsenseChartCanvas || !data.adsenseData?.chart?.rows) return;
+        if (adsenseChart) {
+            adsenseChart.destroy();
+            adsenseChart = null;
+        }
 
         const rows = data.adsenseData.chart.rows;
         const labels = rows.map((r: any) => {
