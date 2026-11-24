@@ -7,6 +7,7 @@
 It separates the public blog, the administration console, and analytics synchronization into isolated Cloudflare deployments backed by your own D1 databases and KV/object storage.
 
 - **Live Reference Deployment**: [sveltekitblog.com](https://sveltekitblog.com)
+- **Interactive Demo (Admin + Blog, Browser-Only)**: [demo.sveltekitblog.com](https://demo.sveltekitblog.com) — Designs, posts, and media backed up in the demo can be restored directly into a self-hosted SKBE instance.
 - **License**: [AGPL-3.0](./LICENSE)
 
 [![Design Editor Demo](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)

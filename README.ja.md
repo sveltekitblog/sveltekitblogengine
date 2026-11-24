@@ -7,6 +7,7 @@
 公開ブログ、管理コンソール、アナリティクス同期ワーカーをそれぞれ独立した Cloudflare デプロイ単位として分離し、自身の D1 データベースと KV／オブジェクトストレージ上で動作するように設計されています。
 
 - **ライブ参照デプロイ**: [sveltekitblog.com](https://sveltekitblog.com)
+- **インタラクティブデモ（管理画面＋ブログ・ブラウザ完結）**: [demo.sveltekitblog.com](https://demo.sveltekitblog.com) — デモで作成したデザイン・記事・メディアなどのバックアップデータは、実際のSKBEブログへそのまま復元できます。
 - **ライセンス**: [AGPL-3.0](./LICENSE)
 
 [![デザインエディタデモ](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)

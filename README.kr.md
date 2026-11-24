@@ -7,6 +7,7 @@
 공개 블로그, 관리자 콘솔, 통계 수집 워커를 각각 독립된 Cloudflare 배포 단위로 분리하고, 사용자 본인의 D1 데이터베이스와 KV/오브젝트 스토리지 위에서 동작하도록 설계되어 있습니다.
 
 - **라이브 레퍼런스**: [sveltekitblog.com](https://sveltekitblog.com)
+- **인터랙티브 데모 (어드민 + 블로그, 브라우저 단독 실행)**: [demo.sveltekitblog.com](https://demo.sveltekitblog.com) — 데모에서 설정한 디자인, 포스트, 미디어 등 백업 데이터를 실제 SKBE 블로그에 그대로 복원할 수 있습니다.
 - **라이선스**: [AGPL-3.0](./LICENSE)
 
 [![디자인 에디터 데모](./GIFs/design_editor.gif)](https://www.youtube.com/watch?v=XOza3hgiNQw)
