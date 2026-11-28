@@ -22,7 +22,7 @@ import { purgeEverything, syncNextScheduledAt } from '@blog/shared';
 const SITE_INFO_KEYS = ['site_title', 'description', 'siteUrl', 'authorName', 'admin_user_id', 'design_slots', 'next_scheduled_at'];
 
 // 디자인 복원 시 기존 값을 보존할 텍스트/콘텐츠 필드
-const HEADER_TEXT_KEYS = ['loginLabel', 'profileLabel', 'menuItems'];
+const HEADER_TEXT_KEYS = ['loginLabel', 'profileLabel', 'menuItems', 'noticeBar'];
 const FOOTER_TEXT_KEYS = ['copyright', 'socialLinks', 'navLinks'];
 
 export const POST: RequestHandler = async ({ request, platform }) => {

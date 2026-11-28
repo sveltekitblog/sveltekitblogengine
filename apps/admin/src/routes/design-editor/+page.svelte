@@ -66,6 +66,12 @@
     } from "lucide-svelte";
     import DynamicBgRenderer from "$lib/components/DynamicBgRenderer.svelte";
     import { validateJS } from "@blog/shared/utils";
+    import {
+        ALLOWED_PRESET_WIDGET_TYPES,
+        sanitizeBackgroundObject,
+        sanitizeDesignPresetForSharing,
+        detectStrippedPresetFeatures,
+    } from "@blog/shared";
     import { onMount } from "svelte";
     import ColorControl from "$lib/components/design-editor/ColorControl.svelte";
     import GradientBuilder from "$lib/components/design-editor/GradientBuilder.svelte";
@@ -115,6 +121,43 @@
 
     // Editor State (Reactive Runes)
     // Helper: Normalize background data (String -> Object)
+    function ensureUrlTranslationObj(val: any, fallbackStr: string = "/") {
+        const temp: Record<string, string> = {};
+        if (!val) {
+            languages.forEach((l: any) => (temp[l.code] = fallbackStr));
+            return temp;
+        }
+        if (typeof val === "string") {
+            const trimmed = val.trim();
+            if (trimmed.startsWith("{")) {
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    if (typeof parsed === "object" && parsed !== null) {
+                        languages.forEach((l: any) => {
+                            temp[l.code] =
+                                typeof parsed[l.code] === "string"
+                                    ? parsed[l.code]
+                                    : fallbackStr;
+                        });
+                        return temp;
+                    }
+                } catch {}
+            }
+            // 기존 단일 문자열 경로는 모든 언어에 동일하게 복제하여 하위 호환 유지
+            languages.forEach((l: any) => (temp[l.code] = val));
+            return temp;
+        }
+        if (typeof val === "object" && val !== null) {
+            languages.forEach((l: any) => {
+                temp[l.code] =
+                    typeof val[l.code] === "string" ? val[l.code] : fallbackStr;
+            });
+            return temp;
+        }
+        languages.forEach((l: any) => (temp[l.code] = fallbackStr));
+        return temp;
+    }
+
     function ensureMenuItemStructure(items: any[]) {
         if (!items || !Array.isArray(items) || items.length === 0) {
             return [
@@ -122,13 +165,16 @@
                     id: 1,
                     type: "link",
                     label: ensureTranslationObj("Home", "Home"),
-                    url: "/",
+                    url: ensureUrlTranslationObj("/", "/"),
+                    openInNewTab: false,
                     icon: "Home",
                 },
                 {
                     id: 3,
                     type: "category_drawer",
                     label: ensureTranslationObj("Categories", "Categories"),
+                    url: ensureUrlTranslationObj("#", "#"),
+                    openInNewTab: false,
                     icon: "Menu",
                 },
             ];
@@ -142,7 +188,8 @@
                     id: item.id || Date.now() + index,
                     type: item.type || "link",
                     label: ensureTranslationObj(item.label, "Untitled"),
-                    url: item.url || "/",
+                    url: ensureUrlTranslationObj(item.url, "/"),
+                    openInNewTab: Boolean(item.openInNewTab),
                     icon:
                         item.icon ||
                         (item.type === "category_drawer" ? "Menu" : "Link"),
@@ -396,6 +443,26 @@
             loginTextColor: h.loginTextColor || "",
             profileLabel: ensureTranslationObj(h.profileLabel, "Profile"),
             menuItems: ensureMenuItemStructure(ensureArray(h.menuItems)),
+            noticeBar: {
+                enabled: h.noticeBar?.enabled === true,
+                badgeText:
+                    h.noticeBar?.badgeText !== undefined
+                        ? ensureUrlTranslationObj(h.noticeBar.badgeText, "")
+                        : ensureTranslationObj(null, "NOTICE"),
+                text: ensureTranslationObj(h.noticeBar?.text, ""),
+                url: ensureUrlTranslationObj(h.noticeBar?.url, ""),
+                openInNewTab: h.noticeBar?.openInNewTab === true,
+                bgColor: h.noticeBar?.bgColor || "",
+                textColor: h.noticeBar?.textColor || "",
+                badgeColor: h.noticeBar?.badgeColor || "",
+                borderColor: h.noticeBar?.borderColor || "",
+                shadow: {
+                    useGlobal: h.noticeBar?.shadow?.useGlobal !== false,
+                    normal: h.noticeBar?.shadow?.normal || "none",
+                    hover: h.noticeBar?.shadow?.hover || "none",
+                    hoverTranslateY: h.noticeBar?.shadow?.hoverTranslateY ?? -2,
+                },
+            },
             headerBackground: normalizeBackground(
                 h.headerBackground || "#ffffff",
                 h.headerBackgroundOpacity,
@@ -929,6 +996,7 @@
 
     // --- 슬롯별 디자인 독립 백업 & 복원 상태 및 함수 ---
     let slotBackupTargetId = $state<string>("1");
+    let slotExportForSharing = $state<boolean>(false);
     let slotRestoreTargetId = $state<string>("1");
     let slotRestoreFileName = $state<string>("");
     let slotRestoreFileContent = $state<any>(null);
@@ -947,7 +1015,7 @@
         return raw;
     }
 
-    function exportSlotPreset(slotId: string) {
+    function exportSlotPreset(slotId: string, forSharing: boolean = slotExportForSharing) {
         try {
             const snapshot = (slotId === currentSlotId)
                 ? getSnapshotOfCurrentSlot()
@@ -956,7 +1024,7 @@
             const slotName = getSlotDisplayName(slotId);
             const presetData = {
                 version: "3.0",
-                backupType: "design_preset",
+                backupType: forSharing ? "design_preset" : "design_slot_backup",
                 timestamp: new Date().toISOString(),
                 presetName: slotName,
                 design: {
@@ -970,16 +1038,46 @@
                 }
             };
 
-            const blob = new Blob([JSON.stringify(presetData, null, 2)], { type: "application/json" });
+            const stripped = forSharing ? detectStrippedPresetFeatures(presetData) : null;
+            const outputData = forSharing
+                ? sanitizeDesignPresetForSharing(presetData)
+                : JSON.parse(JSON.stringify(presetData));
+            const jsonStr = JSON.stringify(outputData, null, 2);
+            const blob = new Blob([jsonStr], { type: "application/json" });
+
+            if (forSharing && blob.size > 65536) {
+                alert(
+                    t("admin.theme.slot_share_size_warning", {
+                        size: (blob.size / 1024).toFixed(1),
+                        default: `⚠️ 공유용 프리셋 파일 크기(${(blob.size / 1024).toFixed(1)}KB)가 디자인 플랫폼 권장 상한(64KB)을 초과합니다.`,
+                    })
+                );
+            }
+
             const safeName = slotName.replace(/[^a-zA-Z0-9가-힣_-]/g, "_");
             const dateStr = new Date().toISOString().slice(0, 10);
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `design-preset-${safeName}-${dateStr}.json`;
+            link.download = forSharing
+                ? `design-preset-share-${safeName}-${dateStr}.json`
+                : `design-slot-backup-${safeName}-${dateStr}.json`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
+
+            if (forSharing && stripped && (stripped.hasJsBg || stripped.hasHtmlWidget || stripped.hasExternalImage)) {
+                const removed: string[] = [];
+                if (stripped.hasJsBg) removed.push(t("admin.theme.slot_share_stripped_js", { default: "커스텀 JS 배경(별도 JS 게시판 공유)" }));
+                if (stripped.hasHtmlWidget) removed.push(t("admin.theme.slot_share_stripped_html", { default: "HTML 위젯" }));
+                if (stripped.hasExternalImage) removed.push(t("admin.theme.slot_share_stripped_image", { default: "외부 도메인 배경 이미지" }));
+                alert(
+                    t("admin.theme.slot_share_stripped_notice", {
+                        items: removed.join(", "),
+                        default: `✅ 공유용 디자인 프리셋으로 정제되어 다운로드되었습니다.\n(제외된 항목: ${removed.join(", ")})`,
+                    })
+                );
+            }
         } catch (e: any) {
             alert(t("admin.theme.slot_backup_fail", { default: "디자인 백업 실패: " }) + e.message);
         }
@@ -1043,23 +1141,127 @@
         return null;
     }
 
+    let slotRestoreIsSharedPreset = $state<boolean>(false);
+
     async function handleSlotRestoreFileSelect(e: Event) {
         const input = e.currentTarget as HTMLInputElement;
         const file = input.files?.[0];
-        if (!file) { slotRestoreFileName = ""; slotRestoreFileContent = null; return; }
+        if (!file) { slotRestoreFileName = ""; slotRestoreFileContent = null; slotRestoreIsSharedPreset = false; return; }
         slotRestoreFileName = file.name;
         try {
             const text = await file.text();
-            const converted = convertLegacyBackupToPreset(JSON.parse(text));
+            const parsed = JSON.parse(text);
+            const converted = convertLegacyBackupToPreset(parsed);
             if (!converted) {
                 alert(t("admin.theme.slot_restore_invalid_file", { default: "유효한 디자인 백업 파일 형식이 아닙니다." }));
-                slotRestoreFileName = ""; slotRestoreFileContent = null; input.value = ""; return;
+                slotRestoreFileName = ""; slotRestoreFileContent = null; slotRestoreIsSharedPreset = false; input.value = ""; return;
             }
             slotRestoreFileContent = converted;
+            slotRestoreIsSharedPreset = parsed?.backupType === "design_preset" || (!parsed?.backupType && Boolean(parsed?.design));
         } catch (err: any) {
             alert(t("admin.theme.slot_restore_read_fail", { default: "파일 읽기 실패: " }) + err.message);
-            slotRestoreFileName = ""; slotRestoreFileContent = null; input.value = "";
+            slotRestoreFileName = ""; slotRestoreFileContent = null; slotRestoreIsSharedPreset = false; input.value = "";
         }
+    }
+
+    function mergeProtectedSharedPreset(incomingRaw: any, existingSlot: any) {
+        const incoming = JSON.parse(JSON.stringify(incomingRaw));
+        const existing = existingSlot ? JSON.parse(JSON.stringify(existingSlot)) : {};
+
+        // 1. 보안 정제 재실행: 외부 프리셋 파일 변조를 통한 jsCode / 외부 도메인 이미지 주입 차단
+        if (incoming.theme) {
+            incoming.theme.bodyBackground = sanitizeBackgroundObject(incoming.theme.bodyBackground, "#ffffff");
+        }
+        if (incoming.header) {
+            incoming.header.headerBackground = sanitizeBackgroundObject(incoming.header.headerBackground, "#ffffff");
+            if (incoming.header.logoColor) {
+                incoming.header.logoColor = sanitizeBackgroundObject(incoming.header.logoColor, "#0f172a");
+            }
+        }
+        if (incoming.footer) {
+            incoming.footer.footerBackground = sanitizeBackgroundObject(incoming.footer.footerBackground, "");
+        }
+
+        // 2. 내 블로그 고유 데이터 절대 보존
+        if (existing.site_title !== undefined) {
+            incoming.site_title = existing.site_title;
+        }
+
+        if (incoming.header && existing.header) {
+            if (existing.header.logoText !== undefined) {
+                incoming.header.logoText = existing.header.logoText;
+            }
+            if (existing.header.menuItems !== undefined) {
+                incoming.header.menuItems = existing.header.menuItems;
+            }
+            if (existing.header.mobile?.menuItems !== undefined) {
+                incoming.header.mobile = {
+                    ...(incoming.header.mobile || {}),
+                    menuItems: existing.header.mobile.menuItems,
+                };
+            }
+            // 공지바: 색상·그림자 등 디자인 속성만 프리셋 반영, 내 공지 활성 여부·문구·링크·배지는 유지
+            if (existing.header.noticeBar) {
+                incoming.header.noticeBar = {
+                    ...(incoming.header.noticeBar || {}),
+                    enabled: existing.header.noticeBar.enabled,
+                    badgeText: existing.header.noticeBar.badgeText,
+                    text: existing.header.noticeBar.text,
+                    url: existing.header.noticeBar.url,
+                    openInNewTab: existing.header.noticeBar.openInNewTab,
+                };
+            }
+        }
+
+        if (incoming.footer && existing.footer) {
+            if (existing.footer.copyright !== undefined) {
+                incoming.footer.copyright = existing.footer.copyright;
+            }
+            if (existing.footer.socialLinks !== undefined) {
+                incoming.footer.socialLinks = existing.footer.socialLinks;
+            }
+            if (existing.footer.navLinks !== undefined) {
+                incoming.footer.navLinks = existing.footer.navLinks;
+            }
+            if (existing.footer.mobile) {
+                incoming.footer.mobile = {
+                    ...(incoming.footer.mobile || {}),
+                    ...(existing.footer.mobile.copyright !== undefined ? { copyright: existing.footer.mobile.copyright } : {}),
+                    ...(existing.footer.mobile.navLinks !== undefined ? { navLinks: existing.footer.mobile.navLinks } : {}),
+                };
+            }
+        }
+
+        // 3. 위젯 안전 병합: 외부 HtmlWidget 차단 + 내 DB widget_id 재매핑 + 기존 HtmlWidget 보존
+        const localWidgets = Array.isArray(data.widgets) ? data.widgets : [];
+        const desktopMaxCol = Math.max(0, Number(incoming.layout?.columnCount || 1) - 1);
+        const mobileMaxCol = Math.max(0, Number(incoming.layout?.mobileColumnCount || 1) - 1);
+
+        const safeIncomingWidgets = Array.isArray(incoming.widgets)
+            ? incoming.widgets
+                  .filter((w: any) => w && ALLOWED_PRESET_WIDGET_TYPES.has(w.type))
+                  .map((w: any) => {
+                      const matchedMaster = localWidgets.find((mw: any) => mw.type === w.type);
+                      return matchedMaster ? { ...w, widget_id: matchedMaster.id } : w;
+                  })
+            : [];
+
+        const preservedHtmlWidgets = Array.isArray(existing.widgets)
+            ? existing.widgets
+                  .filter((w: any) => w && w.type === "HtmlWidget")
+                  .map((w: any) => {
+                      const maxCol = w.device === "mobile" ? mobileMaxCol : desktopMaxCol;
+                      const safeCol = Math.min(Math.max(0, Number(w.column_index ?? w.columnIndex ?? 0)), maxCol);
+                      return {
+                          ...w,
+                          column_index: safeCol,
+                          columnIndex: safeCol,
+                      };
+                  })
+            : [];
+
+        incoming.widgets = [...safeIncomingWidgets, ...preservedHtmlWidgets];
+        return incoming;
     }
 
     function applySlotRestore() {
@@ -1069,8 +1271,12 @@
         if (!confirm(t("admin.theme.slot_restore_confirm", { name: targetName, default: `선택한 디자인을 '${targetName}'(으)로 복원하시겠습니까?\n(기존 ${targetName}의 디자인이 덮어쓰여집니다)` }))) return;
         try {
             slots[currentSlotId] = getSnapshotOfCurrentSlot();
+            const existingSlot = slots[targetId] || getSnapshotOfCurrentSlot();
+            const finalContent = slotRestoreIsSharedPreset
+                ? mergeProtectedSharedPreset(slotRestoreFileContent, existingSlot)
+                : JSON.parse(JSON.stringify(slotRestoreFileContent));
             slots[targetId] = {
-                ...slotRestoreFileContent,
+                ...finalContent,
                 name: slots[targetId]?.name || targetName,
                 enabled: targetId === "1" ? true : Boolean(slots[targetId]?.enabled),
                 updatedAt: new Date().toISOString()
@@ -1198,6 +1404,32 @@
         const items = [...headerConfig.menuItems];
         [items[index + 1], items[index]] = [items[index], items[index + 1]];
         headerConfig.menuItems = items;
+    }
+
+    function moveMobileMenuUp(index: number) {
+        if (index <= 0) return;
+        const items = [...headerConfig.mobile.menuItems];
+        [items[index - 1], items[index]] = [items[index], items[index - 1]];
+        headerConfig.mobile.menuItems = items;
+    }
+
+    function moveMobileMenuDown(index: number) {
+        if (index >= headerConfig.mobile.menuItems.length - 1) return;
+        const items = [...headerConfig.mobile.menuItems];
+        [items[index + 1], items[index]] = [items[index], items[index + 1]];
+        headerConfig.mobile.menuItems = items;
+    }
+
+    function syncEmptyLangUrls(urlObj: Record<string, string>, newValue: string) {
+        if (!urlObj || typeof urlObj !== "object") return;
+        languages.forEach((l: any) => {
+            if (l.code !== activeLang) {
+                const cur = (urlObj[l.code] || "").trim();
+                if (cur === "" || cur === "/") {
+                    urlObj[l.code] = newValue;
+                }
+            }
+        });
     }
 
     // Icon Picker
@@ -2269,6 +2501,55 @@ header.blog-header.scrolled .header-inner {
             }
         }
 
+        const defaultLangCode =
+            languages.find((l: any) => l.is_default === 1 || l.is_default === true)?.code || "ko";
+        const langPrefix = lang && lang !== defaultLangCode ? `/${lang}` : "";
+        const activeLangCodes = languages.map((l: any) => l.code).filter(Boolean);
+
+        const compileMenuUrl = (rawUrlInput: any): { href: string; isExternal: boolean } => {
+            let raw = "";
+            if (typeof rawUrlInput === "object" && rawUrlInput !== null) {
+                raw =
+                    rawUrlInput[lang] ||
+                    rawUrlInput[defaultLangCode] ||
+                    rawUrlInput["ko"] ||
+                    Object.values(rawUrlInput).find((v: any) => typeof v === "string" && v.trim() !== "") ||
+                    "/";
+            } else if (typeof rawUrlInput === "string") {
+                raw = rawUrlInput;
+            }
+            const trimmed = String(raw || "/").trim();
+            if (!trimmed || trimmed === "#") return { href: trimmed || "#", isExternal: false };
+            if (/^(mailto:|tel:)/i.test(trimmed)) return { href: trimmed, isExternal: true };
+            if (
+                !trimmed.startsWith("/") &&
+                !trimmed.startsWith("#") &&
+                !/^https?:\/\//i.test(trimmed) &&
+                /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+(\/.*)?$/.test(trimmed)
+            ) {
+                return { href: `https://${trimmed}`, isExternal: true };
+            }
+            if (/^https?:\/\//i.test(trimmed)) {
+                return { href: trimmed, isExternal: true };
+            }
+            let internalPath = `/${trimmed.replace(/^\/+/, "")}`;
+            if (activeLangCodes.length > 0) {
+                const langRegex = new RegExp(`^\\/(${activeLangCodes.join("|")})(?=\\/|$)`, "i");
+                internalPath = internalPath.replace(langRegex, "") || "/";
+            }
+            return {
+                href: internalPath === "/" ? (langPrefix || "/") : `${langPrefix}${internalPath}`,
+                isExternal: false,
+            };
+        };
+
+        const escapeHtml = (str: any) =>
+            String(str ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+
         let navLinksHtml = "";
         menuItems.forEach((item) => {
             if (!item) return;
@@ -2286,15 +2567,22 @@ header.blog-header.scrolled .header-inner {
                 <div class="category-dropdown-wrapper">
                     <button class="nav-link category-toggle" data-dropdown-id="${item.id}" style="color: var(--nav-text-color);">
                         <span class="icon-placeholder" ${iconAttr}></span>
-                        <span>${label}</span>
+                        <span>${escapeHtml(label)}</span>
                         <span class="arrow-icon">▼</span>
                     </button>
                 </div>`;
             } else {
+                const { href, isExternal } = compileMenuUrl(item.url);
+                const openInNewTab =
+                    item.openInNewTab !== undefined ? Boolean(item.openInNewTab) : isExternal;
+                const safeHref = String(href).replace(/"/g, "&quot;");
+                const targetAttr = openInNewTab
+                    ? ' target="_blank" rel="noopener noreferrer"'
+                    : "";
                 navLinksHtml += `
-                <a href="${item.url || "/"}" class="nav-link" style="color: var(--nav-text-color);">
+                <a href="${safeHref}"${targetAttr} class="nav-link" style="color: var(--nav-text-color);">
                     <span class="icon-placeholder" ${iconAttr}></span>
-                    <span>${label}</span>
+                    <span>${escapeHtml(label)}</span>
                 </a>`;
             }
         });
@@ -2340,7 +2628,7 @@ header.blog-header.scrolled .header-inner {
         ].join(" ");
 
         return `
-        <a href="/" class="logo" style="${hoverStyleVars} ${logoStyleAttr || "color: var(--primary-color);"}">
+        <a href="${langPrefix || "/"}" class="logo" style="${hoverStyleVars} ${logoStyleAttr || "color: var(--primary-color);"}">
             ${logoHtml}
         </a>
         <div class="header-right desktop-only ${alignmentClass}">
@@ -4885,6 +5173,19 @@ header.blog-header.scrolled .header-inner {
                                                 <div
                                                     class="p-3 bg-slate-50 rounded-lg border border-slate-100"
                                                 >
+                                                    <div class="flex items-center justify-between mb-2">
+                                                        <span class="text-[10px] font-bold text-slate-400">#{i + 1}</span>
+                                                        {#if item.type === "link"}
+                                                            <label class="flex items-center gap-1 text-[10px] text-slate-500 cursor-pointer select-none">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    bind:checked={item.openInNewTab}
+                                                                    class="rounded border-slate-300"
+                                                                />
+                                                                <span>새 탭에서 열기</span>
+                                                            </label>
+                                                        {/if}
+                                                    </div>
                                                     <!-- Row 1: 명칭 & 경로 -->
                                                     <div
                                                         class="flex gap-2 items-center mb-3"
@@ -4912,15 +5213,22 @@ header.blog-header.scrolled .header-inner {
                                                                 class="text-[9px] text-slate-400 mb-0.5 block"
                                                                 >{t(
                                                                     "admin.theme.menu_path",
-                                                                )}</label
+                                                                )} ({activeLang.toUpperCase()})</label
                                                             >
                                                             {#if item.type === "link"}
                                                                 <input
                                                                     type="text"
                                                                     bind:value={
-                                                                        item.url
+                                                                        item.url[
+                                                                            activeLang
+                                                                        ]
                                                                     }
-                                                                    placeholder="/"
+                                                                    onchange={(e) =>
+                                                                        syncEmptyLangUrls(
+                                                                            item.url,
+                                                                            (e.currentTarget as HTMLInputElement).value,
+                                                                        )}
+                                                                    placeholder="/ 또는 demo.sveltekitblog.com"
                                                                     class="w-full p-1.5 border rounded text-xs bg-white"
                                                                 />
                                                             {:else}
@@ -5007,6 +5315,7 @@ header.blog-header.scrolled .header-inner {
                                                                 <button
                                                                     disabled={i ===
                                                                         0}
+                                                                    title="앞으로 이동 (좌측)"
                                                                     onclick={() =>
                                                                         moveMenuUp(
                                                                             i,
@@ -5023,6 +5332,7 @@ header.blog-header.scrolled .header-inner {
                                                                             .menuItems
                                                                             .length -
                                                                             1}
+                                                                    title="뒤로 이동 (우측)"
                                                                     onclick={() =>
                                                                         moveMenuDown(
                                                                             i,
@@ -5074,7 +5384,11 @@ header.blog-header.scrolled .header-inner {
                                                                 "New Page",
                                                                 "New Page",
                                                             ),
-                                                            url: "/",
+                                                            url: ensureUrlTranslationObj(
+                                                                "/",
+                                                                "/",
+                                                            ),
+                                                            openInNewTab: false,
                                                             icon: "Plus",
                                                         },
                                                     ])}
@@ -5094,6 +5408,11 @@ header.blog-header.scrolled .header-inner {
                                                                 "Categories",
                                                                 "Categories",
                                                             ),
+                                                            url: ensureUrlTranslationObj(
+                                                                "#",
+                                                                "#",
+                                                            ),
+                                                            openInNewTab: false,
                                                             icon: "Menu",
                                                         },
                                                     ])}
@@ -5104,6 +5423,211 @@ header.blog-header.scrolled .header-inner {
                                                 )}
                                             </button>
                                         </div>
+                                    </div>
+                                </details>
+
+                                <details
+                                    class="group bg-white rounded-lg border border-slate-200 mb-3 overflow-hidden"
+                                >
+                                    <summary
+                                        class="flex justify-between items-center p-3 cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors font-semibold text-slate-700 text-[13px] tracking-wider select-none"
+                                    >
+                                        <div class="flex items-center gap-2">
+                                            <Bell
+                                                size={14}
+                                                class="text-slate-400"
+                                            />
+                                            상단 공지 / 강조 포스트 배너
+                                        </div>
+                                        <ChevronDown
+                                            size={14}
+                                            class="text-slate-400 group-open:rotate-180 transition-transform duration-200"
+                                        />
+                                    </summary>
+                                    <div class="p-3 bg-white flex flex-col gap-3">
+                                        <label
+                                            class="flex items-center justify-between text-xs font-medium text-slate-700 cursor-pointer"
+                                        >
+                                            <span>헤더와 본문 사이에 공지 배너 표시</span>
+                                            <input
+                                                type="checkbox"
+                                                bind:checked={
+                                                    headerConfig.noticeBar.enabled
+                                                }
+                                                class="rounded border-slate-300"
+                                            />
+                                        </label>
+
+                                        {#if headerConfig.noticeBar.enabled}
+                                            <div class="grid grid-cols-3 gap-2">
+                                                <div>
+                                                    <label
+                                                        class="text-[10px] text-slate-500 mb-1 block"
+                                                        >배지 ({activeLang.toUpperCase()})</label
+                                                    >
+                                                    <input
+                                                        type="text"
+                                                        bind:value={
+                                                            headerConfig.noticeBar
+                                                                .badgeText[
+                                                                activeLang
+                                                            ]
+                                                        }
+                                                        placeholder="NOTICE"
+                                                        class="w-full p-1.5 border rounded text-xs bg-white"
+                                                    />
+                                                </div>
+                                                <div class="col-span-2">
+                                                    <label
+                                                        class="text-[10px] text-slate-500 mb-1 block"
+                                                        >공지 문구 ({activeLang.toUpperCase()})</label
+                                                    >
+                                                    <input
+                                                        type="text"
+                                                        bind:value={
+                                                            headerConfig.noticeBar
+                                                                .text[activeLang]
+                                                        }
+                                                        placeholder="강조할 포스트 제목이나 안내 문구"
+                                                        class="w-full p-1.5 border rounded text-xs bg-white"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <div
+                                                    class="flex items-center justify-between mb-1"
+                                                >
+                                                    <label
+                                                        class="text-[10px] text-slate-500"
+                                                        >연결 경로 ({activeLang.toUpperCase()})</label
+                                                    >
+                                                    <label
+                                                        class="flex items-center gap-1 text-[10px] text-slate-500 cursor-pointer"
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            bind:checked={
+                                                                headerConfig
+                                                                    .noticeBar
+                                                                    .openInNewTab
+                                                            }
+                                                            class="rounded border-slate-300"
+                                                        />
+                                                        <span>새 탭에서 열기</span>
+                                                    </label>
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    bind:value={
+                                                        headerConfig.noticeBar
+                                                            .url[activeLang]
+                                                    }
+                                                    onchange={(e) =>
+                                                        syncEmptyLangUrls(
+                                                            headerConfig.noticeBar
+                                                                .url,
+                                                            (e.currentTarget as HTMLInputElement).value,
+                                                        )}
+                                                    placeholder="/category/post-slug 또는 demo.sveltekitblog.com"
+                                                    class="w-full p-1.5 border rounded text-xs bg-white"
+                                                />
+                                            </div>
+
+                                            <div class="flex flex-col gap-3 pt-2 border-t border-slate-100">
+                                                <div class="relative">
+                                                    <ColorControl
+                                                        label="배경색"
+                                                        bind:value={headerConfig.noticeBar.bgColor}
+                                                        compact={true}
+                                                        showPresets={false}
+                                                    />
+                                                    {#if headerConfig.noticeBar.bgColor}
+                                                        <button
+                                                            type="button"
+                                                            onclick={() => (headerConfig.noticeBar.bgColor = "")}
+                                                            class="mt-1 text-[10px] text-slate-400 hover:text-slate-600 underline"
+                                                        >테마 기본 배경색으로 초기화</button>
+                                                    {/if}
+                                                </div>
+                                                <div class="relative">
+                                                    <ColorControl
+                                                        label="글자색"
+                                                        bind:value={headerConfig.noticeBar.textColor}
+                                                        compact={true}
+                                                        showPresets={false}
+                                                    />
+                                                    {#if headerConfig.noticeBar.textColor}
+                                                        <button
+                                                            type="button"
+                                                            onclick={() => (headerConfig.noticeBar.textColor = "")}
+                                                            class="mt-1 text-[10px] text-slate-400 hover:text-slate-600 underline"
+                                                        >테마 기본 글자색으로 초기화</button>
+                                                    {/if}
+                                                </div>
+                                                <div class="relative">
+                                                    <ColorControl
+                                                        label="배지색"
+                                                        bind:value={headerConfig.noticeBar.badgeColor}
+                                                        compact={true}
+                                                        showPresets={false}
+                                                    />
+                                                    {#if headerConfig.noticeBar.badgeColor}
+                                                        <button
+                                                            type="button"
+                                                            onclick={() => (headerConfig.noticeBar.badgeColor = "")}
+                                                            class="mt-1 text-[10px] text-slate-400 hover:text-slate-600 underline"
+                                                        >테마 기본 강조색으로 초기화</button>
+                                                    {/if}
+                                                </div>
+                                            </div>
+
+                                            <div class="border-t border-slate-100 pt-2.5 mt-1">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <span class="depth-4-label">
+                                                        글로벌 위젯 그림자 효과 상속
+                                                    </span>
+                                                    <label class="relative inline-flex items-center cursor-pointer scale-90 origin-right">
+                                                        <input
+                                                            type="checkbox"
+                                                            bind:checked={headerConfig.noticeBar.shadow.useGlobal}
+                                                            class="sr-only peer"
+                                                        />
+                                                        <div
+                                                            class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"
+                                                        ></div>
+                                                    </label>
+                                                </div>
+                                                {#if !headerConfig.noticeBar.shadow.useGlobal}
+                                                    <div class="mt-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100 flex flex-col gap-4">
+                                                        <ShadowControl
+                                                            bind:value={headerConfig.noticeBar.shadow.normal}
+                                                            label={t("admin.theme.global_normal_shadow", { default: "일반 그림자" })}
+                                                        />
+                                                        <ShadowControl
+                                                            bind:value={headerConfig.noticeBar.shadow.hover}
+                                                            label={t("admin.theme.global_hover_shadow", { default: "호버 그림자" })}
+                                                        />
+                                                        <div>
+                                                            <div class="flex items-center gap-3 mt-1 p-2.5 bg-white rounded-lg border border-slate-200">
+                                                                <label class="depth-4-label whitespace-nowrap">
+                                                                    {t("admin.theme.hover_translate_y", { default: "Hover 이동(Y)" })}
+                                                                </label>
+                                                                <input
+                                                                    type="number"
+                                                                    bind:value={headerConfig.noticeBar.shadow.hoverTranslateY}
+                                                                    class="w-20 text-center text-sm border border-slate-200 rounded px-2 py-1"
+                                                                    step="1"
+                                                                />
+                                                            </div>
+                                                            <p class="depth-4-hint mt-1 text-center">
+                                                                {t("admin.theme.hover_translate_y_hint", { default: "px (0 = 이동 없음, 음수 = 위로)" })}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                {/if}
+                                            </div>
+                                        {/if}
                                     </div>
                                 </details>
 
@@ -6142,6 +6666,19 @@ header.blog-header.scrolled .header-inner {
                                             <div
                                                 class="p-3 bg-white rounded-lg border border-slate-200"
                                             >
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <span class="text-[10px] font-bold text-slate-400">#{i + 1}</span>
+                                                    {#if item.type === "link"}
+                                                        <label class="flex items-center gap-1 text-[10px] text-slate-500 cursor-pointer select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                bind:checked={item.openInNewTab}
+                                                                class="rounded border-slate-300"
+                                                            />
+                                                            <span>새 탭에서 열기</span>
+                                                        </label>
+                                                    {/if}
+                                                </div>
                                                 <div
                                                     class="flex gap-2 items-center mb-3"
                                                 >
@@ -6167,13 +6704,21 @@ header.blog-header.scrolled .header-inner {
                                                             class="text-[9px] text-slate-400 mb-0.5 block"
                                                             >{t(
                                                                 "admin.theme.menu_path",
-                                                            )}</label
+                                                            )} ({activeLang.toUpperCase()})</label
                                                         >
                                                         <input
                                                             type="text"
                                                             bind:value={
-                                                                item.url
+                                                                item.url[
+                                                                    activeLang
+                                                                ]
                                                             }
+                                                            onchange={(e) =>
+                                                                syncEmptyLangUrls(
+                                                                    item.url,
+                                                                    (e.currentTarget as HTMLInputElement).value,
+                                                                )}
+                                                            placeholder="/ 또는 demo.sveltekitblog.com"
                                                             class="text-xs p-1 border rounded w-full"
                                                         />
                                                     </div>
@@ -6181,7 +6726,7 @@ header.blog-header.scrolled .header-inner {
                                                 <div
                                                     class="flex justify-between items-center mt-2"
                                                 >
-                                                    <div class="flex gap-1">
+                                                    <div class="flex gap-1 items-center">
                                                         {#each ["link", "category_drawer"] as type}
                                                             <button
                                                                 type="button"
@@ -6202,6 +6747,26 @@ header.blog-header.scrolled .header-inner {
                                                                       )}
                                                             </button>
                                                         {/each}
+                                                        <div class="flex border rounded overflow-hidden bg-white ml-1">
+                                                            <button
+                                                                type="button"
+                                                                disabled={i === 0}
+                                                                title="위로 이동"
+                                                                onclick={() => moveMobileMenuUp(i)}
+                                                                class="p-0.5 px-1.5 border-none border-r border-slate-100 bg-transparent text-slate-500 hover:bg-slate-50 disabled:opacity-30"
+                                                            >
+                                                                <ChevronUp size={12} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={i === headerConfig.mobile.menuItems.length - 1}
+                                                                title="아래로 이동"
+                                                                onclick={() => moveMobileMenuDown(i)}
+                                                                class="p-0.5 px-1.5 border-none bg-transparent text-slate-500 hover:bg-slate-50 disabled:opacity-30"
+                                                            >
+                                                                <ChevronDown size={12} />
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                     <button
                                                         type="button"
@@ -6232,11 +6797,15 @@ header.blog-header.scrolled .header-inner {
                                                         {
                                                             id: Date.now(),
                                                             type: "link",
-                                                            label: {
-                                                                ko: "새 메뉴",
-                                                                en: "New Link",
-                                                            },
-                                                            url: "",
+                                                            label: ensureTranslationObj(
+                                                                "새 메뉴",
+                                                                "New Link",
+                                                            ),
+                                                            url: ensureUrlTranslationObj(
+                                                                "",
+                                                                "",
+                                                            ),
+                                                            openInNewTab: false,
                                                             icon: "Link",
                                                         },
                                                     ])}
@@ -7305,14 +7874,25 @@ header.blog-header.scrolled .header-inner {
                                                 <option value={sId}>{t("admin.theme.slot_n", { n: sId })} ({getSlotDisplayName(sId)})</option>
                                             {/each}
                                         </select>
+                                        <label class="flex items-start gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                class="mt-0.5 rounded border-slate-300"
+                                                bind:checked={slotExportForSharing}
+                                            />
+                                            <span class="text-xs text-slate-700 leading-snug">
+                                                <strong class="block text-slate-800">{t("admin.theme.slot_export_share_title", { default: "디자인 공유용 정제 내보내기" })}</strong>
+                                                <span class="text-[11px] text-slate-500">{t("admin.theme.slot_export_share_desc", { default: "체크 해제 시 본인 복원용 원본 그대로 백업됩니다. 체크 시 개인 텍스트·HTML 위젯·커스텀 JS·외부 배경 이미지를 제거해 공유용 프리셋으로 내보냅니다." })}</span>
+                                            </span>
+                                        </label>
                                         <button
                                             type="button"
                                             class="btn-primary w-full flex items-center justify-center gap-2 text-center"
-                                            style="width: 100% !important; max-width: 100%; min-height: 38px; height: auto; padding: 0.5rem 0.75rem; background-color: #4f46e5; white-space: normal; word-break: break-word; font-size: 0.85rem;"
-                                            onclick={() => exportSlotPreset(slotBackupTargetId)}
+                                            style="width: 100% !important; max-width: 100%; min-height: 38px; height: auto; padding: 0.5rem 0.75rem; background-color: {slotExportForSharing ? '#059669' : '#4f46e5'}; white-space: normal; word-break: break-word; font-size: 0.85rem;"
+                                            onclick={() => exportSlotPreset(slotBackupTargetId, slotExportForSharing)}
                                         >
                                             <Download size={16} class="flex-shrink-0" />
-                                            <span>{t("admin.theme.slot_export_btn", { default: "슬롯 백업 다운로드" })}</span>
+                                            <span>{slotExportForSharing ? t("admin.theme.slot_export_share_btn", { default: "공유용 디자인 프리셋 다운로드" }) : t("admin.theme.slot_export_btn", { default: "슬롯 백업 다운로드" })}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -7339,6 +7919,16 @@ header.blog-header.scrolled .header-inner {
                                             </div>
                                         </div>
                                         <input id="restore-slot-file" type="file" accept=".json" class="hidden" onchange={handleSlotRestoreFileSelect} />
+
+                                        {#if slotRestoreFileContent}
+                                            <div class="text-[11px] leading-snug px-2.5 py-2 rounded-lg border {slotRestoreIsSharedPreset ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}">
+                                                {#if slotRestoreIsSharedPreset}
+                                                    🛡️ <strong>{t("admin.theme.slot_restore_mode_shared_title", { default: "공유용 프리셋 감지" })}</strong>: {t("admin.theme.slot_restore_mode_shared_desc", { default: "내 블로그 제목·메뉴·공지·저작권·HTML 위젯을 보호하고 디자인만 적용합니다." })}
+                                                {:else}
+                                                    📦 <strong>{t("admin.theme.slot_restore_mode_raw_title", { default: "본인 원본 백업 감지" })}</strong>: {t("admin.theme.slot_restore_mode_raw_desc", { default: "HTML 위젯·커스텀 JS·개인 설정을 포함해 원본 그대로 슬롯에 복원합니다." })}
+                                                {/if}
+                                            </div>
+                                        {/if}
 
                                         <div class="flex flex-col gap-1 w-full" style="max-width: 100%;">
                                             <span class="text-xs font-semibold text-slate-600">{t("admin.theme.slot_restore_target_label", { default: "복원 대상 슬롯:" })}</span>

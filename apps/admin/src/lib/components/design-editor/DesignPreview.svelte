@@ -164,6 +164,26 @@
 
         return `--widget-normal-shadow: ${normal}; --widget-hover-shadow: ${hover}; --widget-hover-translate-y: ${hoverTranslateY}px;`;
     }
+
+    function getNoticeShadowStyle(noticeBar: any) {
+        const shadow = noticeBar?.shadow;
+        const global = widgetShadowGlobal;
+        let normal = "none";
+        let hover = "none";
+        let hoverTranslateY = 0;
+
+        if (shadow && shadow.useGlobal === false) {
+            normal = shadow.normal || "none";
+            hover = shadow.hover || "none";
+            hoverTranslateY = shadow.hoverTranslateY !== undefined ? Number(shadow.hoverTranslateY) : -2;
+        } else if (global && global.enabled) {
+            normal = global.normal || "none";
+            hover = global.hover || "none";
+            hoverTranslateY = global.hoverTranslateY !== undefined ? Number(global.hoverTranslateY) : -2;
+        }
+
+        return `--notice-normal-shadow: ${normal}; --notice-hover-shadow: ${hover}; --notice-hover-translate-y: ${hoverTranslateY}px;`;
+    }
     const activeRemoveFn = $derived(
         previewMode === "mobile"
             ? removeMobileWidgetFromLayout
@@ -1075,9 +1095,14 @@
                                             type="text"
                                             class="inline-edit-input"
                                             bind:value={item.label[activeLang]}
-                                            placeholder={item.url ===
-                                                "/guestbook" ||
-                                            item.url === "guestbook"
+                                            placeholder={getI18nText(
+                                                item.url,
+                                                activeLang,
+                                            ) === "/guestbook" ||
+                                            getI18nText(
+                                                item.url,
+                                                activeLang,
+                                            ) === "guestbook"
                                                 ? "Guestbook"
                                                 : "Link"}
                                             style="color: inherit; width: {Math.max(
@@ -1188,6 +1213,36 @@
                 </div>
             </div>
         </header>
+
+        {#if rawHeaderConfig.noticeBar?.enabled}
+            <div class="preview-notice-bar-wrapper">
+                <div
+                    class="preview-notice-bar-inner"
+                    style="
+                        --notice-bg: {rawHeaderConfig.noticeBar.bgColor || 'var(--surface-color, #ffffff)'};
+                        color: {rawHeaderConfig.noticeBar.textColor || 'var(--text-color, #1e293b)'};
+                        --notice-border: {rawHeaderConfig.noticeBar.borderColor || 'var(--border-color, #e2e8f0)'};
+                        --notice-hover-border: {rawHeaderConfig.noticeBar.badgeColor || 'var(--primary-color, #3b82f6)'};
+                        {getNoticeShadowStyle(rawHeaderConfig.noticeBar)}
+                    "
+                >
+                    <input
+                        type="text"
+                        class="notice-badge-input"
+                        bind:value={rawHeaderConfig.noticeBar.badgeText[activeLang]}
+                        placeholder="NOTICE"
+                        style="background: {rawHeaderConfig.noticeBar.badgeColor || 'var(--primary-color, #3b82f6)'}; width: {Math.max(52, (getI18nText(rawHeaderConfig.noticeBar.badgeText, activeLang) || 'NOTICE').length * 9 + 16)}px;"
+                    />
+                    <input
+                        type="text"
+                        class="notice-text-input"
+                        bind:value={rawHeaderConfig.noticeBar.text[activeLang]}
+                        placeholder="강조할 공지사항이나 주요 포스트 안내 문구를 입력하세요"
+                    />
+                    <span class="notice-preview-arrow">→</span>
+                </div>
+            </div>
+        {/if}
 
         <div class="blog-container">
             <div
@@ -2587,5 +2642,60 @@
         to {
             transform: translateX(0);
         }
+    }
+
+    .preview-notice-bar-wrapper {
+        max-width: var(--max-width, 1200px);
+        width: 100%;
+        margin: var(--header-bottom-margin, 1rem) auto 0;
+        padding: 0 var(--side-margin, 1.5rem);
+        box-sizing: border-box;
+    }
+    .preview-notice-bar-inner {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.6rem 0.9rem;
+        border-radius: 10px;
+        font-size: 0.875rem;
+        background: var(--notice-bg, var(--surface-color, #ffffff));
+        border: 1px solid var(--notice-border, var(--border-color, #e2e8f0));
+        box-shadow: var(--notice-normal-shadow, none);
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+    }
+    .preview-notice-bar-inner:hover {
+        transform: translateY(var(--notice-hover-translate-y, 0px));
+        box-shadow: var(--notice-hover-shadow, var(--notice-normal-shadow, none));
+        border-color: var(--notice-hover-border, var(--primary-color, #3b82f6));
+    }
+    .notice-badge-input {
+        flex-shrink: 0;
+        border: none;
+        border-radius: 9999px;
+        color: #ffffff;
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 0.15rem 0.55rem;
+        text-align: center;
+        outline: none;
+    }
+    .notice-text-input {
+        flex: 1;
+        min-width: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        outline: none;
+    }
+    .notice-text-input:focus {
+        background: rgba(59, 130, 246, 0.06);
+        border-radius: 4px;
+    }
+    .notice-preview-arrow {
+        flex-shrink: 0;
+        opacity: 0.55;
+        font-size: 0.9rem;
     }
 </style>

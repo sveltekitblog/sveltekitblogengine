@@ -17,31 +17,105 @@
 
 <script lang="ts">
     import { page } from "$app/stores";
-    import { Rss, Download } from "lucide-svelte";
+    import { Rss, Download, ChevronDown } from "lucide-svelte";
     import DynamicBgRenderer from "./DynamicBgRenderer.svelte";
     import { normalizeBackground, getBgValue } from "$lib/utils/background";
     import { onMount } from "svelte";
     import { t } from "$lib/i18n";
-    import { FULL_VERSION } from "@blog/shared";
+    import { FULL_VERSION, sanitizeDesignPresetForSharing } from "@blog/shared";
 
     let { settings }: { settings: any } = $props();
     let isMobile = $state(false);
-    let storedSlotId = $state<string | null>(null);
-    let shareDesignHref = $derived(
-        `/api/share-design?slot=${encodeURIComponent(storedSlotId || $page.data.activeSlotId || "1")}`,
+    let showShareMenu = $state(false);
+    let shareMenuEl = $state<HTMLElement | null>(null);
+    let availableSlots = $derived<Array<{ id: string; name: string }>>(
+        $page.data?.designSlotInfo?.availableSlots?.length > 0
+            ? $page.data.designSlotInfo.availableSlots
+            : [{ id: String($page.data?.activeSlotId || "1"), name: "Design 1" }],
     );
 
+    function triggerJsonDownload(data: any, fileBaseName: string) {
+        const safeName = (fileBaseName || "slot").replace(/[^a-zA-Z0-9가-힣_-]/g, "_");
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `design-preset-${safeName}-${dateStr}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    function downloadSharedSlotPreset(slotId: string, slotName?: string) {
+        showShareMenu = false;
+        const slotBundles = $page.data?.designSlotInfo?.slots || {};
+        const bundled = slotBundles[slotId];
+        const activeSlotId = String($page.data?.activeSlotId || "1");
+
+        let designPayload: any = null;
+        if (bundled) {
+            designPayload = {
+                theme: bundled.theme || {},
+                header: bundled.header || {},
+                footer: bundled.footer || {},
+                site_title: settings?.site_title || {},
+                widget_shadow_global: bundled.widget_shadow_global || settings?.widget_shadow_global || {},
+                layout: bundled.layout || { columnCount: 1, columnWidths: "1fr", mobileColumnCount: 1, mobileColumnWidths: "1fr" },
+                widgets: Array.isArray(bundled.widgets) ? bundled.widgets : [],
+            };
+        } else if (slotId === activeSlotId) {
+            designPayload = {
+                theme: settings?.theme || {},
+                header: settings?.header || {},
+                footer: settings?.footer || {},
+                site_title: settings?.site_title || {},
+                widget_shadow_global: settings?.widget_shadow_global || {},
+                layout: $page.data?.activeLayout || { columnCount: 1, columnWidths: "1fr", mobileColumnCount: 1, mobileColumnWidths: "1fr" },
+                widgets: Array.isArray($page.data?.layoutWidgets) ? $page.data.layoutWidgets : [],
+            };
+        }
+
+        if (designPayload) {
+            const rawPreset = {
+                version: "3.0",
+                backupType: "design_preset",
+                timestamp: new Date().toISOString(),
+                presetName: slotName || `Slot ${slotId}`,
+                design: designPayload,
+            };
+            const sanitized = sanitizeDesignPresetForSharing(rawPreset);
+            triggerJsonDownload(sanitized, slotName || `slot-${slotId}`);
+            return;
+        }
+
+        // 클라이언트 미번들 슬롯일 경우에만 정제된 서버 API로 폴백
+        const link = document.createElement("a");
+        link.href = `/api/share-design?slot=${encodeURIComponent(slotId)}`;
+        link.download = `design-preset-slot-${slotId}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
     onMount(() => {
-        try {
-            storedSlotId = localStorage.getItem("skbe_design_slot");
-        } catch {}
         const media = window.matchMedia("(max-width: 768px)");
         isMobile = media.matches;
         const listener = (e: MediaQueryListEvent) => {
             isMobile = e.matches;
         };
         media.addEventListener("change", listener);
-        return () => media.removeEventListener("change", listener);
+        const handleOutsideClick = (e: MouseEvent) => {
+            if (showShareMenu && shareMenuEl && !shareMenuEl.contains(e.target as Node)) {
+                showShareMenu = false;
+            }
+        };
+        document.addEventListener("click", handleOutsideClick);
+        return () => {
+            media.removeEventListener("change", listener);
+            document.removeEventListener("click", handleOutsideClick);
+        };
     });
     let baseFooter = $derived(settings?.footer || {});
     let footer = $derived(
@@ -229,15 +303,46 @@
                 {FULL_VERSION}
             </span>
             {#if footer.shareDesign}
-                <a
-                    href={shareDesignHref}
-                    download="blog-design-share.json"
-                    style="display: flex; align-items: center; gap: 0.3rem;"
-                    title={$t("blog.footer.share_design")}
-                >
-                    <Download size={15} />
-                    {$t("blog.footer.share_design")}
-                </a>
+                {#if availableSlots.length <= 1}
+                    <button
+                        type="button"
+                        class="footer-share-btn"
+                        onclick={() => downloadSharedSlotPreset(availableSlots[0]?.id || "1", availableSlots[0]?.name)}
+                        title={$t("blog.footer.share_design")}
+                    >
+                        <Download size={15} />
+                        {$t("blog.footer.share_design")}
+                    </button>
+                {:else}
+                    <div class="footer-share-dropdown" bind:this={shareMenuEl}>
+                        <button
+                            type="button"
+                            class="footer-share-btn"
+                            aria-expanded={showShareMenu}
+                            onclick={() => (showShareMenu = !showShareMenu)}
+                            title={$t("blog.footer.share_design")}
+                        >
+                            <Download size={15} />
+                            {$t("blog.footer.share_design")}
+                            <ChevronDown size={13} />
+                        </button>
+                        {#if showShareMenu}
+                            <div class="footer-share-menu" role="menu">
+                                {#each availableSlots as slot (slot.id)}
+                                    <button
+                                        type="button"
+                                        class="footer-share-menu-item"
+                                        role="menuitem"
+                                        onclick={() => downloadSharedSlotPreset(slot.id, slot.name)}
+                                    >
+                                        <Download size={13} />
+                                        <span>{slot.name}</span>
+                                    </button>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
             {/if}
             {#each socialLinks as link}
                 <a href={link.url} target="_blank" rel="noopener noreferrer"
@@ -371,5 +476,59 @@
         border-radius: 4px;
         color: var(--footer-nav-color, inherit);
         font-weight: 700;
+    }
+    .footer-share-dropdown {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+    }
+    .footer-share-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        background: none;
+        border: none;
+        padding: 0;
+        color: #555555;
+        font-size: 0.85rem;
+        font-family: inherit;
+        cursor: pointer;
+    }
+    .footer-share-btn:hover {
+        color: #000000;
+    }
+    .footer-share-menu {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        min-width: 150px;
+        background: var(--surface-color, #ffffff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 8px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+        padding: 4px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        z-index: 30;
+    }
+    .footer-share-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        width: 100%;
+        padding: 0.45rem 0.65rem;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text-color, #1e293b);
+        font-size: 0.8rem;
+        text-align: left;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .footer-share-menu-item:hover {
+        background: rgba(148, 163, 184, 0.16);
     }
 </style>

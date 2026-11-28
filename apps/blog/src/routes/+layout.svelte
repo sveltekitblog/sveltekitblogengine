@@ -203,7 +203,10 @@
         }
         if (typeof val === "object" && val !== null) {
             return (
-                val[lang] || val[dbDefaultLang] || Object.values(val)[0] || ""
+                val[lang] ||
+                val[dbDefaultLang] ||
+                Object.values(val).find((v: any) => typeof v === "string" && v.trim() !== "") ||
+                ""
             );
         }
         return val;
@@ -226,6 +229,102 @@
     const safeSideMarginMobile = $derived(headerConfig.safeSideMarginMobile || "0px");
     const safeTopMargin = $derived(headerConfig.safeTopMargin || "0px");
     const safeTopMarginMobile = $derived(headerConfig.safeTopMarginMobile || "0px");
+
+    const langPrefix = $derived(page.params.lang ? `/${page.params.lang}` : "");
+
+    function resolveNoticeUrl(rawUrlInput: any): { href: string; isExternal: boolean } {
+        let raw = "";
+        if (typeof rawUrlInput === "object" && rawUrlInput !== null) {
+            raw =
+                rawUrlInput[lang] ||
+                rawUrlInput[dbDefaultLang] ||
+                rawUrlInput["ko"] ||
+                Object.values(rawUrlInput).find((v: any) => typeof v === "string" && v.trim() !== "") ||
+                "";
+        } else if (typeof rawUrlInput === "string") {
+            raw = rawUrlInput;
+        }
+        const trimmed = String(raw || "").trim();
+        if (!trimmed) return { href: "", isExternal: false };
+        if (/^(mailto:|tel:)/i.test(trimmed)) return { href: trimmed, isExternal: true };
+        if (
+            !trimmed.startsWith("/") &&
+            !trimmed.startsWith("#") &&
+            !/^https?:\/\//i.test(trimmed) &&
+            /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+(\/.*)?$/.test(trimmed)
+        ) {
+            return { href: `https://${trimmed}`, isExternal: true };
+        }
+        if (/^https?:\/\//i.test(trimmed)) {
+            try {
+                const parsed = new URL(trimmed);
+                const currentOrigin = page.url?.origin || "";
+                const siteOrigin = settings?.siteUrl ? new URL(settings.siteUrl).origin : "";
+                if ((currentOrigin && parsed.origin === currentOrigin) || (siteOrigin && parsed.origin === siteOrigin)) {
+                    let internalPath = parsed.pathname + parsed.search + parsed.hash;
+                    const activeLangs = (data.languages || []).map((l: any) => l.code).filter(Boolean);
+                    if (activeLangs.length > 0) {
+                        const langRegex = new RegExp(`^\\/(${activeLangs.join("|")})(?=\\/|$)`, "i");
+                        internalPath = internalPath.replace(langRegex, "") || "/";
+                    }
+                    return {
+                        href: internalPath === "/" ? (langPrefix || "/") : `${langPrefix}${internalPath}`,
+                        isExternal: false
+                    };
+                }
+            } catch {}
+            return { href: trimmed, isExternal: true };
+        }
+        let internalPath = `/${trimmed.replace(/^\/+/, "")}`;
+        const activeLangs = (data.languages || []).map((l: any) => l.code).filter(Boolean);
+        if (activeLangs.length > 0) {
+            const langRegex = new RegExp(`^\\/(${activeLangs.join("|")})(?=\\/|$)`, "i");
+            internalPath = internalPath.replace(langRegex, "") || "/";
+        }
+        return {
+            href: internalPath === "/" ? (langPrefix || "/") : `${langPrefix}${internalPath}`,
+            isExternal: false
+        };
+    }
+
+    const noticeBar = $derived.by(() => {
+        const nb = headerConfig.noticeBar;
+        if (!nb || !nb.enabled) return null;
+        const text = getTrans(nb.text).trim();
+        if (!text) return null;
+        const badgeText = getTrans(nb.badgeText).trim();
+        const { href, isExternal } = resolveNoticeUrl(nb.url);
+        const openInNewTab = nb.openInNewTab !== undefined ? Boolean(nb.openInNewTab) : isExternal;
+
+        const shadow = nb.shadow;
+        const globalShadow = settings?.widget_shadow_global;
+        let normalShadow = "none";
+        let hoverShadow = "none";
+        let hoverTranslateY = 0;
+        if (shadow && shadow.useGlobal === false) {
+            normalShadow = shadow.normal || "none";
+            hoverShadow = shadow.hover || "none";
+            hoverTranslateY = shadow.hoverTranslateY !== undefined ? Number(shadow.hoverTranslateY) : -2;
+        } else if (globalShadow && globalShadow.enabled) {
+            normalShadow = globalShadow.normal || "none";
+            hoverShadow = globalShadow.hover || "none";
+            hoverTranslateY = globalShadow.hoverTranslateY !== undefined ? Number(globalShadow.hoverTranslateY) : -2;
+        }
+
+        return {
+            badgeText,
+            text,
+            href,
+            openInNewTab,
+            bgColor: nb.bgColor || "var(--surface-color, #ffffff)",
+            textColor: nb.textColor || "var(--text-color, #1e293b)",
+            badgeColor: nb.badgeColor || "var(--primary-color, #3b82f6)",
+            borderColor: nb.borderColor || "var(--border-color, #e2e8f0)",
+            normalShadow,
+            hoverShadow,
+            hoverTranslateY
+        };
+    });
 </script>
 
 <svelte:head>
@@ -362,6 +461,50 @@
         isMobile={isMobile}
     />
 
+    {#if noticeBar}
+        <div class="notice-bar-wrapper">
+            {#if noticeBar.href}
+                <a
+                    href={noticeBar.href}
+                    target={noticeBar.openInNewTab ? "_blank" : undefined}
+                    rel={noticeBar.openInNewTab ? "noopener noreferrer" : undefined}
+                    class="notice-bar-inner is-link"
+                    style="
+                        --notice-bg: {noticeBar.bgColor};
+                        --notice-text: {noticeBar.textColor};
+                        --notice-badge: {noticeBar.badgeColor};
+                        --notice-border: {noticeBar.borderColor};
+                        --notice-normal-shadow: {noticeBar.normalShadow};
+                        --notice-hover-shadow: {noticeBar.hoverShadow};
+                        --notice-hover-translate-y: {noticeBar.hoverTranslateY}px;
+                    "
+                >
+                    {#if noticeBar.badgeText}
+                        <span class="notice-badge">{noticeBar.badgeText}</span>
+                    {/if}
+                    <span class="notice-text">{noticeBar.text}</span>
+                    <span class="notice-arrow" aria-hidden="true">→</span>
+                </a>
+            {:else}
+                <div
+                    class="notice-bar-inner"
+                    style="
+                        --notice-bg: {noticeBar.bgColor};
+                        --notice-text: {noticeBar.textColor};
+                        --notice-badge: {noticeBar.badgeColor};
+                        --notice-border: {noticeBar.borderColor};
+                        --notice-normal-shadow: {noticeBar.normalShadow};
+                    "
+                >
+                    {#if noticeBar.badgeText}
+                        <span class="notice-badge">{noticeBar.badgeText}</span>
+                    {/if}
+                    <span class="notice-text">{noticeBar.text}</span>
+                </div>
+            {/if}
+        </div>
+    {/if}
+
     <main>
         <div class="container">
             <LayoutRenderer
@@ -461,6 +604,68 @@
         overflow-x: clip;
     }
 
+    .notice-bar-wrapper {
+        max-width: var(--max-width, 1200px);
+        width: 100%;
+        margin: var(--header-bottom-margin, 1rem) auto 0;
+    }
+
+    .notice-bar-inner {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.65rem 1rem;
+        border-radius: 10px;
+        background: var(--notice-bg, var(--surface-color, #ffffff));
+        color: var(--notice-text, var(--text-color, #1e293b));
+        border: 1px solid var(--notice-border, var(--border-color, #e2e8f0));
+        text-decoration: none;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        box-shadow: var(--notice-normal-shadow, none);
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+    }
+
+    .notice-bar-inner.is-link:hover {
+        transform: translateY(var(--notice-hover-translate-y, 0px));
+        box-shadow: var(--notice-hover-shadow, var(--notice-normal-shadow, none));
+        border-color: var(--notice-badge, var(--primary-color, #3b82f6));
+    }
+
+    .notice-badge {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        padding: 0.15rem 0.55rem;
+        border-radius: 9999px;
+        background: var(--notice-badge, var(--primary-color, #3b82f6));
+        color: #ffffff;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+    }
+
+    .notice-text {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 500;
+    }
+
+    .notice-arrow {
+        flex-shrink: 0;
+        opacity: 0.6;
+        font-size: 0.9rem;
+        transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+
+    .notice-bar-inner.is-link:hover .notice-arrow {
+        transform: translateX(3px);
+        opacity: 1;
+    }
+
     main {
         flex-grow: 1;
         padding-top: var(--header-bottom-margin, 1rem);
@@ -474,6 +679,15 @@
     }
 
     @media (max-width: 768px) {
+        .notice-bar-wrapper {
+            margin-top: var(--header-bottom-margin-mobile, 0.5rem);
+            padding: 0 var(--mobile-side-margin);
+        }
+        .notice-bar-inner {
+            padding: 0.55rem 0.8rem;
+            gap: 0.55rem;
+            font-size: 0.85rem;
+        }
         .app-root {
             --base-font-size: var(--mobile-base-font-size, 16px) !important;
             font-size: var(--mobile-base-font-size, 16px) !important;

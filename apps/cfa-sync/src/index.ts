@@ -243,12 +243,6 @@ async function fetchMultiDaySnapshots(env: Env, dates: string[], timeZone: strin
       }
     }
 
-    // ── CFA 적응형 샘플링(sampleInterval > 1) 뻥튀기 데이터 차단 가드 ───────
-    if (!snapshot.isExact || snapshot.sampleInterval > 1) {
-      console.warn(`[CFA] Sampled snapshot skipped for ${dateStr}: sampleInterval=${snapshot.sampleInterval}, pageViews=${snapshot.pageViews}, visitors=${snapshot.visitors}`);
-      continue;
-    }
-
     snapshots.push(snapshot);
   }
 
@@ -261,18 +255,21 @@ async function sync(env: Env): Promise<{ bootstrap: boolean; written: number }> 
   const lastTzRow = await env.BLOG_DB.prepare("SELECT value FROM blog_settings WHERE key = 'cfa_synced_timezone'").first<{ value: string }>();
   const isTimezoneChanged = Boolean(lastTzRow && lastTzRow.value !== timeZone);
   const bootstrap = !state || isTimezoneChanged;
-  // 과거 7일간의 CFA 보정 데이터를 일치시키기 위해 항상 최근 7일치를 단일 호출로 동기화
-  const dates = getSiteDatesEndingToday(timeZone, 7);
+  // 최초 설치/시간대 변경 시에만 7일치, 평소에는 매 실행마다 최근 3일치(오늘+어제+그제) 동기화
+  const dates = getSiteDatesEndingToday(timeZone, bootstrap ? 7 : 3);
+  const todayStr = dates[dates.length - 1];
   const snapshots = await fetchMultiDaySnapshots(env, dates, timeZone);
   const existingHashes = new Map<string, string>();
   const existingViews = new Map<string, number>();
+  const existingExact = new Map<string, boolean>();
   const placeholders = dates.map(() => '?').join(', ');
   const existingRows = await env.BLOG_DB.prepare(
-    `SELECT date, page_views, data_hash FROM cf_daily_snapshots WHERE date IN (${placeholders})`
-  ).bind(...dates).all<{ date: string; page_views: number; data_hash: string }>();
+    `SELECT date, page_views, data_hash, is_exact FROM cf_daily_snapshots WHERE date IN (${placeholders})`
+  ).bind(...dates).all<{ date: string; page_views: number; data_hash: string; is_exact: number }>();
   for (const row of existingRows.results || []) {
     existingHashes.set(row.date, row.data_hash);
     existingViews.set(row.date, Number(row.page_views) || 0);
+    existingExact.set(row.date, Number(row.is_exact) === 1);
   }
 
   const now = new Date().toISOString();
@@ -286,14 +283,16 @@ async function sync(env: Env): Promise<{ bootstrap: boolean; written: number }> 
       continue;
     }
 
+    // 이미 확정된 과거 날짜(date < today)에 정확(is_exact=1) 스냅샷이 있으면 샘플링 데이터로 덮어쓰지 않음
+    // 단, 오늘(today)은 실시간 갱신이 우선이므로 샘플링 여부와 관계없이 최신 수치 반영
+    const prevIsExact = existingExact.get(snapshot.date) === true;
+    if (!isTimezoneChanged && snapshot.date !== todayStr && prevIsExact && prevViews > 0 && !snapshot.isExact) {
+      console.warn(`[CFA] Sampled response skipped for finalized past date ${snapshot.date}: keeping exact pageViews=${prevViews}`);
+      continue;
+    }
+
     const detailsJson = JSON.stringify(canonicalDetails(snapshot.details));
-    const hash = await sha256(JSON.stringify({
-      pageViews: snapshot.pageViews,
-      visitors: snapshot.visitors,
-      details: JSON.parse(detailsJson),
-      sampleInterval: snapshot.sampleInterval,
-      isExact: snapshot.isExact
-    }));
+    const hash = await sha256(`${snapshot.pageViews}|${snapshot.visitors}|${snapshot.sampleInterval}|${snapshot.isExact ? 1 : 0}|${detailsJson}`);
     if (existingHashes.get(snapshot.date) === hash) continue;
     statements.push(env.BLOG_DB.prepare(`
       INSERT INTO cf_daily_snapshots

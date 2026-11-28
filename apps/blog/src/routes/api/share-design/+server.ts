@@ -17,12 +17,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-
-const DESIGN_SETTING_KEYS = ['theme', 'header', 'footer', 'widget_shadow_global'];
-
-// 디자인 공유 시 제외할 텍스트/콘텐츠 필드 (사용자별 고유 값)
-const HEADER_TEXT_KEYS = ['loginLabel', 'profileLabel', 'menuItems'];
-const FOOTER_TEXT_KEYS = ['copyright', 'socialLinks', 'navLinks'];
+import { sanitizeDesignPresetForSharing } from '@blog/shared';
 
 export const GET: RequestHandler = async ({ platform, url }) => {
     const db = platform?.env?.BLOG_DB;
@@ -51,24 +46,23 @@ export const GET: RequestHandler = async ({ platform, url }) => {
             return json({ error: 'Design sharing is disabled' }, { status: 403 });
         }
 
-        // 2. 보안 검증 통과: 화이트리스트 디자인 데이터 쿼리 수행
-        const [blogSettingsRes, layoutsRes, widgetsRes, layoutWidgetsRes, languagesRes] = await Promise.all([
+        // 2. 보안 검증 통과: 디자인 데이터 쿼리 수행
+        const [blogSettingsRes, layoutsRes, widgetsRes, layoutWidgetsRes] = await Promise.all([
             db.prepare('SELECT * FROM blog_settings').all(),
             db.prepare('SELECT * FROM layouts').all(),
             db.prepare('SELECT * FROM widgets').all(),
             db.prepare('SELECT * FROM layout_widgets').all(),
-            db.prepare('SELECT * FROM languages').all()
         ]);
 
         const blogSettings = blogSettingsRes.results || [];
         const layouts = layoutsRes.results || [];
         const widgets = widgetsRes.results || [];
         const layoutWidgets = layoutWidgetsRes.results || [];
-        const languages = languagesRes.results || [];
 
         // 3. 다중 디자인 슬롯(design_slots) 지원: 요청된 공개 활성 슬롯 또는 기본 활성 슬롯 디자인 추출
         const designSlotsRow = blogSettings.find((s: any) => s.key === 'design_slots');
         let activeSlotData: any = null;
+        let resolvedSlotId = '1';
         if (designSlotsRow?.value) {
             try {
                 const parsedSlots = JSON.parse(designSlotsRow.value);
@@ -76,112 +70,112 @@ export const GET: RequestHandler = async ({ platform, url }) => {
                 const requestedSlotObj = requestedSlot ? parsedSlots.slots?.[requestedSlot] : null;
                 if (requestedSlotObj && (requestedSlot === '1' || requestedSlotObj.enabled)) {
                     activeSlotData = requestedSlotObj;
+                    resolvedSlotId = requestedSlot;
                 } else {
                     const activeMode = parsedSlots.active_mode || '1';
                     activeSlotData = parsedSlots.slots?.[activeMode] || parsedSlots.slots?.['1'] || null;
+                    resolvedSlotId = parsedSlots.slots?.[activeMode] ? activeMode : '1';
                 }
             } catch {}
         }
 
-        let exportSettings: any[] = [];
-        let exportLayouts: any[] = layouts;
-        let exportWidgets: any[] = widgets;
-        let exportLayoutWidgets: any[] = layoutWidgets;
-
-        if (activeSlotData) {
-            // 현재 활성 슬롯 스냅샷을 기반으로 공유 데이터 구성
-            const cleanHeader = JSON.parse(JSON.stringify(activeSlotData.header || {}));
-            for (const key of HEADER_TEXT_KEYS) delete cleanHeader[key];
-
-            const cleanFooter = JSON.parse(JSON.stringify(activeSlotData.footer || {}));
-            for (const key of FOOTER_TEXT_KEYS) delete cleanFooter[key];
-
-            exportSettings = [
-                { key: 'theme', value: JSON.stringify(activeSlotData.theme || {}) },
-                { key: 'header', value: JSON.stringify(cleanHeader) },
-                { key: 'footer', value: JSON.stringify(cleanFooter) },
-                { key: 'widget_shadow_global', value: JSON.stringify(activeSlotData.widget_shadow_global || {}) }
-            ];
-
-            // 커스텀 CSS 보존
-            const headerCssRow = blogSettings.find((s: any) => s.key === 'header_css');
-            const footerCssRow = blogSettings.find((s: any) => s.key === 'footer_css');
-            if (headerCssRow?.value) exportSettings.push({ key: 'header_css', value: headerCssRow.value });
-            if (footerCssRow?.value) exportSettings.push({ key: 'footer_css', value: footerCssRow.value });
-
-            // 슬롯 레이아웃 추출
-            if (activeSlotData.layout) {
-                exportLayouts = [{
-                    id: 1,
-                    name: activeSlotData.name || 'Shared Layout',
-                    column_count: activeSlotData.layout.columnCount || 1,
-                    column_widths: Array.isArray(activeSlotData.layout.columnWidths) ? activeSlotData.layout.columnWidths.join(' ') : (activeSlotData.layout.columnWidths || '1fr'),
-                    mobile_column_count: activeSlotData.layout.mobileColumnCount || 1,
-                    mobile_column_widths: Array.isArray(activeSlotData.layout.mobileColumnWidths) ? activeSlotData.layout.mobileColumnWidths.join(' ') : (activeSlotData.layout.mobileColumnWidths || '1fr'),
-                    is_active: 1
-                }];
-            }
-
-            // 슬롯 위젯 목록 추출 및 정규화
-            if (Array.isArray(activeSlotData.widgets)) {
-                exportWidgets = [];
-                exportLayoutWidgets = [];
-                activeSlotData.widgets.forEach((w: any, idx: number) => {
-                    const wId = Number(w.widget_id || w.id || (idx + 1));
-                    exportWidgets.push({
-                        id: wId,
-                        name: w.name || `Widget ${wId}`,
-                        type: w.type || 'RecentPosts',
-                        config: typeof w.config === 'object' ? JSON.stringify(w.config) : (w.config || '{}')
-                    });
-                    exportLayoutWidgets.push({
-                        id: idx + 1,
-                        layout_id: 1,
-                        widget_id: wId,
-                        column_index: w.column_index ?? w.columnIndex ?? 0,
-                        sort_order: w.sort_order ?? w.sortOrder ?? idx,
-                        device: w.device || 'desktop',
-                        custom_title: typeof w.custom_title === 'object' ? JSON.stringify(w.custom_title) : (w.custom_title || null)
-                    });
-                });
-            }
-        } else {
-            // Fallback: 슬롯 데이터가 없는 경우 기존 화이트리스트 단일 테이블 필터링 적용
-            exportSettings = blogSettings
-                .filter((s: any) => DESIGN_SETTING_KEYS.includes(s.key))
-                .map((s: any) => {
-                    if (s.key === 'header' || s.key === 'footer') {
-                        try {
-                            const parsed = JSON.parse(s.value);
-                            const textKeys = s.key === 'header' ? HEADER_TEXT_KEYS : FOOTER_TEXT_KEYS;
-                            for (const key of textKeys) delete parsed[key];
-                            return { ...s, value: JSON.stringify(parsed) };
-                        } catch {
-                            return s;
-                        }
-                    }
-                    return s;
-                });
-        }
-
-        // 4. 표준 백업 포맷 구성 및 반환
-        const backupData = {
-            timestamp: new Date().toISOString(),
-            version: '3.0',
-            backupType: 'design',
-            data: {
-                blog_settings: exportSettings,
-                layouts: exportLayouts,
-                widgets: exportWidgets,
-                layout_widgets: exportLayoutWidgets,
-                languages
-            }
+        const safeParseJson = (val: any, fallback: any = {}) => {
+            if (typeof val !== 'string') return val ?? fallback;
+            try { return JSON.parse(val); } catch { return fallback; }
         };
 
-        return new Response(JSON.stringify(backupData, null, 2), {
+        let presetName = `Slot ${resolvedSlotId}`;
+        let designPayload: any;
+
+        if (activeSlotData) {
+            presetName = activeSlotData.name || presetName;
+            const rawLayout = activeSlotData.layout || {};
+            designPayload = {
+                theme: activeSlotData.theme || {},
+                header: activeSlotData.header || {},
+                footer: activeSlotData.footer || {},
+                site_title: {},
+                widget_shadow_global: activeSlotData.widget_shadow_global || {},
+                layout: {
+                    id: rawLayout.id || 1,
+                    name: rawLayout.name || presetName,
+                    columnCount: rawLayout.columnCount || 1,
+                    columnWidths: Array.isArray(rawLayout.columnWidths)
+                        ? rawLayout.columnWidths.join(' ')
+                        : (rawLayout.columnWidths || '1fr'),
+                    mobileColumnCount: rawLayout.mobileColumnCount || 1,
+                    mobileColumnWidths: Array.isArray(rawLayout.mobileColumnWidths)
+                        ? rawLayout.mobileColumnWidths.join(' ')
+                        : (rawLayout.mobileColumnWidths || '1fr'),
+                },
+                widgets: Array.isArray(activeSlotData.widgets)
+                    ? activeSlotData.widgets.map((w: any, idx: number) => ({
+                          ...w,
+                          widget_id: Number(w.widget_id || w.id || idx + 1),
+                          config: safeParseJson(w.config, {}),
+                      }))
+                    : [],
+            };
+        } else {
+            // Fallback: 슬롯 데이터가 없는 레거시 DB에서 표준 design_preset 조립
+            const getSetting = (key: string) => {
+                const row = blogSettings.find((s: any) => s.key === key);
+                return safeParseJson(row?.value, {});
+            };
+            const activeLayout: any = layouts.find((l: any) => l.is_active === 1) || layouts[0] || {};
+            const widgetsMap = new Map<number, any>();
+            for (const w of widgets as any[]) widgetsMap.set(Number(w.id), w);
+
+            const mappedWidgets = (layoutWidgets as any[])
+                .filter((lw) => !activeLayout.id || Number(lw.layout_id) === Number(activeLayout.id))
+                .map((lw, idx) => {
+                    const master = widgetsMap.get(Number(lw.widget_id)) || {};
+                    return {
+                        id: lw.id || idx + 1,
+                        widget_id: Number(lw.widget_id || idx + 1),
+                        name: master.name || `Widget ${idx + 1}`,
+                        type: master.type || 'RecentPosts',
+                        config: safeParseJson(master.config, {}),
+                        column_index: lw.column_index ?? 0,
+                        columnIndex: lw.column_index ?? 0,
+                        sort_order: lw.sort_order ?? idx,
+                        sortOrder: lw.sort_order ?? idx,
+                        device: lw.device || 'desktop',
+                        custom_title: safeParseJson(lw.custom_title, ''),
+                    };
+                });
+
+            designPayload = {
+                theme: getSetting('theme'),
+                header: getSetting('header'),
+                footer: getSetting('footer'),
+                site_title: {},
+                widget_shadow_global: getSetting('widget_shadow_global'),
+                layout: {
+                    id: activeLayout.id || 1,
+                    name: activeLayout.name || 'Shared Layout',
+                    columnCount: activeLayout.column_count || 1,
+                    columnWidths: activeLayout.column_widths || '1fr',
+                    mobileColumnCount: activeLayout.mobile_column_count || 1,
+                    mobileColumnWidths: activeLayout.mobile_column_widths || '1fr',
+                },
+                widgets: mappedWidgets,
+            };
+        }
+
+        // 4. @blog/shared 공용 정제 함수를 통과시켜 표준 design_preset 포맷 반환
+        const sanitizedPreset = sanitizeDesignPresetForSharing({
+            version: '3.0',
+            backupType: 'design_preset',
+            timestamp: new Date().toISOString(),
+            presetName,
+            design: designPayload,
+        });
+
+        return new Response(JSON.stringify(sanitizedPreset, null, 2), {
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
-                'Content-Disposition': 'attachment; filename="blog-design-share.json"',
+                'Content-Disposition': `attachment; filename="design-preset-slot-${resolvedSlotId}.json"`,
                 // 캐싱을 방지하여 최신 디자인이 항상 즉시 추출되도록 보장
                 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
                 'Pragma': 'no-cache',

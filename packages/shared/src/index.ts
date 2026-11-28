@@ -21,4 +21,5 @@ export * from './utils/index';
 export * from './social-providers';
 export * from './version';
 export * from './hub';
+export * from './design-preset';
 

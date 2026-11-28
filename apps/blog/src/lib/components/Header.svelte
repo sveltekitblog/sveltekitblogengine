@@ -272,13 +272,65 @@
 
     let langPrefix = $derived($page.params.lang ? `/${$page.params.lang}` : "");
 
+    function isBareExternalDomain(rawUrl: string): boolean {
+        if (!rawUrl || rawUrl.startsWith("/") || rawUrl.startsWith("#") || rawUrl.startsWith("?")) return false;
+        if (/^(https?:\/\/|mailto:|tel:)/i.test(rawUrl)) return false;
+        return /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+(\/.*)?$/.test(rawUrl.trim());
+    }
+
+    function isExternalUrl(rawUrl: string): boolean {
+        if (!rawUrl) return false;
+        const trimmed = rawUrl.trim();
+        if (/^(mailto:|tel:)/i.test(trimmed)) return true;
+        if (isBareExternalDomain(trimmed)) return true;
+        if (/^https?:\/\//i.test(trimmed)) {
+            try {
+                const parsed = new URL(trimmed);
+                const currentOrigin = $page?.url?.origin || "";
+                const siteOrigin = settings?.siteUrl ? new URL(settings.siteUrl).origin : "";
+                if ((currentOrigin && parsed.origin === currentOrigin) || (siteOrigin && parsed.origin === siteOrigin)) {
+                    return false;
+                }
+            } catch {}
+            return true;
+        }
+        return false;
+    }
+
     function processUrl(url: string) {
-        if (!url || url === "#") return url;
-        if (url.startsWith("http") || url.startsWith("mailto:")) return url;
-        if (url === "/") return langPrefix || "/";
-        return url.startsWith("/")
-            ? `${langPrefix}${url}`
-            : `${langPrefix}/${url}`;
+        if (!url) return langPrefix || "/";
+        const trimmed = String(url).trim();
+        if (!trimmed || trimmed === "#") return trimmed || "#";
+        if (/^(mailto:|tel:)/i.test(trimmed)) return trimmed;
+        if (isBareExternalDomain(trimmed)) return `https://${trimmed}`;
+
+        let internalPath = trimmed;
+        if (/^https?:\/\//i.test(trimmed)) {
+            try {
+                const parsed = new URL(trimmed);
+                const currentOrigin = $page?.url?.origin || "";
+                const siteOrigin = settings?.siteUrl ? new URL(settings.siteUrl).origin : "";
+                if ((currentOrigin && parsed.origin === currentOrigin) || (siteOrigin && parsed.origin === siteOrigin)) {
+                    internalPath = parsed.pathname + parsed.search + parsed.hash;
+                } else {
+                    return trimmed;
+                }
+            } catch {
+                return trimmed;
+            }
+        }
+
+        internalPath = `/${internalPath.replace(/^\/+/, "")}`;
+
+        // 내부 경로에 이미 언어 코드(/ko, /en, /ja 등)가 붙어 있다면 제거 후 현재 langPrefix 적용
+        const activeLangs = ($page.data?.languages || []).map((l: any) => l.code).filter(Boolean);
+        if (activeLangs.length > 0) {
+            const langRegex = new RegExp(`^\\/(${activeLangs.join("|")})(?=\\/|$)`, "i");
+            internalPath = internalPath.replace(langRegex, "") || "/";
+        }
+
+        if (internalPath === "/") return langPrefix || "/";
+        return `${langPrefix}${internalPath}`;
     }
 
     function ensureMenuItemStructure(items: any) {
@@ -340,11 +392,27 @@
                     resolvedLabel = $t(item.label, { default: item.label });
                 }
 
+                let rawUrl = "/";
+                if (typeof item.url === "object" && item.url !== null) {
+                    rawUrl =
+                        item.url[lang] ||
+                        item.url[dbDefaultLang] ||
+                        item.url["ko"] ||
+                        Object.values(item.url).find((v: any) => typeof v === "string" && v.trim() !== "") ||
+                        "/";
+                } else if (typeof item.url === "string") {
+                    rawUrl = item.url || "/";
+                }
+
+                const external = isExternalUrl(rawUrl);
+                const openInNewTab = item.openInNewTab !== undefined ? Boolean(item.openInNewTab) : external;
+
                 return {
                     id: item.id || Date.now() + index,
                     type: item.type || "link",
                     label: resolvedLabel,
-                    url: processUrl(item.url || "/"),
+                    url: processUrl(rawUrl),
+                    openInNewTab,
                     icon:
                         item.icon ||
                         (item.type === "category_drawer" ? "Menu" : "Link"),
@@ -598,10 +666,13 @@
         const freshLogoHtml = logoColor.type === "gradient"
             ? `<span style="background: ${logoColor.value}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; display: inline-block; padding-top: 0.2em; margin-top: -0.2em; padding-bottom: 0.2em; margin-bottom: -0.2em;">${logoText}</span>`
             : logoText;
+        const linkItems = desktopNav.filter((item: any) => item && item.type !== "category_drawer");
+        let linkIdx = 0;
+
         // DB 캐시 HTML 내부의 <a> 태그 속성(class 및 style)을 동적으로 안전 치환하여 효과 주입
         return rawHeaderStaticHtml.replace(
-            /(<a\s+href="\/[^"]*"\s+class=")(logo)([^"]*"\s+style=")([^"]*)(")/i,
-            (match, p1, p2, p3, p4, p5) => {
+            /(<a\s+href=")([^"]*)("\s+class=")(logo)([^"]*"\s+style=")([^"]*)(")/i,
+            (match, p1, _oldHref, p3, p4, p5, p6, p7) => {
                 let hoverTransform = 'none';
                 let hoverColor = 'currentcolor';
                 let hoverShadow = 'none';
@@ -630,14 +701,23 @@
                     `--logo-hover-shadow: ${hoverShadow};`
                 ].join(' ');
 
-                const safeP4 = p4.trim().endsWith(';') ? p4.trim() : p4.trim() + ';';
+                const safeP6 = p6.trim().endsWith(';') ? p6.trim() : p6.trim() + ';';
 
-                return `${p1}logo${p3}${safeP4} ${hoverStyleVars}${p5}`;
+                return `${p1}${processUrl("/")}${p3}logo${p5}${safeP6} ${hoverStyleVars}${p7}`;
             }
         ).replace(
             // 로고 내부 알맹이 스팬 컨텐츠도 Gradient 설정에 맞추어 최신화 교체
             /(<a\s+href="\/[^"]*"\s+class="[^"]*"\s+style="[^"]*">)([\s\S]*?)(<\/a>)/i,
             `$1${freshLogoHtml}$3`
+        ).replace(
+            /<a\s+href="[^"]*"(?:\s+target="[^"]*")?(?:\s+rel="[^"]*")?\s+class="nav-link"/gi,
+            (match) => {
+                const navItem = linkItems[linkIdx++];
+                if (!navItem) return match;
+                const safeUrl = String(navItem.url || "/").replace(/"/g, "&quot;");
+                const targetAttr = navItem.openInNewTab ? ' target="_blank" rel="noopener noreferrer"' : "";
+                return `<a href="${safeUrl}"${targetAttr} class="nav-link"`;
+            }
         );
     });
 
@@ -865,6 +945,8 @@
                     {:else}
                         <a
                             href={item.url}
+                            target={item.openInNewTab ? "_blank" : undefined}
+                            rel={item.openInNewTab ? "noopener noreferrer" : undefined}
                             class="nav-link"
                             style="color: {header.navTextColor ||
                                 'inherit'}; {useTextShadow
@@ -1354,7 +1436,12 @@
                                 </div>
                             </div>
                         {:else}
-                            <a href={item.url} onclick={closeMenu}>
+                            <a
+                                href={item.url}
+                                target={item.openInNewTab ? "_blank" : undefined}
+                                rel={item.openInNewTab ? "noopener noreferrer" : undefined}
+                                onclick={closeMenu}
+                            >
                                 <div class="flex items-center gap-3">
                                     {#if item.icon && navIconSvgs[item.id]}
                                         <span class="nav-icon-wrapper flex items-center">

@@ -22,7 +22,7 @@ import type { RequestHandler } from './$types';
 const DESIGN_SETTING_KEYS = ['theme', 'header', 'footer', 'widget_shadow_global'];
 
 // 디자인 내보내기 시 제외할 텍스트/콘텐츠 필드 (사용자별 고유 값)
-const HEADER_TEXT_KEYS = ['loginLabel', 'profileLabel', 'menuItems'];
+const HEADER_TEXT_KEYS = ['loginLabel', 'profileLabel', 'menuItems', 'noticeBar'];
 const FOOTER_TEXT_KEYS = ['copyright', 'socialLinks', 'navLinks'];
 
 export const GET: RequestHandler = async ({ url, platform }) => {
